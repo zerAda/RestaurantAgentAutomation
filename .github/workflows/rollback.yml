@@ -1,0 +1,110 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_name:
+        description: 'Backup file name (leave empty for latest)'
+        required: false
+        default: ''
+      confirm:
+        description: 'Type ROLLBACK to confirm'
+        required: true
+
+env:
+  PROJECT_DIR: /opt/resto-bot
+  BACKUP_DIR: /opt/resto-bot-backups
+
+jobs:
+  rollback:
+    name: Rollback to Previous Version
+    runs-on: self-hosted
+    if: ${{ github.event.inputs.confirm == 'ROLLBACK' }}
+
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [[ "${{ github.event.inputs.confirm }}" != "ROLLBACK" ]]; then
+            echo "ERROR: Confirmation not provided. Type 'ROLLBACK' to confirm."
+            exit 1
+          fi
+          echo "Rollback confirmed by: ${{ github.actor }}"
+
+      - name: List available backups
+        run: |
+          echo "=== Available Backups ==="
+          ls -lah "${{ env.BACKUP_DIR }}"/*.tar.gz 2>/dev/null || echo "No backups found"
+
+      - name: Select backup
+        id: backup
+        run: |
+          cd "${{ env.BACKUP_DIR }}"
+
+          if [[ -n "${{ github.event.inputs.backup_name }}" ]]; then
+            BACKUP="${{ github.event.inputs.backup_name }}"
+          else
+            BACKUP=$(ls -t *.tar.gz 2>/dev/null | head -n1)
+          fi
+
+          if [[ -z "$BACKUP" || ! -f "$BACKUP" ]]; then
+            echo "ERROR: No backup found"
+            exit 1
+          fi
+
+          echo "Selected backup: $BACKUP"
+          echo "backup_file=$BACKUP" >> $GITHUB_OUTPUT
+
+      - name: Stop current stack
+        run: |
+          echo "=== Stopping Current Stack ==="
+          cd "${{ env.PROJECT_DIR }}"
+          docker compose -f docker-compose.hostinger.prod.yml down || true
+
+      - name: Restore backup
+        run: |
+          echo "=== Restoring Backup ==="
+          cd "${{ env.PROJECT_DIR }}"
+
+          # Restore configuration
+          tar -xzvf "${{ env.BACKUP_DIR }}/${{ steps.backup.outputs.backup_file }}" \
+            -C "${{ env.PROJECT_DIR }}/" \
+            --overwrite
+
+          echo "Backup restored"
+
+      - name: Restart stack
+        run: |
+          echo "=== Restarting Stack ==="
+          cd "${{ env.PROJECT_DIR }}"
+          docker compose -f docker-compose.hostinger.prod.yml up -d
+
+          echo "Waiting for services..."
+          sleep 30
+
+          docker compose -f docker-compose.hostinger.prod.yml ps
+
+      - name: Health check
+        run: |
+          echo "=== Health Check ==="
+          MAX_RETRIES=5
+          RETRY=0
+
+          while [[ $RETRY -lt $MAX_RETRIES ]]; do
+            if curl -sf http://localhost:5678/healthz >/dev/null 2>&1; then
+              echo "Services healthy after rollback"
+              break
+            fi
+            echo "Waiting... (attempt $((RETRY+1))/$MAX_RETRIES)"
+            sleep 10
+            ((RETRY++))
+          done
+
+      - name: Rollback summary
+        run: |
+          echo "=========================================="
+          echo "ROLLBACK COMPLETE"
+          echo "=========================================="
+          echo "Backup restored: ${{ steps.backup.outputs.backup_file }}"
+          echo "Time: $(date)"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "=========================================="

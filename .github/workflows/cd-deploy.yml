@@ -1,0 +1,192 @@
+name: CD - Deploy to VPS
+
+on:
+  workflow_run:
+    workflows: ["CI - Resto Bot"]
+    types: [completed]
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  PROJECT_DIR: /opt/resto-bot
+  BACKUP_DIR: /opt/resto-bot-backups
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: self-hosted
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Pre-deployment checks
+        run: |
+          echo "=== Pre-deployment Checks ==="
+          echo "User: $(whoami)"
+          echo "Host: $(hostname)"
+          echo "Date: $(date)"
+          echo "Git SHA: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+
+          # Check Docker is running
+          docker --version || { echo "ERROR: Docker not available"; exit 1; }
+          docker compose version || { echo "ERROR: Docker Compose not available"; exit 1; }
+
+          # Check project directory exists
+          if [[ ! -d "${{ env.PROJECT_DIR }}" ]]; then
+            echo "Creating project directory..."
+            sudo mkdir -p "${{ env.PROJECT_DIR }}"
+            sudo chown $(whoami):$(whoami) "${{ env.PROJECT_DIR }}"
+          fi
+
+          echo "PASS: Pre-deployment checks"
+
+      - name: Backup current deployment
+        run: |
+          echo "=== Backup Current Deployment ==="
+          BACKUP_NAME="backup-$(date +%Y%m%d-%H%M%S)"
+
+          mkdir -p "${{ env.BACKUP_DIR }}"
+
+          if [[ -f "${{ env.PROJECT_DIR }}/docker-compose.hostinger.prod.yml" ]]; then
+            # Backup configs and data
+            tar -czvf "${{ env.BACKUP_DIR }}/${BACKUP_NAME}.tar.gz" \
+              -C "${{ env.PROJECT_DIR }}" \
+              .env \
+              secrets/ \
+              2>/dev/null || echo "Partial backup (some files may not exist)"
+
+            echo "Backup created: ${BACKUP_NAME}.tar.gz"
+
+            # Keep only last 5 backups
+            cd "${{ env.BACKUP_DIR }}"
+            ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm
+            echo "Old backups cleaned"
+          else
+            echo "No existing deployment to backup"
+          fi
+
+      - name: Sync files to project directory
+        run: |
+          echo "=== Syncing Files ==="
+
+          # Sync all files except secrets and .env
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='secrets/' \
+            --exclude='*.pdf' \
+            --exclude='node_modules' \
+            --exclude='dist/' \
+            ./ "${{ env.PROJECT_DIR }}/"
+
+          echo "Files synced to ${{ env.PROJECT_DIR }}"
+
+      - name: Setup environment
+        run: |
+          echo "=== Setup Environment ==="
+          cd "${{ env.PROJECT_DIR }}"
+
+          # Create .env from example if not exists
+          if [[ ! -f .env ]]; then
+            echo "Creating .env from template..."
+            cp config/.env.example .env
+            echo "WARNING: .env created from template - configure before first run!"
+          fi
+
+          # Create secrets directory
+          mkdir -p secrets
+          chmod 700 secrets
+
+          # Verify required files
+          [[ -f docker-compose.hostinger.prod.yml ]] || { echo "ERROR: docker-compose missing"; exit 1; }
+          [[ -f .env ]] || { echo "ERROR: .env missing"; exit 1; }
+
+          echo "Environment ready"
+
+      - name: Run database migrations
+        run: |
+          echo "=== Database Migrations ==="
+          cd "${{ env.PROJECT_DIR }}"
+
+          # Check if stack is running
+          if docker compose -f docker-compose.hostinger.prod.yml ps --quiet postgres 2>/dev/null | grep -q .; then
+            echo "Running migrations..."
+            chmod +x scripts/db_migrate.sh
+            ./scripts/db_migrate.sh || echo "Migration script not available or failed"
+          else
+            echo "Database not running - migrations will run on first start"
+          fi
+
+      - name: Deploy stack
+        run: |
+          echo "=== Deploy Stack ==="
+          cd "${{ env.PROJECT_DIR }}"
+
+          # Pull latest images
+          docker compose -f docker-compose.hostinger.prod.yml pull
+
+          # Start/restart stack
+          docker compose -f docker-compose.hostinger.prod.yml up -d
+
+          echo "Waiting for services to start..."
+          sleep 30
+
+          # Check services
+          docker compose -f docker-compose.hostinger.prod.yml ps
+
+      - name: Health check
+        run: |
+          echo "=== Health Check ==="
+          cd "${{ env.PROJECT_DIR }}"
+
+          # Wait for services
+          MAX_RETRIES=10
+          RETRY=0
+
+          while [[ $RETRY -lt $MAX_RETRIES ]]; do
+            if curl -sf http://localhost:5678/healthz >/dev/null 2>&1; then
+              echo "n8n is healthy"
+              break
+            fi
+            echo "Waiting for n8n... (attempt $((RETRY+1))/$MAX_RETRIES)"
+            sleep 10
+            ((RETRY++))
+          done
+
+          if [[ $RETRY -eq $MAX_RETRIES ]]; then
+            echo "WARNING: Health check timed out"
+            docker compose -f docker-compose.hostinger.prod.yml logs --tail=50
+          fi
+
+      - name: Post-deployment info
+        run: |
+          echo "=========================================="
+          echo "DEPLOYMENT COMPLETE"
+          echo "=========================================="
+          echo "Version: $(cat ${{ env.PROJECT_DIR }}/VERSION)"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Time: $(date)"
+          echo ""
+          echo "Services:"
+          cd "${{ env.PROJECT_DIR }}"
+          docker compose -f docker-compose.hostinger.prod.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+          echo "=========================================="
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "DEPLOYMENT FAILED!"
+          echo "Check logs: docker compose -f docker-compose.hostinger.prod.yml logs"
