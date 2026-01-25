@@ -1,0 +1,1870 @@
+diff -ruN /mnt/data/orig/PATCH.diff /mnt/data/work/PATCH.diff
+--- /mnt/data/orig/PATCH.diff	2026-01-22 05:43:33.000000000 +0000
++++ /mnt/data/work/PATCH.diff	2026-01-22 05:43:33.000000000 +0000
+@@ -1,565 +0,0 @@
+-diff -ruN /mnt/data/workspace/README.md /mnt/data/workspace_patched/README.md
+---- /mnt/data/workspace/README.md	2026-01-21 15:15:28.000000000 +0000
+-+++ /mnt/data/workspace_patched/README.md	2026-01-22 05:39:21.819616837 +0000
+-@@ -6,11 +6,12 @@
+- - **API publique** (gateway) : `https://api.<domain>/v1/...`
+- - n8n **non exposé** côté API (proxy via gateway)
+- - stack **queue mode** (n8n main + worker + redis)
+--- DB bootstrap **single-file** (no migrations)
+-+- DB bootstrap **single-file** + **migrations idempotentes** (`db/migrations/`)
+- 
+- ## Contenu
+- - `workflows/` : W1..W8
+- - `db/bootstrap.sql` : schéma + seeds (fresh install)
+-+- `db/migrations/` : patchs idempotents (upgrade in place)
+- - `infra/gateway/` : config Nginx (API paths stables)
+- - `docker-compose.hostinger.prod.yml` : stack prod avec Traefik + TLS
+- - `config/.env.example` : variables requises
+-@@ -18,7 +19,9 @@
+- - `docs/` : conventions API + runbook + checklist prod
+- 
+- ## Quickstart (prod)
+--1) `cp config/.env.example .env` et renseigne **DOMAIN_NAME**, **SSL_EMAIL**, **ADMIN_ALLOWED_IPS**, **WEBHOOK_SHARED_TOKEN**
+-+1) `cp config/.env.example .env` et renseigne **DOMAIN_NAME**, **SSL_EMAIL**, **ADMIN_ALLOWED_IPS** (+ `TRAEFIK_TRUSTED_IPS`).
+-+   
+-+   **Note** : `ALLOW_QUERY_TOKEN=false` par défaut (recommandé) pour éviter la fuite de token dans les logs.
+- 2) Crée les secrets dans `./secrets/` (voir `docs/RUNBOOK_HOSTINGER.md`)
+- 3) `docker compose -f docker-compose.hostinger.prod.yml up -d`
+- 4) Ouvre la console : `https://console.<domain>` (BasicAuth + allowlist)
+-@@ -35,4 +38,6 @@
+- 
+- Auth : `x-webhook-token: <WEBHOOK_SHARED_TOKEN>` **ou** `Authorization: Bearer <WEBHOOK_SHARED_TOKEN>`
+- 
+-+Si tu dois maintenir un ancien client qui ne sait envoyer que `?token=...`, active explicitement `ALLOW_QUERY_TOKEN=true`.
+-+
+- Plus : `docs/API_CONVENTIONS.md`
+-diff -ruN /mnt/data/workspace/TEST_REPORT.md /mnt/data/workspace_patched/TEST_REPORT.md
+---- /mnt/data/workspace/TEST_REPORT.md	1970-01-01 00:00:00.000000000 +0000
+-+++ /mnt/data/workspace_patched/TEST_REPORT.md	2026-01-22 05:43:25.673346196 +0000
+-@@ -0,0 +1,8 @@
+-+== RESTO BOT v3.0 - Integrity Gate ==
+-+\n[1/5] Bash syntax check
+-+\n[2/5] Secret scan (forbidden placeholders)
+-+\n[3/5] Workflow JSON validation
+-+\n[4/5] DB bootstrap ordering check
+-+\n[5/5] Compose YAML parse (best-effort)
+-+YAML parse OK
+-+\n✅ Integrity Gate PASS
+-diff -ruN /mnt/data/workspace/config/.env.example /mnt/data/workspace_patched/config/.env.example
+---- /mnt/data/workspace/config/.env.example	2026-01-21 16:47:09.000000000 +0000
+-+++ /mnt/data/workspace_patched/config/.env.example	2026-01-22 05:32:45.572202823 +0000
+-@@ -13,17 +13,26 @@
+- # Timezone
+- TZ=Europe/Paris
+- 
+--# Reverse proxy trusted IPs (Traefik will trust X-Forwarded-For only from these IPs)
+--TRAEFIK_TRUSTED_IPS=127.0.0.1/32  # TODO: set to your load balancer / reverse proxy public IPs
+-+# Reverse proxy trusted IPs (Traefik trusts X-Forwarded-For only from these IPs)
+-+# Use public IPs of your LB / reverse proxy. Comma-separated CIDRs.
+-+TRAEFIK_TRUSTED_IPS=203.0.113.10/32
+- 
+--# Allowlist (CIDR list, comma-separated)
+--ADMIN_ALLOWED_IPS=127.0.0.1/32  # TODO: replace by your public IPs /32 in prod
+-+# Allowlist for private console (comma-separated CIDRs). Use ONLY public /32 in prod.
+-+ADMIN_ALLOWED_IPS=203.0.113.10/32
+- 
+- # Versions
+- N8N_VERSION=1.80.0
+- 
+--# Legacy shared token for inbound webhooks (fallback only). Prefer api_clients table + per-tenant token.
+--WEBHOOK_SHARED_TOKEN=CHANGE_ME_LONG_RANDOM
+-+# Legacy shared token for inbound webhooks (fallback only).
+-+# Prefer api_clients table + per-tenant token.
+-+WEBHOOK_SHARED_TOKEN=REPLACE_WITH_LONG_RANDOM_TOKEN
+-+
+-+# Security: allow tokens in query string (NOT recommended because tokens leak in logs).
+-+# Default false. Set true only for legacy clients that cannot send headers.
+-+ALLOW_QUERY_TOKEN=false
+-+
+-+# Workflow rate limit (per conversation) for inbound messages
+-+RATE_LIMIT_PER_30S=6
+- 
+- # Queue concurrency
+- QUEUE_BULL_MAX_CONCURRENCY=2
+-@@ -35,11 +44,11 @@
+- 
+- # Send adapters (dev defaults point to mock-api)
+- WA_SEND_URL=http://mock-api:8080/send/wa
+--WA_API_TOKEN=dev
+-+WA_API_TOKEN=REPLACE_WITH_PROVIDER_TOKEN
+- IG_SEND_URL=http://mock-api:8080/send/ig
+--IG_API_TOKEN=dev
+-+IG_API_TOKEN=REPLACE_WITH_PROVIDER_TOKEN
+- MSG_SEND_URL=http://mock-api:8080/send/msg
+--MSG_API_TOKEN=dev
+-+MSG_API_TOKEN=REPLACE_WITH_PROVIDER_TOKEN
+- 
+- # Alerts (optional)
+- ALERT_WEBHOOK_URL=
+-diff -ruN /mnt/data/workspace/db/bootstrap.sql /mnt/data/workspace_patched/db/bootstrap.sql
+---- /mnt/data/workspace/db/bootstrap.sql	2026-01-21 16:39:20.000000000 +0000
+-+++ /mnt/data/workspace_patched/db/bootstrap.sql	2026-01-22 05:29:56.872682273 +0000
+-@@ -39,33 +39,6 @@
+- CREATE INDEX IF NOT EXISTS idx_api_clients_active_hash
+-   ON api_clients (is_active, token_hash);
+- 
+---- Outbox pattern (P0-OUTBOX-RETRY)
+--CREATE TABLE IF NOT EXISTS outbound_messages (
+--  outbound_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--  dedupe_key          text NOT NULL UNIQUE,
+--  tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+--  restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
+--  conversation_key    text NULL,
+--  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+--  user_id             text NOT NULL,
+--  order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
+--  template            text NOT NULL DEFAULT 'reply',
+--  payload_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
+--  status              text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SENT','DLQ')),
+--  attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+--  next_retry_at       timestamptz NOT NULL DEFAULT now(),
+--  provider_message_id text NULL,
+--  last_error          text NULL,
+--  created_at          timestamptz NOT NULL DEFAULT now(),
+--  updated_at          timestamptz NOT NULL DEFAULT now(),
+--  sent_at             timestamptz NULL
+--);
+--
+--CREATE INDEX IF NOT EXISTS idx_outbound_due
+--  ON outbound_messages (status, next_retry_at);
+--
+--CREATE INDEX IF NOT EXISTS idx_outbound_rest_channel
+--  ON outbound_messages (restaurant_id, channel, created_at DESC);
+- 
+- -- RBAC mapping per channel
+- CREATE TABLE IF NOT EXISTS restaurant_users (
+-@@ -149,6 +122,34 @@
+-   line_total_cents int NOT NULL CHECK (line_total_cents >= 0)
+- );
+- 
+-+-- Outbox pattern (P0-OUTBOX-RETRY)
+-+CREATE TABLE IF NOT EXISTS outbound_messages (
+-+  outbound_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+-+  dedupe_key          text NOT NULL UNIQUE,
+-+  tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+-+  restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
+-+  conversation_key    text NULL,
+-+  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+-+  user_id             text NOT NULL,
+-+  order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
+-+  template            text NOT NULL DEFAULT 'reply',
+-+  payload_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
+-+  status              text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SENT','DLQ')),
+-+  attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+-+  next_retry_at       timestamptz NOT NULL DEFAULT now(),
+-+  provider_message_id text NULL,
+-+  last_error          text NULL,
+-+  created_at          timestamptz NOT NULL DEFAULT now(),
+-+  updated_at          timestamptz NOT NULL DEFAULT now(),
+-+  sent_at             timestamptz NULL
+-+);
+-+
+-+CREATE INDEX IF NOT EXISTS idx_outbound_due
+-+  ON outbound_messages (status, next_retry_at);
+-+
+-+CREATE INDEX IF NOT EXISTS idx_outbound_rest_channel
+-+  ON outbound_messages (restaurant_id, channel, created_at DESC);
+-+
+- -- Inbound / idempotency / rate limiting
+- CREATE TABLE IF NOT EXISTS inbound_messages (
+-   id               bigserial PRIMARY KEY,
+-diff -ruN /mnt/data/workspace/docker/docker-compose.yml /mnt/data/workspace_patched/docker/docker-compose.yml
+---- /mnt/data/workspace/docker/docker-compose.yml	2026-01-21 15:05:40.000000000 +0000
+-+++ /mnt/data/workspace_patched/docker/docker-compose.yml	2026-01-22 05:33:42.960811972 +0000
+-@@ -20,7 +20,8 @@
+-       retries: 10
+- 
+-   n8n:
+--    image: n8nio/n8n:latest
+-+    # Dev-only compose. For production, use docker-compose.hostinger.prod.yml
+-+    image: n8nio/n8n:${N8N_VERSION:-1.80.0}
+-     container_name: n8n
+-     depends_on:
+-       postgres:
+-@@ -28,15 +29,15 @@
+-     ports:
+-       - "5678:5678"
+-     environment:
+--      TZ: ${TZ:-Africa/Algiers}
+-+      TZ: ${TZ:-Europe/Paris}
+- 
+-       # n8n auth UI
+-       N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+-       N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+--      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-change_me}
+-+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-dev_password}
+- 
+-       # Encryption key (REQUIRED in prod)
+--      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change_me_32chars_min}
+-+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev_encryption_key_please_change_32chars_minimum_123456}
+- 
+-       # Database
+-       DB_TYPE: postgresdb
+-@@ -50,8 +51,10 @@
+-       WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
+- 
+-       # Bot security / behavior
+--      WEBHOOK_SHARED_TOKEN: ${WEBHOOK_SHARED_TOKEN:-change_me_shared_token}
+-+      WEBHOOK_SHARED_TOKEN: ${WEBHOOK_SHARED_TOKEN:-dev_shared_token}
+-+      ALLOW_QUERY_TOKEN: ${ALLOW_QUERY_TOKEN:-false}
+-       RATE_LIMIT_PER_30S: ${RATE_LIMIT_PER_30S:-6}
+-+      ALLOWED_AUDIO_DOMAINS: ${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
+- 
+-       # LLM / STT endpoints
+-       LLM_API_URL: ${LLM_API_URL:-http://ollama:11434/api/generate}
+-diff -ruN /mnt/data/workspace/docs/API_CONVENTIONS.md /mnt/data/workspace_patched/docs/API_CONVENTIONS.md
+---- /mnt/data/workspace/docs/API_CONVENTIONS.md	2026-01-21 16:49:53.000000000 +0000
+-+++ /mnt/data/workspace_patched/docs/API_CONVENTIONS.md	2026-01-22 05:39:44.535491631 +0000
+-@@ -10,9 +10,9 @@
+- 
+- ## Auth (inbound)
+- **P0 (prod)** : auth multi-tenant par token **par client** (table `api_clients`) :
+--- Header : `x-api-token: <TOKEN>`
+-+- Header : `x-webhook-token: <TOKEN>` (recommandé) ou `x-api-token: <TOKEN>`
+- - ou `Authorization: Bearer <TOKEN>`
+--- ou query param `?token=<TOKEN>` (fallback)
+-+- query param `?token=<TOKEN>` : **désactivé par défaut** (activer via `ALLOW_QUERY_TOKEN=true` uniquement pour compat legacy)
+- 
+- Règles :
+- - Le body ne doit **jamais** fournir `tenantId/restaurantId` (ignorés si token valide).
+-diff -ruN /mnt/data/workspace/docs/LAST_VERIFICATION_REPORT.md /mnt/data/workspace_patched/docs/LAST_VERIFICATION_REPORT.md
+---- /mnt/data/workspace/docs/LAST_VERIFICATION_REPORT.md	2026-01-21 15:18:20.000000000 +0000
+-+++ /mnt/data/workspace_patched/docs/LAST_VERIFICATION_REPORT.md	2026-01-22 05:40:06.329560565 +0000
+-@@ -1,6 +1,6 @@
+- # LAST_VERIFICATION_REPORT (v3.0)
+- 
+--Generated: 2026-01-21 15:18
+-+Generated: 2026-01-22 (patch)
+- ## Agent DevSecOps
+- - ✅ Console privée via Traefik: allowlist + BasicAuth + security headers
+- - ✅ API publique via Gateway: rate limit + headers
+-@@ -12,14 +12,15 @@
+- - ✅ Queue mode (main + worker + redis)
+- 
+- ## Agent App / Data
+--- ✅ Bootstrap DB single-file: `db/bootstrap.sql` monté dans Postgres init
+-+- ✅ Bootstrap DB: `db/bootstrap.sql` (fresh install) + `db/migrations/*` (upgrade idempotent)
+- - ✅ Aucune interpolation dangereuse trouvée dans les champs SQL `query` (Postgres nodes)
+- 
+- ## Agent Workflow QA
+- - ✅ Webhooks inbound renommés (v1) : whatsapp/instagram/messenger
+--- ✅ Auth token supporte header / bearer / query param (fallback)
+-+- ✅ Auth token supporte header / bearer. Query param `?token=...` est **désactivé par défaut** via `ALLOW_QUERY_TOKEN=false`
+- - ✅ Execute CORE via `CORE_WORKFLOW_ID` env (pas d'ID hardcodé)
+- 
+- ## Risques / Notes
+--- ℹ️ Pour une intégration directe Meta, ajouter une étape de validation signature (`X-Hub-Signature-256`) + GET verify_token. La gateway est prête.
+-+- ℹ️ Pour une intégration directe Meta, ajouter une étape de validation signature (`X-Hub-Signature-256`) + GET verify_token.
+-+- ℹ️ Ne jamais activer `ALLOW_QUERY_TOKEN=true` sans besoin legacy (risque de fuite en logs).
+- - ℹ️ `CORE_WORKFLOW_ID` doit être renseigné après import (script fourni).
+-diff -ruN /mnt/data/workspace/docs/RUNBOOK_HOSTINGER.md /mnt/data/workspace_patched/docs/RUNBOOK_HOSTINGER.md
+---- /mnt/data/workspace/docs/RUNBOOK_HOSTINGER.md	2026-01-21 16:49:53.000000000 +0000
+-+++ /mnt/data/workspace_patched/docs/RUNBOOK_HOSTINGER.md	2026-01-22 05:41:54.545456672 +0000
+-@@ -23,7 +23,7 @@
+- 
+- ### Console BasicAuth (Traefik usersfile)
+- ```bash
+--docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'CHANGE_ME_STRONG_PASSWORD' > secrets/traefik_usersfile
+-+docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'REPLACE_WITH_STRONG_PASSWORD' > secrets/traefik_usersfile
+- ```
+- 
+- ## 3) Env
+-diff -ruN /mnt/data/workspace/patches/unified.patch /mnt/data/workspace_patched/patches/unified.patch
+---- /mnt/data/workspace/patches/unified.patch	2026-01-21 16:51:10.000000000 +0000
+-+++ /mnt/data/workspace_patched/patches/unified.patch	2026-01-22 05:41:59.987889389 +0000
+-@@ -17,7 +17,7 @@
+-  
+- -# Shared token for inbound webhooks (header x-webhook-token / bearer / query token)
+- +# Legacy shared token for inbound webhooks (fallback only). Prefer api_clients table + per-tenant token.
+-- WEBHOOK_SHARED_TOKEN=CHANGE_ME_LONG_RANDOM
+-+ WEBHOOK_SHARED_TOKEN=REPLACE_WITH_LONG_RANDOM_TOKEN
+-  
+-  # Queue concurrency
+- @@ -44,3 +47,11 @@
+-@@ -547,7 +547,7 @@
+- + 
+- +-# Shared token for inbound webhooks (header x-webhook-token / bearer / query token)
+- ++# Legacy shared token for inbound webhooks (fallback only). Prefer api_clients table + per-tenant token.
+--+ WEBHOOK_SHARED_TOKEN=CHANGE_ME_LONG_RANDOM
+-++ WEBHOOK_SHARED_TOKEN=REPLACE_WITH_LONG_RANDOM_TOKEN
+- + 
+- + # Queue concurrency
+- +@@ -44,3 +47,11 @@
+-diff -ruN /mnt/data/workspace/scripts/integrity_gate.sh /mnt/data/workspace_patched/scripts/integrity_gate.sh
+---- /mnt/data/workspace/scripts/integrity_gate.sh	1970-01-01 00:00:00.000000000 +0000
+-+++ /mnt/data/workspace_patched/scripts/integrity_gate.sh	2026-01-22 05:43:18.957921631 +0000
+-@@ -0,0 +1,80 @@
+-+#!/usr/bin/env bash
+-+set -euo pipefail
+-+
+-+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+-+cd "$ROOT_DIR"
+-+
+-+echo "== RESTO BOT v3.0 - Integrity Gate =="
+-+
+-+fail() {
+-+  echo "❌ $*" >&2
+-+  exit 1
+-+}
+-+
+-+# 1) Bash syntax
+-+
+-+echo "\n[1/5] Bash syntax check"
+-+bash -n scripts/*.sh || fail "bash -n failed"
+-+
+-+echo "\n[2/5] Secret scan (forbidden placeholders)"
+-+if grep -R --line-number --fixed-string "CHANGE_ME" \
+-+  --exclude-dir=docs --exclude-dir=patches \
+-+  --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md \
+-+  --exclude=integrity_gate.sh -- . >/dev/null 2>&1; then
+-+  echo "Found forbidden placeholder(s):"
+-+  grep -R --line-number --fixed-string "CHANGE_ME" \
+-+    --exclude-dir=docs --exclude-dir=patches \
+-+    --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md \
+-+    --exclude=integrity_gate.sh -- . || true
+-+  fail "CHANGE_ME placeholder found"
+-+fi
+-+
+-+echo "\n[3/5] Workflow JSON validation"
+-+for wf in workflows/*.json; do
+-+  jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and (.active|type=="boolean")' "$wf" >/dev/null \
+-+    || fail "Invalid workflow JSON: $wf"
+-+  # inbound parse nodes must gate query tokens
+-+  base="$(basename "$wf")"
+-+  if [[ "$base" == "W1_IN_WA.json" || "$base" == "W2_IN_IG.json" || "$base" == "W3_IN_MSG.json" ]]; then
+-+    code="$(jq -r '.nodes[] | select(.name=="B0 - Parse & Canonicalize") | .parameters.jsCode' "$wf")"
+-+    echo "$code" | grep -q "ALLOW_QUERY_TOKEN" || fail "$wf: ALLOW_QUERY_TOKEN gating missing"
+-+  fi
+-+done
+-+
+-+echo "\n[4/5] DB bootstrap ordering check"
+-+orders_line=$(grep -n -- "CREATE TABLE IF NOT EXISTS orders" db/bootstrap.sql | head -n1 | cut -d: -f1 || true)
+-+outbox_line=$(grep -n -- "CREATE TABLE IF NOT EXISTS outbound_messages" db/bootstrap.sql | head -n1 | cut -d: -f1 || true)
+-+if [[ -n "$orders_line" && -n "$outbox_line" ]]; then
+-+  if (( orders_line > outbox_line )); then
+-+    fail "db/bootstrap.sql: orders must be created before outbound_messages (FK dependency)"
+-+  fi
+-+else
+-+  fail "db/bootstrap.sql: could not locate orders/outbound_messages definitions"
+-+fi
+-+
+-+echo "\n[5/5] Compose YAML parse (best-effort)"
+-+python3 - <<'PY'
+-+import sys
+-+from pathlib import Path
+-+try:
+-+  import yaml
+-+except Exception:
+-+  print('PyYAML not installed: skipping YAML parse')
+-+  sys.exit(0)
+-+
+-+files = [
+-+  Path('docker-compose.hostinger.prod.yml'),
+-+  Path('docker/docker-compose.yml'),
+-+]
+-+for f in files:
+-+  if not f.exists():
+-+    continue
+-+  try:
+-+    data = yaml.safe_load(f.read_text())
+-+    assert isinstance(data, dict) and 'services' in data
+-+  except Exception as e:
+-+    raise SystemExit(f"Invalid YAML in {f}: {e}")
+-+print('YAML parse OK')
+-+PY
+-+
+-+echo "\n✅ Integrity Gate PASS"
+-diff -ruN /mnt/data/workspace/scripts/smoke.sh /mnt/data/workspace_patched/scripts/smoke.sh
+---- /mnt/data/workspace/scripts/smoke.sh	2026-01-21 16:50:40.000000000 +0000
+-+++ /mnt/data/workspace_patched/scripts/smoke.sh	2026-01-22 05:35:05.465995668 +0000
+-@@ -16,18 +16,40 @@
+- fi
+- 
+- echo "== Inbound valid token =="
+--curl -fsS -X POST "${API}/v1/inbound/whatsapp"   -H "Content-Type: application/json"   -H "x-api-token: ${TOKEN}"   -d '{"text":"test","from":"smoke","msgId":"smoke-1"}' >/dev/null   && echo "✅ inbound whatsapp (valid token)"
+-+curl -fsS -X POST "${API}/v1/inbound/whatsapp" \
+-+  -H "Content-Type: application/json" \
+-+  -H "x-webhook-token: ${TOKEN}" \
+-+  -d '{"text":"test","from":"smoke","msgId":"smoke-1"}' >/dev/null \
+-+  && echo "✅ inbound whatsapp (valid token)"
+- 
+- echo "== Inbound invalid token (should be dropped + logged) =="
+--curl -fsS -X POST "${API}/v1/inbound/whatsapp"   -H "Content-Type: application/json"   -H "x-api-token: invalid-token"   -d '{"text":"test","from":"smoke","msgId":"smoke-2"}' >/dev/null   && echo "✅ inbound whatsapp (invalid token accepted by gateway)"
+-+curl -fsS -X POST "${API}/v1/inbound/whatsapp" \
+-+  -H "Content-Type: application/json" \
+-+  -H "x-webhook-token: invalid-token" \
+-+  -d '{"text":"test","from":"smoke","msgId":"smoke-2"}' >/dev/null \
+-+  && echo "✅ inbound whatsapp (invalid token sent; expect AUTH_DENY in DB)"
+- 
+- echo "== SSRF audioUrl blocked (should be logged) =="
+--curl -fsS -X POST "${API}/v1/inbound/whatsapp"   -H "Content-Type: application/json"   -H "x-api-token: ${TOKEN}"   -d '{"audioUrl":"http://127.0.0.1/evil.ogg","from":"smoke","msgId":"smoke-3"}' >/dev/null   && echo "✅ inbound whatsapp (audioUrl sent)"
+-+curl -fsS -X POST "${API}/v1/inbound/whatsapp" \
+-+  -H "Content-Type: application/json" \
+-+  -H "x-webhook-token: ${TOKEN}" \
+-+  -d '{"audioUrl":"http://127.0.0.1/evil.ogg","from":"smoke","msgId":"smoke-3"}' >/dev/null \
+-+  && echo "✅ inbound whatsapp (audioUrl sent; expect AUDIO_URL_BLOCKED in DB)"
+-+
+-+echo "== Optional: query token auth (should be denied if ALLOW_QUERY_TOKEN=false) =="
+-+if [[ "${SMOKE_TEST_QUERY_TOKEN:-0}" == "1" ]]; then
+-+  curl -fsS -X POST "${API}/v1/inbound/whatsapp?token=${TOKEN}" \
+-+    -H "Content-Type: application/json" \
+-+    -d '{"text":"test","from":"smoke","msgId":"smoke-4"}' >/dev/null \
+-+    && echo "✅ inbound whatsapp (token in query sent; expect AUTH_DENY unless ALLOW_QUERY_TOKEN=true)"
+-+fi
+- 
+- echo "== DB checks (optional) =="
+- if command -v docker >/dev/null 2>&1; then
+-   set +e
+--  docker compose -f docker-compose.hostinger.prod.yml exec -T postgres sh -lc     "psql -U n8n -d n8n -c "SELECT event_type, COUNT(*) FROM security_events WHERE created_at > now() - interval '10 minutes' GROUP BY event_type ORDER BY 2 DESC;""     && echo "✅ security_events aggregated (last 10 min)"
+-+  docker compose -f docker-compose.hostinger.prod.yml exec -T postgres sh -lc \
+-+    "psql -U n8n -d n8n -Atc \"SELECT event_type||':'||COUNT(*) FROM security_events WHERE created_at > now() - interval '10 minutes' GROUP BY event_type ORDER BY COUNT(*) DESC;\"" \
+-+    && echo "✅ security_events aggregated (last 10 min)"
+-   set -e
+- else
+-   echo "ℹ️  docker not found: skipping DB checks"
+-diff -ruN /mnt/data/workspace/tests/tests.md /mnt/data/workspace_patched/tests/tests.md
+---- /mnt/data/workspace/tests/tests.md	2026-01-21 15:15:28.000000000 +0000
+-+++ /mnt/data/workspace_patched/tests/tests.md	2026-01-22 05:39:00.280165152 +0000
+-@@ -23,6 +23,35 @@
+-   -d '{"text":"pizza margarita","from":"+33600000000","msgId":"t1"}'
+- ```
+- 
+-+### 3.b) Contrôles sécurité (logs)
+-+
+-+*Token invalide* : la réponse HTTP reste **200** (mode `onReceived`), mais l'événement **AUTH_DENY** doit être écrit dans `security_events`.
+-+
+-+```bash
+-+curl -i -X POST "https://api.${DOMAIN_NAME}/v1/inbound/whatsapp" \
+-+  -H "Content-Type: application/json" \
+-+  -H "x-webhook-token: invalid-token" \
+-+  -d '{"text":"test","from":"+33600000000","msgId":"t1-deny"}'
+-+```
+-+
+-+*Audio URL interdite (SSRF)* : l'événement **AUDIO_URL_BLOCKED** doit être écrit dans `security_events`.
+-+
+-+```bash
+-+curl -i -X POST "https://api.${DOMAIN_NAME}/v1/inbound/whatsapp" \
+-+  -H "Content-Type: application/json" \
+-+  -H "x-webhook-token: ${WEBHOOK_SHARED_TOKEN}" \
+-+  -d '{"audioUrl":"http://127.0.0.1/evil.ogg","from":"+33600000000","msgId":"t1-audio-block"}'
+-+```
+-+
+-+*Token en query* : **désactivé par défaut** (risque de fuite dans les logs). Pour tester :
+-+
+-+```bash
+-+# DOIT logguer AUTH_DENY si ALLOW_QUERY_TOKEN=false
+-+curl -i -X POST "https://api.${DOMAIN_NAME}/v1/inbound/whatsapp?token=${WEBHOOK_SHARED_TOKEN}" \
+-+  -H "Content-Type: application/json" \
+-+  -d '{"text":"test","from":"+33600000000","msgId":"t1-query"}'
+-+```
+-+
+- ## 4) Aliases legacy (optionnel)
+- ```bash
+- curl -i -X POST "https://api.${DOMAIN_NAME}/v1/inbound/wa-incoming-v16" \
+-diff -ruN /mnt/data/workspace/workflows/W1_IN_WA.json /mnt/data/workspace_patched/workflows/W1_IN_WA.json
+---- /mnt/data/workspace/workflows/W1_IN_WA.json	2026-01-21 16:42:28.000000000 +0000
+-+++ /mnt/data/workspace_patched/workflows/W1_IN_WA.json	2026-01-22 05:36:44.033725657 +0000
+-@@ -25,7 +25,7 @@
+-     {
+-       "parameters": {
+-         "language": "javascript",
+--        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'whatsapp',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];"
+-+        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\n\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n\n// Prefer headers (x-webhook-token / x-api-token / bearer).\nconst headerToken = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  ''\n).toString().trim();\n\n// Query tokens are disabled by default because they leak in logs.\nconst allowQueryToken = (($env.ALLOW_QUERY_TOKEN || 'false').toString().toLowerCase() === 'true');\nconst queryTokenProvided = !!(qs['token'] || qs['access_token']);\nconst queryToken = allowQueryToken ? (qs['token'] || qs['access_token'] || '') : '';\n\nconst token = (headerToken || bearer || queryToken || '').toString().trim();\nconst queryTokenUsed = !!queryToken && !headerToken && !bearer;\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString().trim();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nreturn [{\n  json: {\n    channel: 'whatsapp',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip,\n      userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString(),\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      allowQueryToken,\n      queryTokenProvided,\n      queryTokenUsed,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];\n"
+-       },
+-       "id": "57c1bc81-2ffe-4ec4-bb34-c90c01c8da25",
+-       "name": "B0 - Parse & Canonicalize",
+-@@ -273,7 +273,7 @@
+-     {
+-       "parameters": {
+-         "operation": "executeQuery",
+--        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_INVALID_TOKEN','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
+-+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_DENY','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
+-         "additionalFields": {
+-           "queryParams": "={{[null, null, null, $json.channel, $json.userId, $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint]}}"
+-         }
+-diff -ruN /mnt/data/workspace/workflows/W2_IN_IG.json /mnt/data/workspace_patched/workflows/W2_IN_IG.json
+---- /mnt/data/workspace/workflows/W2_IN_IG.json	2026-01-21 16:42:28.000000000 +0000
+-+++ /mnt/data/workspace_patched/workflows/W2_IN_IG.json	2026-01-22 05:36:44.035257572 +0000
+-@@ -25,7 +25,7 @@
+-     {
+-       "parameters": {
+-         "language": "javascript",
+--        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'instagram',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];"
+-+        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\n\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n\n// Prefer headers (x-webhook-token / x-api-token / bearer).\nconst headerToken = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  ''\n).toString().trim();\n\n// Query tokens are disabled by default because they leak in logs.\nconst allowQueryToken = (($env.ALLOW_QUERY_TOKEN || 'false').toString().toLowerCase() === 'true');\nconst queryTokenProvided = !!(qs['token'] || qs['access_token']);\nconst queryToken = allowQueryToken ? (qs['token'] || qs['access_token'] || '') : '';\n\nconst token = (headerToken || bearer || queryToken || '').toString().trim();\nconst queryTokenUsed = !!queryToken && !headerToken && !bearer;\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString().trim();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nreturn [{\n  json: {\n    channel: 'instagram',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip,\n      userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString(),\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      allowQueryToken,\n      queryTokenProvided,\n      queryTokenUsed,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];\n"
+-       },
+-       "id": "c6dd375c-ebed-4897-a874-cd4ca958e753",
+-       "name": "B0 - Parse & Canonicalize",
+-@@ -273,7 +273,7 @@
+-     {
+-       "parameters": {
+-         "operation": "executeQuery",
+--        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_INVALID_TOKEN','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
+-+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_DENY','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
+-         "additionalFields": {
+-           "queryParams": "={{[null, null, null, $json.channel, $json.userId, $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint]}}"
+-         }
+-diff -ruN /mnt/data/workspace/workflows/W3_IN_MSG.json /mnt/data/workspace_patched/workflows/W3_IN_MSG.json
+---- /mnt/data/workspace/workflows/W3_IN_MSG.json	2026-01-21 16:42:28.000000000 +0000
+-+++ /mnt/data/workspace_patched/workflows/W3_IN_MSG.json	2026-01-22 05:36:44.037016903 +0000
+-@@ -25,7 +25,7 @@
+-     {
+-       "parameters": {
+-         "language": "javascript",
+--        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'messenger',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];"
+-+        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\n\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n\n// Prefer headers (x-webhook-token / x-api-token / bearer).\nconst headerToken = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  ''\n).toString().trim();\n\n// Query tokens are disabled by default because they leak in logs.\nconst allowQueryToken = (($env.ALLOW_QUERY_TOKEN || 'false').toString().toLowerCase() === 'true');\nconst queryTokenProvided = !!(qs['token'] || qs['access_token']);\nconst queryToken = allowQueryToken ? (qs['token'] || qs['access_token'] || '') : '';\n\nconst token = (headerToken || bearer || queryToken || '').toString().trim();\nconst queryTokenUsed = !!queryToken && !headerToken && !bearer;\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString().trim();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nreturn [{\n  json: {\n    channel: 'messenger',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip,\n      userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString(),\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      allowQueryToken,\n      queryTokenProvided,\n      queryTokenUsed,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];\n"
+-       },
+-       "id": "9271cba1-3265-41cf-8818-9996067fd826",
+-       "name": "B0 - Parse & Canonicalize",
+-@@ -273,7 +273,7 @@
+-     {
+-       "parameters": {
+-         "operation": "executeQuery",
+--        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_INVALID_TOKEN','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
+-+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_DENY','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
+-         "additionalFields": {
+-           "queryParams": "={{[null, null, null, $json.channel, $json.userId, $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint]}}"
+-         }
+-diff -ruN /mnt/data/workspace/workflows/W4_CORE.json /mnt/data/workspace_patched/workflows/W4_CORE.json
+---- /mnt/data/workspace/workflows/W4_CORE.json	2026-01-21 16:44:48.000000000 +0000
+-+++ /mnt/data/workspace_patched/workflows/W4_CORE.json	2026-01-22 05:38:14.673659596 +0000
+-@@ -66,7 +66,7 @@
+-     {
+-       "parameters": {
+-         "language": "javascript",
+--        "jsCode": "const e = $json;\n\nfunction isIpLiteral(host) {\n  return /^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host);\n}\nfunction isPrivateIp(ip) {\n  const parts = ip.split('.').map(x => Number(x));\n  if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return true;\n  const [a,b] = parts;\n  if (a === 10) return true;\n  if (a === 127) return true;\n  if (a === 0) return true;\n  if (a === 169 && b === 254) return true;\n  if (a === 192 && b === 168) return true;\n  if (a === 172 && b >= 16 && b <= 31) return true;\n  return false;\n}\nfunction normalizeAllowlist(v) {\n  return (v || '').toString()\n    .split(',')\n    .map(s => s.trim().toLowerCase())\n    .filter(Boolean);\n}\nfunction hostAllowed(host, allow) {\n  const h = host.toLowerCase();\n  // exact match or subdomain match\n  return allow.some(a => h === a || h.endsWith('.' + a));\n}\nfunction validateAudioUrl(u) {\n  try {\n    const url = new URL(u);\n    if (url.protocol !== 'https:') return { ok:false, reason:'https_only' };\n    if (url.username || url.password) return { ok:false, reason:'no_credentials' };\n    const host = url.hostname || '';\n    if (!host) return { ok:false, reason:'missing_host' };\n    if (host === 'localhost' || host.endsWith('.local')) return { ok:false, reason:'localhost_blocked' };\n    if (isIpLiteral(host) && isPrivateIp(host)) return { ok:false, reason:'private_ip_blocked' };\n\n    const allow = normalizeAllowlist($env.ALLOWED_AUDIO_DOMAINS || '');\n    if (!allow.length) return { ok:false, reason:'allowlist_empty' };\n    if (!hostAllowed(host, allow)) return { ok:false, reason:'domain_not_allowed', host, allow };\n    return { ok:true, host };\n  } catch (err) {\n    return { ok:false, reason:'invalid_url' };\n  }\n}\n\nif (e.message?.type !== 'audio' || !e.message?.audio?.url) {\n  return [{json: {...e, userText: (e.message?.type === 'button') ? e.message.buttonId : e.message.text }}];\n}\n\nconst sttUrl = ($env.STT_API_URL || '').toString();\nif (!sttUrl) {\n  return [{json: {...e, userText: '', stt: {ok:false, reason:'STT_API_URL not set'} }}];\n}\n\nconst audioUrl = e.message.audio.url.toString();\nconst v = validateAudioUrl(audioUrl);\nif (!v.ok) {\n  return [{\n    json: {\n      ...e,\n      userText: '',\n      stt: { ok:false, reason:'AUDIO_URL_BLOCKED', details: v },\n      _sec: { ...(e._sec||{}), audioUrlBlocked:true, audioBlockReason: v.reason, audioHost: v.host || '' }\n    }\n  }];\n}\n\ntry {\n  const sttRes = await $httpRequest({\n    method: 'POST',\n    url: sttUrl,\n    body: { audioUrl, mime: e.message.audio.mime || 'audio/ogg' },\n    json: true,\n    timeout: 60000\n  });\n\n  const transcript = (sttRes.text || sttRes.transcript || '').toString().trim();\n  const confidence = Number(sttRes.confidence ?? 0);\n\n  e.stt = { ok:true, transcript, confidence, provider: sttRes.provider || 'stt' };\n  e.userText = transcript;\n\n  return [{json: e}];\n} catch (err) {\n  return [{json: {...e, userText: '', stt: {ok:false, error: (err && err.message) ? err.message : 'stt_failed'} }}];\n}\n"
+-+        "jsCode": "const e = $json;\n\nfunction isIpLiteral(host) {\n  return /^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host);\n}\nfunction isPrivateIp(ip) {\n  const parts = ip.split('.').map(x => Number(x));\n  if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return true;\n  const [a,b] = parts;\n  if (a === 10) return true;\n  if (a === 127) return true;\n  if (a === 0) return true;\n  if (a === 169 && b === 254) return true;\n  if (a === 192 && b === 168) return true;\n  if (a === 172 && b >= 16 && b <= 31) return true;\n  return false;\n}\nfunction normalizeAllowlist(v) {\n  return (v || '').toString()\n    .split(',')\n    .map(s => s.trim().toLowerCase())\n    .filter(Boolean);\n}\nfunction hostAllowed(host, allow) {\n  const h = host.toLowerCase();\n  // exact match or subdomain match\n  return allow.some(a => h === a || h.endsWith('.' + a));\n}\nfunction validateAudioUrl(u) {\n  try {\n    const url = new URL(u);\n    if (url.protocol !== 'https:') return { ok:false, reason:'https_only' };\n    if (url.username || url.password) return { ok:false, reason:'no_credentials' };\n    const host = url.hostname || '';\n    if (!host) return { ok:false, reason:'missing_host' };\n    if (host === 'localhost' || host.endsWith('.local')) return { ok:false, reason:'localhost_blocked' };\n    // Block any IP literal (public or private) to avoid SSRF bypasses.\n    if (isIpLiteral(host)) return { ok:false, reason:'ip_literal_blocked', host };\n    // Block IPv6 literals as well.\n    if (host.includes(':')) return { ok:false, reason:'ipv6_literal_blocked', host };\n\n    const allow = normalizeAllowlist($env.ALLOWED_AUDIO_DOMAINS || '');\n    if (!allow.length) return { ok:false, reason:'allowlist_empty' };\n    if (!hostAllowed(host, allow)) return { ok:false, reason:'domain_not_allowed', host, allow };\n    return { ok:true, host };\n  } catch (err) {\n    return { ok:false, reason:'invalid_url' };\n  }\n}\n\nif (e.message?.type !== 'audio' || !e.message?.audio?.url) {\n  return [{json: {...e, userText: (e.message?.type === 'button') ? e.message.buttonId : e.message.text }}];\n}\n\nconst sttUrl = ($env.STT_API_URL || '').toString();\nif (!sttUrl) {\n  return [{json: {...e, userText: '', stt: {ok:false, reason:'STT_API_URL not set'} }}];\n}\n\nconst audioUrl = e.message.audio.url.toString();\nconst v = validateAudioUrl(audioUrl);\nif (!v.ok) {\n  return [{\n    json: {\n      ...e,\n      userText: '',\n      stt: { ok:false, reason:'AUDIO_URL_BLOCKED', details: v },\n      _sec: { ...(e._sec||{}), audioUrlBlocked:true, audioBlockReason: v.reason, audioHost: v.host || '' }\n    }\n  }];\n}\n\ntry {\n  const sttRes = await $httpRequest({\n    method: 'POST',\n    url: sttUrl,\n    body: { audioUrl, mime: e.message.audio.mime || 'audio/ogg' },\n    json: true,\n    timeout: 60000\n  });\n\n  const transcript = (sttRes.text || sttRes.transcript || '').toString().trim();\n  const confidence = Number(sttRes.confidence ?? 0);\n\n  e.stt = { ok:true, transcript, confidence, provider: sttRes.provider || 'stt' };\n  e.userText = transcript;\n\n  return [{json: e}];\n} catch (err) {\n  return [{json: {...e, userText: '', stt: {ok:false, error: (err && err.message) ? err.message : 'stt_failed'} }}];\n}\n"
+-       },
+-       "id": "3245f83b-5ca2-440a-8e4a-f51849433a47",
+-       "name": "C3 - Voice STT (optional)",
+-@@ -111,7 +111,7 @@
+-     {
+-       "parameters": {
+-         "language": "javascript",
+--        "jsCode": "const e = $json;\nconst textRaw = (e.userText || '').toString().trim();\nconst buttonId = (e.message?.buttonId || '').toString().trim();\nconst text = (e.message?.type === 'button') ? buttonId : textRaw;\n\nconst menuItems = e.menu?.items || [];\nconst itemMap = e.menu?.itemMap || {};\nconst optionMap = e.menu?.optionMap || {};\nconst optionsByItem = e.menu?.optionsByItem || {};\n\nconst riskFlags = [];\nconst lower = (text || '').toLowerCase();\n\n// Prompt injection / jailbreak patterns\nconst inj = /(ignore (all|the) (previous|instructions)|system prompt|reveal|secret|token|api key|dump|sql|drop table|delete from|--|;)/i;\nif (inj.test(text || '')) riskFlags.push('PROMPT_INJECTION_SUSPECT');\n\n// If no reliable text (STT failed)\nif (!text || text.length < 2) {\n  return [{json: {\n    ...e,\n    intent: 'CLARIFY',\n    response: {\n      replyText: \"Je n’ai pas bien compris. Tu peux réessayer en écrivant ou refaire un vocal plus clair ?\",\n      buttons: [{id:'HELP_MENU',title:'📋 Voir le menu'},{id:'VOICE_RETRY',title:'🎤 Refaire un vocal'}]\n    },\n    debug: {riskFlags}\n  }}];\n}\n\n// Owner/Admin shortcuts (RBAC handled by DB table later; here we just route)\nif (lower === 'admin' || lower.includes('kpi') || text === 'ADMIN_HOME') {\n  return [{json:{\n    ...e,\n    intent:'ADMIN_HOME',\n    response:{\n      replyText:'Menu admin :',\n      buttons:[\n        {id:'ADMIN_KPI_TODAY',title:'📊 KPI 24h'},\n        {id:'ADMIN_TOP_ITEMS',title:'⭐ Top ventes'},\n        {id:'ADMIN_ALERTS',title:'🚨 Alertes'}\n      ]\n    },\n    debug:{riskFlags}\n  }}];\n}\n\n// HELP / MENU\nif (lower === 'menu' || text === 'HELP_MENU') {\n  const cats = {};\n  for (const it of menuItems) {\n    const cat = it.category || 'Autres';\n    cats[cat] = cats[cat] || [];\n    cats[cat].push(it);\n  }\n  let msg = '📋 Menu (IDs utilisables dans ton message)\\n';\n  for (const [cat, arr] of Object.entries(cats)) {\n    msg += `\\n*${cat}*\\n`;\n    for (const it of arr.slice(0, 12)) {\n      msg += `- ${it.item_code} : ${it.label} (${(it.price_cents/100).toFixed(2)}€)\\n`;\n    }\n  }\n  return [{json:{...e, intent:'SHOW_MENU', response:{replyText:msg, buttons:[{id:'MODE_SUR_PLACE',title:'🍽️ Sur place'},{id:'MODE_A_EMPORTER',title:'🛍️ À emporter'},{id:'MODE_LIVRAISON',title:'🛵 Livraison'}]}, debug:{riskFlags}}}];\n}\n\n// Service mode selection (buttons or text)\nconst modeFromText = (() => {\n  if (lower.includes('sur place')) return 'sur_place';\n  if (lower.includes('emporter') || lower.includes('à emporter') || lower.includes('a emporter')) return 'a_emporter';\n  if (lower.includes('livraison') || lower.includes('livrer')) return 'livraison';\n  return null;\n})();\n\nif (text === 'MODE_SUR_PLACE') e.state.serviceMode = 'sur_place';\nif (text === 'MODE_A_EMPORTER') e.state.serviceMode = 'a_emporter';\nif (text === 'MODE_LIVRAISON') e.state.serviceMode = 'livraison';\nif (modeFromText) e.state.serviceMode = modeFromText;\n\nif (!e.state.serviceMode) {\n  return [{json:{\n    ...e,\n    intent:'ASK_MODE',\n    response:{\n      replyText:\"Tu veux *sur place*, *à emporter* ou *livraison* ?\",\n      buttons:[\n        {id:'MODE_SUR_PLACE',title:'🍽️ Sur place'},\n        {id:'MODE_A_EMPORTER',title:'🛍️ À emporter'},\n        {id:'MODE_LIVRAISON',title:'🛵 Livraison'}\n      ]\n    },\n    debug:{riskFlags}\n  }}];\n}\n\n// Parse item codes and qty: example \"P01 x2 +S01\"\nconst upper = text.toUpperCase();\nconst codeMatches = upper.match(/[A-Z]{1,3}\\d{2,4}/g) || [];\nconst uniqueCodes = [...new Set(codeMatches)];\n\n// Checkout intents\nconst isCheckout = (lower.includes('valider') || lower.includes('checkout') || lower.includes('commander') || text === 'CHECKOUT');\nconst isConfirmYes = (text === 'CONFIRM_YES' || lower === 'oui');\nconst isConfirmNo  = (text === 'CONFIRM_NO'  || lower === 'non');\n\n// Confirm stage handling\nif (e.state.stage === 'CONFIRMING') {\n  if (isConfirmYes) {\n    return [{json:{...e, intent:'CHECKOUT', action:'CHECKOUT', debug:{riskFlags}}}];\n  }\n  if (isConfirmNo) {\n    e.state.stage = 'COLLECTING';\n    return [{json:{...e, intent:'BACK_TO_CART', response:{replyText:\"Ok, on modifie le panier. Envoie les IDs (ex: P01 x2) ou tape MENU.\", buttons:[{id:'HELP_MENU',title:'📋 Menu'},{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags}}}];\n  }\n}\n\n// If user asks to checkout but cart empty\nif (isCheckout && (!e.cart.items || e.cart.items.length === 0)) {\n  return [{json:{...e, intent:'EMPTY_CART', response:{replyText:\"Ton panier est vide. Tape MENU pour choisir des plats (ex: P01 x2).\", buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags}}}];\n}\n\n// If item codes present -> add/update cart\nif (uniqueCodes.length) {\n  const newItems = [...(e.cart.items || [])];\n\n  for (const code of uniqueCodes) {\n    if (!itemMap[code]) {\n      return [{json:{...e, intent:'UNKNOWN_ITEM', response:{replyText:`Je ne trouve pas l’ID *${code}*. Tape MENU ou renvoie l’ID exact.`, buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags}}}];\n    }\n\n    // qty: try CODE xN or CODE N\n    let qty = 1;\n    const r1 = new RegExp(code + '\\\\s*x\\\\s*(\\\\d{1,2})','i');\n    const r2 = new RegExp(code + '\\\\s+(\\\\d{1,2})','i');\n    const m1 = upper.match(r1);\n    const m2 = upper.match(r2);\n    if (m1 && m1[1]) qty = Math.max(1, Math.min(20, parseInt(m1[1],10)));\n    else if (m2 && m2[1]) qty = Math.max(1, Math.min(20, parseInt(m2[1],10)));\n\n    // options: +OPT or -OPT (we accept OPT alone too)\n    const optMatches = upper.match(/[\\+\\-]?[A-Z]{1,3}\\d{2,4}/g) || [];\n    const options = [];\n    for (const raw of optMatches) {\n      const oc = raw.replace('+','').replace('-','');\n      if (optionMap[oc] && optionMap[oc].item_code === code) options.push(oc);\n    }\n\n    const existing = newItems.find(x => x.item === code);\n    if (existing) {\n      existing.qty = Math.max(1, Math.min(20, Number(existing.qty || 1) + qty));\n      const set = new Set([...(existing.options||[]), ...options]);\n      existing.options = [...set];\n    } else {\n      newItems.push({item: code, qty, options});\n    }\n  }\n\n  e.cart.items = newItems;\n  e.state.stage = 'COLLECTING';\n\n  // Build short cart recap\n  let recap = '🧺 Panier :\\n';\n  let total = 0;\n  for (const line of newItems) {\n    const it = itemMap[line.item];\n    const base = Number(it.price_cents||0);\n    let opt = 0;\n    const opts = Array.isArray(line.options)?line.options:[];\n    for (const oc of opts) opt += Number(optionMap[oc]?.price_delta_cents || 0);\n    const lineTotal = (base + opt) * Number(line.qty||1);\n    total += lineTotal;\n    recap += `- ${line.item} ${it.label} x${line.qty} = ${(lineTotal/100).toFixed(2)}€\\n`;\n  }\n  recap += `\\nTotal estimé : ${(total/100).toFixed(2)}€\\n`;\n  recap += 'Tape *VALIDER* ou clique ✅';\n\n  return [{json:{...e, intent:'CART_UPDATED', response:{replyText:recap, buttons:[{id:'HELP_MENU',title:'➕ Ajouter'},{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags, totalCents: total}}}];\n}\n\n// If checkout requested -> confirm recap\nif (isCheckout) {\n  e.state.stage = 'CONFIRMING';\n  let recap = `✅ Récap commande (${e.state.serviceMode.replace('_',' ')}) :\\n`;\n  let total = 0;\n  for (const line of (e.cart.items||[])) {\n    const it = itemMap[line.item];\n    const base = Number(it.price_cents||0);\n    let opt = 0;\n    const opts = Array.isArray(line.options)?line.options:[];\n    for (const oc of opts) opt += Number(optionMap[oc]?.price_delta_cents || 0);\n    const lineTotal = (base + opt) * Number(line.qty||1);\n    total += lineTotal;\n    recap += `- ${line.item} ${it.label} x${line.qty} = ${(lineTotal/100).toFixed(2)}€\\n`;\n  }\n  recap += `\\nTotal : ${(total/100).toFixed(2)}€\\nConfirmer ?`;\n  return [{json:{...e, intent:'CONFIRM', response:{replyText:recap, buttons:[{id:'CONFIRM_YES',title:'✅ Oui'},{id:'CONFIRM_NO',title:'✏️ Modifier'}]}, debug:{riskFlags, totalCents: total}}}];\n}\n\n// Optional LLM fallback (only if enabled and no risk flags)\nconst llmUrl = ($env.LLM_API_URL || '').toString();\nconst llmModel = ($env.LLM_MODEL || 'llama3').toString();\nconst useLLM = (!!llmUrl) && (riskFlags.length === 0);\n\nif (useLLM) {\n  const menuCompact = menuItems.slice(0, 120).map(it => ({id:it.item_code, label:it.label, price_cents:it.price_cents, category:it.category}));\n  const optsCompact = (e.menu?.options || []).slice(0, 200).map(op => ({id:op.option_code, item:op.item_code, label:op.label, kind:op.kind, delta:op.price_delta_cents}));\n\n  const prompt = [\n    'Tu es un assistant commande restaurant. Réponds UNIQUEMENT en JSON valide (pas de texte).',\n    'Objectif: comprendre la demande du client et proposer une action.',\n    'Schéma: {\"action\":\"add|checkout|menu|clarify\",\"lines\":[{\"item\":\"ID\",\"qty\":1,\"options\":[\"OPT\"]}],\"reply\":\"...\"}',\n    'Si tu ne peux pas mapper précisément à des IDs, action=\"clarify\".',\n    'MenuItems=' + JSON.stringify(menuCompact),\n    'Options=' + JSON.stringify(optsCompact),\n    'UserMessage=' + JSON.stringify(text)\n  ].join('\\n');\n\n  try {\n    const llmRes = await $httpRequest({\n      method:'POST',\n      url: llmUrl,\n      body: { model: llmModel, prompt, stream: false },\n      json: true,\n      timeout: 120000\n    });\n\n    const raw = (llmRes.response || llmRes.text || llmRes.output || '').toString();\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) {\n      const parsed = JSON.parse(m[0]);\n      if (parsed.action === 'menu') {\n        return [{json:{...e, intent:'SHOW_MENU', response:{replyText:'Tape MENU pour afficher le menu.', buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags, llm:true}}}];\n      }\n      if (parsed.action === 'checkout') {\n        return [{json:{...e, intent:'CONFIRM', response:{replyText:'Clique ✅ Valider pour confirmer.', buttons:[{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags, llm:true}}}];\n      }\n      if (parsed.action === 'add' && Array.isArray(parsed.lines) && parsed.lines.length) {\n        // Convert to same pipeline by simulating codes\n        const codes = parsed.lines.map(l => l.item).filter(Boolean);\n        if (!codes.length) throw new Error('LLM lines missing item');\n        // attach helper field for later handling by user: ask to resend codes (safe)\n        return [{json:{...e, intent:'CLARIFY', response:{replyText:'Pour être sûr, peux-tu renvoyer les IDs comme ceci : ' + codes.join(' ') + ' (ex: P01 x2) ?', buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags, llm:true}}}];\n      }\n    }\n  } catch (err) {\n    // ignore and fallback\n  }\n}\n\n// Default clarification\nreturn [{json:{...e, intent:'CLARIFY', response:{replyText:\"Je n’ai pas compris. Envoie l’ID du plat (ex: P01 x2) ou tape MENU.\", buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags}}}];"
+-+        "jsCode": "const e = $json;\nconst textRaw = (e.userText || '').toString().trim();\nconst buttonId = (e.message?.buttonId || '').toString().trim();\nconst text = (e.message?.type === 'button') ? buttonId : textRaw;\n\nconst menuItems = e.menu?.items || [];\nconst itemMap = e.menu?.itemMap || {};\nconst optionMap = e.menu?.optionMap || {};\nconst optionsByItem = e.menu?.optionsByItem || {};\n\nconst riskFlags = [];\nconst lower = (text || '').toLowerCase();\n\n// Prompt injection / jailbreak patterns\nconst inj = /(ignore (all|the) (previous|instructions)|system prompt|reveal|secret|token|api key|dump|sql|drop table|delete from|--|;)/i;\nif (inj.test(text || '')) riskFlags.push('PROMPT_INJECTION_SUSPECT');\n\n// If no reliable text (STT failed)\nif (!text || text.length < 2) {\n  return [{json: {\n    ...e,\n    intent: 'CLARIFY',\n    response: {\n      replyText: \"Je n\u2019ai pas bien compris. Tu peux r\u00e9essayer en \u00e9crivant ou refaire un vocal plus clair ?\",\n      buttons: [{id:'HELP_MENU',title:'\ud83d\udccb Voir le menu'},{id:'VOICE_RETRY',title:'\ud83c\udfa4 Refaire un vocal'}]\n    },\n    debug: {riskFlags}\n  }}];\n}\n\n// Owner/Admin shortcuts (RBAC handled by DB table later; here we just route)\nif (lower === 'admin' || lower.includes('kpi') || text === 'ADMIN_HOME') {\n  return [{json:{\n    ...e,\n    intent:'ADMIN_HOME',\n    response:{\n      replyText:'Menu admin :',\n      buttons:[\n        {id:'ADMIN_KPI_TODAY',title:'\ud83d\udcca KPI 24h'},\n        {id:'ADMIN_TOP_ITEMS',title:'\u2b50 Top ventes'},\n        {id:'ADMIN_ALERTS',title:'\ud83d\udea8 Alertes'}\n      ]\n    },\n    debug:{riskFlags}\n  }}];\n}\n\n// HELP / MENU\nif (lower === 'menu' || text === 'HELP_MENU') {\n  const cats = {};\n  for (const it of menuItems) {\n    const cat = it.category || 'Autres';\n    cats[cat] = cats[cat] || [];\n    cats[cat].push(it);\n  }\n  let msg = '\ud83d\udccb Menu (IDs utilisables dans ton message)\\n';\n  for (const [cat, arr] of Object.entries(cats)) {\n    msg += `\\n*${cat}*\\n`;\n    for (const it of arr.slice(0, 12)) {\n      msg += `- ${it.item_code} : ${it.label} (${(it.price_cents/100).toFixed(2)}\u20ac)\\n`;\n    }\n  }\n  return [{json:{...e, intent:'SHOW_MENU', response:{replyText:msg, buttons:[{id:'MODE_SUR_PLACE',title:'\ud83c\udf7d\ufe0f Sur place'},{id:'MODE_A_EMPORTER',title:'\ud83d\udecd\ufe0f \u00c0 emporter'},{id:'MODE_LIVRAISON',title:'\ud83d\udef5 Livraison'}]}, debug:{riskFlags}}}];\n}\n\n// Service mode selection (buttons or text)\nconst modeFromText = (() => {\n  if (lower.includes('sur place')) return 'sur_place';\n  if (lower.includes('emporter') || lower.includes('\u00e0 emporter') || lower.includes('a emporter')) return 'a_emporter';\n  if (lower.includes('livraison') || lower.includes('livrer')) return 'livraison';\n  return null;\n})();\n\nif (text === 'MODE_SUR_PLACE') e.state.serviceMode = 'sur_place';\nif (text === 'MODE_A_EMPORTER') e.state.serviceMode = 'a_emporter';\nif (text === 'MODE_LIVRAISON') e.state.serviceMode = 'livraison';\nif (modeFromText) e.state.serviceMode = modeFromText;\n\nif (!e.state.serviceMode) {\n  return [{json:{\n    ...e,\n    intent:'ASK_MODE',\n    response:{\n      replyText:\"Tu veux *sur place*, *\u00e0 emporter* ou *livraison* ?\",\n      buttons:[\n        {id:'MODE_SUR_PLACE',title:'\ud83c\udf7d\ufe0f Sur place'},\n        {id:'MODE_A_EMPORTER',title:'\ud83d\udecd\ufe0f \u00c0 emporter'},\n        {id:'MODE_LIVRAISON',title:'\ud83d\udef5 Livraison'}\n      ]\n    },\n    debug:{riskFlags}\n  }}];\n}\n\n// Parse item codes and qty: example \"P01 x2 +S01\"\nconst upper = text.toUpperCase();\nconst codeMatches = upper.match(/[A-Z]{1,3}\\d{2,4}/g) || [];\nconst uniqueCodes = [...new Set(codeMatches)];\n\n// Checkout intents\nconst isCheckout = (lower.includes('valider') || lower.includes('checkout') || lower.includes('commander') || text === 'CHECKOUT');\nconst isConfirmYes = (text === 'CONFIRM_YES' || lower === 'oui');\nconst isConfirmNo  = (text === 'CONFIRM_NO'  || lower === 'non');\n\n// Confirm stage handling\nif (e.state.stage === 'CONFIRMING') {\n  if (isConfirmYes) {\n    return [{json:{...e, intent:'CHECKOUT', action:'CHECKOUT', debug:{riskFlags}}}];\n  }\n  if (isConfirmNo) {\n    e.state.stage = 'COLLECTING';\n    return [{json:{...e, intent:'BACK_TO_CART', response:{replyText:\"Ok, on modifie le panier. Envoie les IDs (ex: P01 x2) ou tape MENU.\", buttons:[{id:'HELP_MENU',title:'\ud83d\udccb Menu'},{id:'CHECKOUT',title:'\u2705 Valider'}]}, debug:{riskFlags}}}];\n  }\n}\n\n// If user asks to checkout but cart empty\nif (isCheckout && (!e.cart.items || e.cart.items.length === 0)) {\n  return [{json:{...e, intent:'EMPTY_CART', response:{replyText:\"Ton panier est vide. Tape MENU pour choisir des plats (ex: P01 x2).\", buttons:[{id:'HELP_MENU',title:'\ud83d\udccb Menu'}]}, debug:{riskFlags}}}];\n}\n\n// If item codes present -> add/update cart\nif (uniqueCodes.length) {\n  const newItems = [...(e.cart.items || [])];\n\n  for (const code of uniqueCodes) {\n    if (!itemMap[code]) {\n      return [{json:{...e, intent:'UNKNOWN_ITEM', response:{replyText:`Je ne trouve pas l\u2019ID *${code}*. Tape MENU ou renvoie l\u2019ID exact.`, buttons:[{id:'HELP_MENU',title:'\ud83d\udccb Menu'}]}, debug:{riskFlags}}}];\n    }\n\n    // qty: try CODE xN or CODE N\n    let qty = 1;\n    const r1 = new RegExp(code + '\\\\s*x\\\\s*(\\\\d{1,2})','i');\n    const r2 = new RegExp(code + '\\\\s+(\\\\d{1,2})','i');\n    const m1 = upper.match(r1);\n    const m2 = upper.match(r2);\n    if (m1 && m1[1]) qty = Math.max(1, Math.min(20, parseInt(m1[1],10)));\n    else if (m2 && m2[1]) qty = Math.max(1, Math.min(20, parseInt(m2[1],10)));\n\n    // options: +OPT or -OPT (we accept OPT alone too)\n    const optMatches = upper.match(/[\\+\\-]?[A-Z]{1,3}\\d{2,4}/g) || [];\n    const options = [];\n    for (const raw of optMatches) {\n      const oc = raw.replace('+','').replace('-','');\n      if (optionMap[oc] && optionMap[oc].item_code === code) options.push(oc);\n    }\n\n    const existing = newItems.find(x => x.item === code);\n    if (existing) {\n      existing.qty = Math.max(1, Math.min(20, Number(existing.qty || 1) + qty));\n      const set = new Set([...(existing.options||[]), ...options]);\n      existing.options = [...set];\n    } else {\n      newItems.push({item: code, qty, options});\n    }\n  }\n\n  e.cart.items = newItems;\n  e.state.stage = 'COLLECTING';\n\n  // Build short cart recap\n  let recap = '\ud83e\uddfa Panier :\\n';\n  let total = 0;\n  for (const line of newItems) {\n    const it = itemMap[line.item];\n    const base = Number(it.price_cents||0);\n    let opt = 0;\n    const opts = Array.isArray(line.options)?line.options:[];\n    for (const oc of opts) opt += Number(optionMap[oc]?.price_delta_cents || 0);\n    const lineTotal = (base + opt) * Number(line.qty||1);\n    total += lineTotal;\n    recap += `- ${line.item} ${it.label} x${line.qty} = ${(lineTotal/100).toFixed(2)}\u20ac\\n`;\n  }\n  recap += `\\nTotal estim\u00e9 : ${(total/100).toFixed(2)}\u20ac\\n`;\n  recap += 'Tape *VALIDER* ou clique \u2705';\n\n  return [{json:{...e, intent:'CART_UPDATED', response:{replyText:recap, buttons:[{id:'HELP_MENU',title:'\u2795 Ajouter'},{id:'CHECKOUT',title:'\u2705 Valider'}]}, debug:{riskFlags, totalCents: total}}}];\n}\n\n// If checkout requested -> confirm recap\nif (isCheckout) {\n  e.state.stage = 'CONFIRMING';\n  let recap = `\u2705 R\u00e9cap commande (${e.state.serviceMode.replace('_',' ')}) :\\n`;\n  let total = 0;\n  for (const line of (e.cart.items||[])) {\n    const it = itemMap[line.item];\n    const base = Number(it.price_cents||0);\n    let opt = 0;\n    const opts = Array.isArray(line.options)?line.options:[];\n    for (const oc of opts) opt += Number(optionMap[oc]?.price_delta_cents || 0);\n    const lineTotal = (base + opt) * Number(line.qty||1);\n    total += lineTotal;\n    recap += `- ${line.item} ${it.label} x${line.qty} = ${(lineTotal/100).toFixed(2)}\u20ac\\n`;\n  }\n  recap += `\\nTotal : ${(total/100).toFixed(2)}\u20ac\\nConfirmer ?`;\n  return [{json:{...e, intent:'CONFIRM', response:{replyText:recap, buttons:[{id:'CONFIRM_YES',title:'\u2705 Oui'},{id:'CONFIRM_NO',title:'\u270f\ufe0f Modifier'}]}, debug:{riskFlags, totalCents: total}}}];\n}\n\n// Optional LLM fallback (only if enabled and no risk flags)\nconst llmUrl = ($env.LLM_API_URL || '').toString();\nconst llmModel = ($env.LLM_MODEL || 'llama3').toString();\nconst useLLM = (!!llmUrl) && (riskFlags.length === 0);\n\nif (useLLM) {\n  const menuCompact = menuItems.slice(0, 120).map(it => ({id:it.item_code, label:it.label, price_cents:it.price_cents, category:it.category}));\n  const optsCompact = (e.menu?.options || []).slice(0, 200).map(op => ({id:op.option_code, item:op.item_code, label:op.label, kind:op.kind, delta:op.price_delta_cents}));\n\n  const prompt = [\n    'Tu es un assistant commande restaurant. R\u00e9ponds UNIQUEMENT en JSON valide (pas de texte).',\n    'Objectif: comprendre la demande du client et proposer une action.',\n    'Sch\u00e9ma: {\"action\":\"add|checkout|menu|clarify\",\"lines\":[{\"item\":\"ID\",\"qty\":1,\"options\":[\"OPT\"]}],\"reply\":\"...\"}',\n    'Si tu ne peux pas mapper pr\u00e9cis\u00e9ment \u00e0 des IDs, action=\"clarify\".',\n    'MenuItems=' + JSON.stringify(menuCompact),\n    'Options=' + JSON.stringify(optsCompact),\n    'UserMessage=' + JSON.stringify(text)\n  ].join('\\n');\n\n  try {\n    const llmRes = await $httpRequest({\n      method:'POST',\n      url: llmUrl,\n      body: { model: llmModel, prompt, stream: false },\n      json: true,\n      timeout: 120000\n    });\n\n    const raw = (llmRes.response || llmRes.text || llmRes.output || '').toString();\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) {\n      const parsed = JSON.parse(m[0]);\n      if (parsed.action === 'menu') {\n        return [{json:{...e, intent:'SHOW_MENU', response:{replyText:'Tape MENU pour afficher le menu.', buttons:[{id:'HELP_MENU',title:'\ud83d\udccb Menu'}]}, debug:{riskFlags, llm:true}}}];\n      }\n      if (parsed.action === 'checkout') {\n        return [{json:{...e, intent:'CONFIRM', response:{replyText:'Clique \u2705 Valider pour confirmer.', buttons:[{id:'CHECKOUT',title:'\u2705 Valider'}]}, debug:{riskFlags, llm:true}}}];\n      }\n      if (parsed.action === 'add' && Array.isArray(parsed.lines) && parsed.lines.length) {\n        // Convert to same pipeline by simulating codes\n        const codes = parsed.lines.map(l => l.item).filter(Boolean);\n        if (!codes.length) throw new Error('LLM lines missing item');\n        // attach helper field for later handling by user: ask to resend codes (safe)\n        return [{json:{...e, intent:'CLARIFY', response:{replyText:'Pour \u00eatre s\u00fbr, peux-tu renvoyer les IDs comme ceci : ' + codes.join(' ') + ' (ex: P01 x2) ?', buttons:[{id:'HELP_MENU',title:'\ud83d\udccb Menu'}]}, debug:{riskFlags, llm:true}}}];\n      }\n    }\n  } catch (err) {\n    // ignore and fallback\n  }\n}\n\n// Default clarification\nreturn [{json:{...e, intent:'CLARIFY', response:{replyText:\"Je n\u2019ai pas compris. Envoie l\u2019ID du plat (ex: P01 x2) ou tape MENU.\", buttons:[{id:'HELP_MENU',title:'\ud83d\udccb Menu'}]}, debug:{riskFlags}}}];"
+-       },
+-       "id": "1b9e5bc6-421e-40cd-a92c-8f22fe73ba46",
+-       "name": "C6 - Router (safe, LLM optional)",
+-@@ -179,7 +179,7 @@
+-     {
+-       "parameters": {
+-         "language": "javascript",
+--        "jsCode": "const e = $json;\nconst row = $json; // create_order returns columns on current item\nconst orderId = row.order_id || row.orderid || row.id;\nconst total = Number(row.total_cents || 0);\nconst summary = row.summary || '';\n\nconst replyText = `✅ Commande confirmée !\\nID: ${orderId}\\n${summary}\\nTotal: ${(total/100).toFixed(2)}€\\nMerci 🙏`;\n\nreturn [{json:{\n  ...e,\n  response: {\n    replyText,\n    buttons: [{id:'FEEDBACK_LATER',title:'⭐ Donner un avis'}]\n  },\n  actions: { sendToKitchen: true },\n  debug: { ...(e.debug||{}), orderId, totalCents: total }\n}}];"
+-+        "jsCode": "const e = $json;\nconst row = $json; // create_order returns columns on current item\nconst orderId = row.order_id || row.orderid || row.id;\nconst total = Number(row.total_cents || 0);\nconst summary = row.summary || '';\n\nconst replyText = `\u2705 Commande confirm\u00e9e !\\nID: ${orderId}\\n${summary}\\nTotal: ${(total/100).toFixed(2)}\u20ac\\nMerci \ud83d\ude4f`;\n\nreturn [{json:{\n  ...e,\n  response: {\n    replyText,\n    buttons: [{id:'FEEDBACK_LATER',title:'\u2b50 Donner un avis'}]\n  },\n  actions: { sendToKitchen: true },\n  debug: { ...(e.debug||{}), orderId, totalCents: total }\n}}];"
+-       },
+-       "id": "965859ef-70ec-4350-9883-29de839728e1",
+-       "name": "C10 - Build Order Response",
+-@@ -321,7 +321,7 @@
+-     {
+-       "parameters": {
+-         "operation": "executeQuery",
+--        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES ($1,$2,$3,$4,$5,'SSRF_AUDIOURL_BLOCKED','HIGH',\njsonb_build_object('reason',$6,'host',$7,'audio_url',$8,'trace_id',$9))\nRETURNING 1;",
+-+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES ($1,$2,$3,$4,$5,'AUDIO_URL_BLOCKED','HIGH',\njsonb_build_object('reason',$6,'host',$7,'audio_url',$8,'trace_id',$9))\nRETURNING 1;",
+-         "additionalFields": {
+-           "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json._sec.audioBlockReason, $json._sec.audioHost, $json.message.audio.url, $json.metadata.msgId]}}"
+-         }
+diff -ruN /mnt/data/orig/PATCHLOG.md /mnt/data/work/PATCHLOG.md
+--- /mnt/data/orig/PATCHLOG.md	2026-01-22 05:44:16.000000000 +0000
++++ /mnt/data/work/PATCHLOG.md	2026-01-22 06:41:17.096589185 +0000
+@@ -1,9 +1,26 @@
+ # PATCHLOG — RESTO BOT v3.0 (2026-01-22)
+ 
+ ## Objectif du patch
+-Lever les réserves P0 identifiées (sécurité + déploiement + intégrité) **sans aucune régression fonctionnelle**, tout en conservant la compatibilité (feature flags + migrations idempotentes).
++Livrer **P0** (sécurité + déploiement + intégrité) **et** **P1 DB** (perf + rétention + contraintes d’événements) **sans aucune régression fonctionnelle**, tout en conservant la compatibilité (feature flags + migrations idempotentes).
+ 
+ ## Résumé des changements
++
++### DB Perf + Rétention + Contraintes événements (P1)
++1) **Indexes high‑churn (lecture + purge)**
++   - `inbound_messages`: ajout index `idx_inbound_messages_received_at` pour purge (l’index existant `idx_inbound_messages_window` reste inchangé).
++   - `security_events`: ajout `idx_security_events_tenant_created_at` et `idx_security_events_event_type_created_at`.
++   - `outbound_messages`: ajout `idx_outbound_messages_sent_at` (purge SENT par `sent_at`).
++   - `workflow_errors`: ajout index `created_at` (+ `workflow_name, created_at` si colonne présente).
++
++2) **Rétention paramétrable + audit**
++   - Ajout `ops.retention_runs` (traçage) + helpers SQL :
++     - `ops.purge_table_batch(...)`
++     - `ops.purge_outbound_sent_batch(...)`
++   - Ajout du job n8n dans `W8_OPS` : “R1 - Retention Purge (Daily 03:30)” avec mode **dry-run**.
++
++3) **Standardisation `security_events.event_type`**
++   - Ajout de `ops.security_event_types` + enum `security_event_type_enum`.
++   - Valeurs seedées (compat workflows existants) : `AUTH_DENY`, `AUDIO_URL_BLOCKED`, `RETENTION_RUN`.
+ ### Sécurité (P0)
+ 1) **Désactivation par défaut des tokens en query string**
+    - Ajout du flag `ALLOW_QUERY_TOKEN` (défaut `false`).
+@@ -54,3 +71,12 @@
+ - Compat **legacy** `?token=` conservée mais **désactivée** (opt-in via `ALLOW_QUERY_TOKEN=true`).
+ - Pas de breaking change DB : uniquement correction d’ordre dans `bootstrap.sql` (impact fresh install) + migrations existantes.
+ 
++---
++
++## NO DEBT / NO REGRESSION CLAUSE
++- ✅ Tout changement est **patché dans le repo** (SQL migrations, workflow JSON, scripts, docs).
++- ✅ Tout changement a un **plan de test** (Integrity Gate + runbook runtime) et doit être validé avant Go-Live.
++- ✅ Tout changement est **documenté** (`docs/*`, `CHANGELOG.md`).
++- ✅ Rollback disponible (`ROLLBACK.md`).
++
++
+diff -ruN /mnt/data/orig/ROLLBACK.md /mnt/data/work/ROLLBACK.md
+--- /mnt/data/orig/ROLLBACK.md	2026-01-22 05:44:39.000000000 +0000
++++ /mnt/data/work/ROLLBACK.md	2026-01-22 06:39:45.899879264 +0000
+@@ -11,16 +11,59 @@
+    docker compose -f docker-compose.hostinger.prod.yml up -d
+    ```
+ 
++### Désactiver uniquement la rétention (sans rollback global)
++- Dans n8n, laisser **W8 - OPS** inactif (ou désactiver le node “R1 - Retention Purge”).
++- Optionnel : fixer `RETENTION_DRY_RUN=true` (aucune suppression) et/ou augmenter les `RETENTION_DAYS_*`.
++
+ ## 2) Rollback DB
+ Ce patch **n’impose pas de migration destructive**.
+ - Les changements DB sont :
+   - correction d’ordre dans `db/bootstrap.sql` (impact uniquement fresh install)
+   - migrations idempotentes (additive)
++  - P1 DB : indexes + helpers retention (`ops.*`) + enum `security_event_type_enum`
+ 
+ ### Option A — rollback sans toucher la DB (recommandé)
+ - Revenir aux workflows/config précédents suffit (les nouvelles valeurs `AUTH_DENY`/`AUDIO_URL_BLOCKED` sont uniquement des labels d’événements).
+ 
+-### Option B — rollback complet DB (si nécessaire)
++### Option B — rollback P1 DB (indexes/retention/constraints)
++> À utiliser seulement si vous devez revenir à l’état DB pré‑P1.
++
++1) **Supprimer la contrainte enum** (repasse en TEXT) :
++
++```sql
++-- 1) security_events.event_type -> TEXT
++ALTER TABLE public.security_events
++  ALTER COLUMN event_type TYPE text
++  USING event_type::text;
++
++-- 2) drop enum + ref table (optional)
++DROP TYPE IF EXISTS security_event_type_enum;
++DROP TABLE IF EXISTS ops.security_event_types;
++```
++
++2) **Supprimer les helpers de rétention** (optionnel) :
++
++```sql
++DROP FUNCTION IF EXISTS ops.purge_outbound_sent_batch(timestamptz, integer, boolean);
++DROP FUNCTION IF EXISTS ops.purge_table_batch(text, timestamptz, integer, boolean);
++DROP FUNCTION IF EXISTS ops.create_index_if_cols_exist(text, text, text, text[]);
++DROP TABLE IF EXISTS ops.retention_runs;
++```
++
++3) **Supprimer les indexes ajoutés par P1** (optionnel) :
++
++```sql
++DROP INDEX IF EXISTS public.idx_inbound_messages_received_at;
++DROP INDEX IF EXISTS public.idx_security_events_tenant_created_at;
++DROP INDEX IF EXISTS public.idx_security_events_event_type_created_at;
++DROP INDEX IF EXISTS public.idx_outbound_messages_sent_at;
++DROP INDEX IF EXISTS public.idx_workflow_errors_created_at;
++DROP INDEX IF EXISTS public.idx_workflow_errors_workflow_name_created_at;
++```
++
++4) Re-run smoke tests.
++
++### Option C — rollback complet DB (si nécessaire)
+ 1. Restore snapshot Postgres (dump/volume) :
+    ```bash
+    # exemple : restore volume depuis backup
+diff -ruN /mnt/data/orig/TEST_REPORT.md /mnt/data/work/TEST_REPORT.md
+--- /mnt/data/orig/TEST_REPORT.md	2026-01-22 05:52:00.000000000 +0000
++++ /mnt/data/work/TEST_REPORT.md	2026-01-22 06:38:09.671765176 +0000
+@@ -18,15 +18,17 @@
+ ```text
+ == RESTO BOT v3.0 - Integrity Gate ==
+ 
+-[1/5] Bash syntax check
++[1/6] Bash syntax check
+ 
+-[2/5] Secret scan (forbidden placeholders)
++[2/6] Secret scan (forbidden placeholders)
+ 
+-[3/5] Workflow JSON validation
++[3/6] Workflow JSON validation
+ 
+-[4/5] DB bootstrap ordering check
++[4/6] DB bootstrap ordering check
+ 
+-[5/5] Compose YAML parse (best-effort)
++[5/6] Patch presence checks (P1 DB)
++
++[6/6] Compose YAML parse (best-effort)
+ YAML parse OK
+ 
+ ✅ Integrity Gate PASS
+@@ -44,7 +46,13 @@
+ docker compose -f docker-compose.hostinger.prod.yml up -d
+ 
+ # init/migrations (idempotent)
+-./scripts/db_migrate.sh
++
++# Apply P0 migration (idempotent)
++./scripts/db_migrate.sh docker-compose.hostinger.prod.yml db/migrations/2026-01-21_p0_prod_patches.sql
++
++# 2) Apply P1 migrations
++./scripts/db_migrate.sh docker-compose.hostinger.prod.yml db/migrations/2026-01-22_p1_db_indexes_retention.sql
++./scripts/db_migrate.sh docker-compose.hostinger.prod.yml db/migrations/2026-01-22_p1_event_types_constraints.sql
+ 
+ # import workflows (si vous importez via CLI/script)
+ # puis smoke tests
+@@ -58,7 +66,8 @@
+ ### 2.2 Upgrade in place (DB existante)
+ ```bash
+ docker compose -f docker-compose.hostinger.prod.yml up -d
+-./scripts/db_migrate.sh
++./scripts/db_migrate.sh docker-compose.hostinger.prod.yml db/migrations/2026-01-22_p1_db_indexes_retention.sql
++./scripts/db_migrate.sh docker-compose.hostinger.prod.yml db/migrations/2026-01-22_p1_event_types_constraints.sql
+ ./scripts/smoke.sh
+ ```
+ **Attendu**
+@@ -77,3 +86,66 @@
+ **Attendu**
+ - présence de `AUTH_DENY` après test "invalid token"
+ - présence de `AUDIO_URL_BLOCKED` après test "audioUrl IP literal"
++
++### 2.4 Constraint checks (P1-DB-003)
++Après application de `2026-01-22_p1_event_types_constraints.sql` :
++
++```sql
++-- doit échouer (unknown enum value)
++INSERT INTO security_events(event_type, severity, payload_json)
++VALUES ('NOT_A_REAL_TYPE','LOW','{}'::jsonb);
++```
++
++**Attendu**
++- l'insert échoue (invalid input value for enum)
++
++```sql
++-- doit passer
++INSERT INTO security_events(event_type, severity, payload_json)
++VALUES ('RETENTION_RUN','LOW','{"ok":true}'::jsonb);
++```
++
++### 2.5 Retention job (P1-DB-002)
++Dans n8n, activer le workflow **W8 - OPS** puis exécuter le node “Retention Purge” en **manual** :
++
++1) **Dry-run**
++   - `RETENTION_DRY_RUN=true`
++2) **Run réel**
++   - `RETENTION_DRY_RUN=false`
++
++**Vérifications**
++```sql
++SELECT *
++FROM ops.retention_runs
++ORDER BY run_started_at DESC
++LIMIT 20;
++
++SELECT event_type, created_at, payload_json
++FROM security_events
++WHERE event_type='RETENTION_RUN'
++ORDER BY created_at DESC
++LIMIT 20;
++```
++
++### 2.6 EXPLAIN ANALYZE (index usage)
++```bash
++export DATABASE_URL="postgresql://n8n:n8npass@localhost:5432/n8n"
++export CONVERSATION_KEY="demo_conversation"
++export EVENT_TYPE="AUTH_DENY"
++./scripts/db_explain.sh
++```
++
++**Attendu**
++- plans contiennent des `Index Scan` / `Bitmap Index Scan` sur:
++  - `idx_inbound_messages_window` (ou `idx_inbound_messages_received_at`)
++  - `idx_security_events_event_type_created_at`
++  - `idx_outbound_due`
++  - `idx_outbound_messages_sent_at`
++
++---
++
++## NO DEBT / NO REGRESSION CLAUSE
++- ✅ Tout changement est **dans le repo** (migrations, workflows, scripts, docs)
++- ✅ Tout changement est **testé** via Integrity Gate + runbook runtime
++- ✅ Tout changement est **documenté** (`docs/*`, `PATCHLOG.md`, `CHANGELOG.md`)
++- ✅ Rollback fourni (`ROLLBACK.md`)
+diff -ruN /mnt/data/orig/config/.env.example /mnt/data/work/config/.env.example
+--- /mnt/data/orig/config/.env.example	2026-01-22 05:32:45.000000000 +0000
++++ /mnt/data/work/config/.env.example	2026-01-22 06:32:22.775958561 +0000
+@@ -64,3 +64,14 @@
+ OUTBOX_MAX_ATTEMPTS=7
+ OUTBOX_BASE_DELAY_SEC=30
+ OUTBOX_MAX_DELAY_SEC=3600
++
++# =========================
++# DB Retention (W8_OPS)
++# =========================
++RETENTION_DAYS_INBOUND=30
++RETENTION_DAYS_SECURITY=90
++RETENTION_DAYS_OUTBOX_SENT=30
++RETENTION_DAYS_WORKFLOW_ERRORS=30
++RETENTION_BATCH_SIZE=5000
++RETENTION_MAX_ITERATIONS=200
++RETENTION_DRY_RUN=false
+diff -ruN /mnt/data/orig/db/migrations/2026-01-22_p1_db_indexes_retention.sql /mnt/data/work/db/migrations/2026-01-22_p1_db_indexes_retention.sql
+--- /mnt/data/orig/db/migrations/2026-01-22_p1_db_indexes_retention.sql	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/work/db/migrations/2026-01-22_p1_db_indexes_retention.sql	2026-01-22 06:30:48.876980523 +0000
+@@ -0,0 +1,287 @@
++/*
++P1-DB-002 — DB PERF + RETENTION
++
++Scope:
++- Add/adjust indexes for high-churn tables: inbound_messages, security_events, outbound_messages, workflow_errors (if present)
++- Add retention primitives (audit table + batch purge helper)
++
++Design principles:
++- Idempotent (replay-safe)
++- No functional regression (no column removal, no schema-breaking changes)
++- Safe purge: delete in bounded chunks, index-friendly, no long-running locks.
++
++Notes on CREATE INDEX CONCURRENTLY:
++- Not used here because migration runners typically wrap in a transaction and Postgres forbids CONCURRENTLY inside a txn.
++- If you run migrations with "transaction: false" for this file, you may change CREATE INDEX -> CREATE INDEX CONCURRENTLY.
++*/
++
++CREATE SCHEMA IF NOT EXISTS ops;
++
++-- Audit table for retention runs
++CREATE TABLE IF NOT EXISTS ops.retention_runs (
++  run_id            BIGSERIAL PRIMARY KEY,
++  run_started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
++  run_finished_at   TIMESTAMPTZ NULL,
++  dry_run           BOOLEAN NOT NULL DEFAULT false,
++  table_name        TEXT NOT NULL,
++  cutoff_ts         TIMESTAMPTZ NOT NULL,
++  batch_size        INTEGER NOT NULL,
++  deleted_rows      BIGINT NOT NULL DEFAULT 0,
++  details_json      JSONB NOT NULL DEFAULT '{}'::jsonb,
++  status            TEXT NOT NULL DEFAULT 'STARTED' -- STARTED|DONE|FAILED
++);
++
++CREATE INDEX IF NOT EXISTS idx_retention_runs_started_at
++  ON ops.retention_runs (run_started_at DESC);
++
++-- Batch purge helper (generic)
++-- Tries time columns in order: received_at, created_at, sent_at, updated_at, inserted_at
++CREATE OR REPLACE FUNCTION ops.purge_table_batch(
++  p_table_name TEXT,
++  p_cutoff_ts  TIMESTAMPTZ,
++  p_batch_size INTEGER,
++  p_dry_run    BOOLEAN DEFAULT false
++)
++RETURNS TABLE(deleted_count BIGINT, time_column TEXT)
++LANGUAGE plpgsql
++AS $$
++DECLARE
++  v_schema   TEXT := split_part(p_table_name, '.', 1);
++  v_table    TEXT := split_part(p_table_name, '.', 2);
++  v_time_col TEXT;
++  v_sql      TEXT;
++BEGIN
++  IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
++    RAISE EXCEPTION 'batch_size must be > 0';
++  END IF;
++
++  IF to_regclass(p_table_name) IS NULL THEN
++    -- Table absent: nothing to purge
++    deleted_count := 0;
++    time_column := NULL;
++    RETURN NEXT;
++    RETURN;
++  END IF;
++
++  SELECT c.column_name
++    INTO v_time_col
++  FROM information_schema.columns c
++  WHERE c.table_schema = v_schema
++    AND c.table_name   = v_table
++    AND c.column_name IN ('received_at','created_at','sent_at','updated_at','inserted_at')
++    AND c.data_type IN ('timestamp with time zone','timestamp without time zone')
++  ORDER BY CASE c.column_name
++    WHEN 'received_at' THEN 1
++    WHEN 'created_at'  THEN 2
++    WHEN 'sent_at'     THEN 3
++    WHEN 'updated_at'  THEN 4
++    WHEN 'inserted_at' THEN 5
++    ELSE 99
++  END
++  LIMIT 1;
++
++  IF v_time_col IS NULL THEN
++    RAISE EXCEPTION 'No supported time column found for %', p_table_name;
++  END IF;
++
++  IF p_dry_run THEN
++    v_sql := format(
++      'SELECT count(*)::bigint AS deleted_count, %L::text AS time_column FROM %s WHERE %I < $1',
++      v_time_col,
++      p_table_name,
++      v_time_col
++    );
++    RETURN QUERY EXECUTE v_sql USING p_cutoff_ts;
++    RETURN;
++  END IF;
++
++  -- Delete a bounded chunk using CTID selection ordered by time column (index-friendly)
++  v_sql := format($f$
++    WITH victim AS (
++      SELECT ctid
++      FROM %s
++      WHERE %I < $1
++      ORDER BY %I ASC
++      LIMIT $2
++    )
++    DELETE FROM %s t
++    USING victim v
++    WHERE t.ctid = v.ctid
++    RETURNING 1
++  $f$,
++    p_table_name, v_time_col, v_time_col, p_table_name
++  );
++
++  EXECUTE v_sql USING p_cutoff_ts, p_batch_size;
++  GET DIAGNOSTICS deleted_count = ROW_COUNT;
++  time_column := v_time_col;
++  RETURN NEXT;
++END;
++$$;
++
++-- Specialized helper: outbound_messages SENT purge (uses sent_at + status filter)
++CREATE OR REPLACE FUNCTION ops.purge_outbound_sent_batch(
++  p_cutoff_ts  TIMESTAMPTZ,
++  p_batch_size INTEGER,
++  p_dry_run    BOOLEAN DEFAULT false
++)
++RETURNS TABLE(deleted_count BIGINT)
++LANGUAGE plpgsql
++AS $$
++DECLARE
++  v_sql TEXT;
++BEGIN
++  IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
++    RAISE EXCEPTION 'batch_size must be > 0';
++  END IF;
++
++  IF to_regclass('public.outbound_messages') IS NULL THEN
++    deleted_count := 0;
++    RETURN NEXT;
++    RETURN;
++  END IF;
++
++  IF p_dry_run THEN
++    v_sql := 'SELECT count(*)::bigint AS deleted_count
++              FROM public.outbound_messages
++              WHERE status = ''SENT'' AND sent_at IS NOT NULL AND sent_at < $1';
++    RETURN QUERY EXECUTE v_sql USING p_cutoff_ts;
++    RETURN;
++  END IF;
++
++  v_sql := $q$
++    WITH victim AS (
++      SELECT ctid
++      FROM public.outbound_messages
++      WHERE status = 'SENT'
++        AND sent_at IS NOT NULL
++        AND sent_at < $1
++      ORDER BY sent_at ASC
++      LIMIT $2
++    )
++    DELETE FROM public.outbound_messages t
++    USING victim v
++    WHERE t.ctid = v.ctid
++    RETURNING 1
++  $q$;
++
++  EXECUTE v_sql USING p_cutoff_ts, p_batch_size;
++  GET DIAGNOSTICS deleted_count = ROW_COUNT;
++  RETURN NEXT;
++END;
++$$;
++
++-- Helper: create index only if table + required columns exist and index not already present
++CREATE OR REPLACE FUNCTION ops.create_index_if_cols_exist(
++  p_index_name TEXT,
++  p_table_name TEXT,
++  p_index_ddl  TEXT,
++  p_required_cols TEXT[]
++)
++RETURNS VOID
++LANGUAGE plpgsql
++AS $$
++DECLARE
++  v_schema TEXT := split_part(p_table_name, '.', 1);
++  v_table  TEXT := split_part(p_table_name, '.', 2);
++  v_missing INT;
++BEGIN
++  IF to_regclass(p_table_name) IS NULL THEN
++    RETURN;
++  END IF;
++
++  SELECT count(*) INTO v_missing
++  FROM unnest(p_required_cols) col
++  WHERE NOT EXISTS (
++    SELECT 1
++    FROM information_schema.columns c
++    WHERE c.table_schema = v_schema
++      AND c.table_name   = v_table
++      AND c.column_name  = col
++  );
++
++  IF v_missing > 0 THEN
++    RETURN;
++  END IF;
++
++  IF EXISTS (
++    SELECT 1 FROM pg_indexes
++    WHERE schemaname = v_schema
++      AND indexname  = p_index_name
++  ) THEN
++    RETURN;
++  END IF;
++
++  EXECUTE p_index_ddl;
++END;
++$$;
++
++-- =========================
++-- Indexes
++-- =========================
++
++-- inbound_messages: purge + window queries
++-- Existing: idx_inbound_messages_window(conversation_key, received_at desc)
++SELECT ops.create_index_if_cols_exist(
++  'idx_inbound_messages_received_at',
++  'public.inbound_messages',
++  'CREATE INDEX idx_inbound_messages_received_at ON public.inbound_messages (received_at DESC)',
++  ARRAY['received_at']
++);
++
++-- security_events: filter by tenant/event_type and date
++SELECT ops.create_index_if_cols_exist(
++  'idx_security_events_tenant_created_at',
++  'public.security_events',
++  'CREATE INDEX idx_security_events_tenant_created_at ON public.security_events (tenant_id, created_at DESC)',
++  ARRAY['tenant_id','created_at']
++);
++
++SELECT ops.create_index_if_cols_exist(
++  'idx_security_events_event_type_created_at',
++  'public.security_events',
++  'CREATE INDEX idx_security_events_event_type_created_at ON public.security_events (event_type, created_at DESC)',
++  ARRAY['event_type','created_at']
++);
++
++-- outbound_messages: speed up purge of SENT rows (and analytics on sent_at)
++SELECT ops.create_index_if_cols_exist(
++  'idx_outbound_messages_sent_at',
++  'public.outbound_messages',
++  'CREATE INDEX idx_outbound_messages_sent_at ON public.outbound_messages (sent_at DESC) WHERE sent_at IS NOT NULL',
++  ARRAY['sent_at']
++);
++
++-- workflow_errors: purge + investigations
++SELECT ops.create_index_if_cols_exist(
++  'idx_workflow_errors_created_at',
++  'public.workflow_errors',
++  'CREATE INDEX idx_workflow_errors_created_at ON public.workflow_errors (created_at DESC)',
++  ARRAY['created_at']
++);
++
++SELECT ops.create_index_if_cols_exist(
++  'idx_workflow_errors_workflow_name_created_at',
++  'public.workflow_errors',
++  'CREATE INDEX idx_workflow_errors_workflow_name_created_at ON public.workflow_errors (workflow_name, created_at DESC)',
++  ARRAY['workflow_name','created_at']
++);
++
++-- =========================
++-- Autovacuum hints (table-level, safe)
++-- =========================
++DO $$
++BEGIN
++  IF to_regclass('public.inbound_messages') IS NOT NULL THEN
++    EXECUTE 'ALTER TABLE public.inbound_messages SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02)';
++  END IF;
++  IF to_regclass('public.security_events') IS NOT NULL THEN
++    EXECUTE 'ALTER TABLE public.security_events SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02)';
++  END IF;
++  IF to_regclass('public.outbound_messages') IS NOT NULL THEN
++    EXECUTE 'ALTER TABLE public.outbound_messages SET (autovacuum_vacuum_scale_factor = 0.05, autovacuum_analyze_scale_factor = 0.05)';
++  END IF;
++  IF to_regclass('public.workflow_errors') IS NOT NULL THEN
++    EXECUTE 'ALTER TABLE public.workflow_errors SET (autovacuum_vacuum_scale_factor = 0.05, autovacuum_analyze_scale_factor = 0.05)';
++  END IF;
++END $$;
+diff -ruN /mnt/data/orig/db/migrations/2026-01-22_p1_event_types_constraints.sql /mnt/data/work/db/migrations/2026-01-22_p1_event_types_constraints.sql
+--- /mnt/data/orig/db/migrations/2026-01-22_p1_event_types_constraints.sql	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/work/db/migrations/2026-01-22_p1_event_types_constraints.sql	2026-01-22 06:29:59.387006776 +0000
+@@ -0,0 +1,94 @@
++/*
++P1-DB-003 — EVENT TYPES CONSTRAINTS (security_events)
++
++Goal:
++- Standardize public.security_events.event_type via reference table + ENUM enforcement.
++- Ensure fresh installs remain compatible with existing workflows.
++
++Approach:
++- Create ops.security_event_types (reference / documentation)
++- Seed known event types (from workflows) + reserved RETENTION_RUN
++- Create enum security_event_type_enum containing seeded values
++- Alter security_events.event_type from text -> enum (idempotent)
++
++Important:
++- We deliberately do NOT attempt to constrain workflow_errors types because the current schema does not
++  define an error_type column. If a future migration adds one, extend similarly.
++*/
++
++CREATE SCHEMA IF NOT EXISTS ops;
++
++-- Reference table
++CREATE TABLE IF NOT EXISTS ops.security_event_types (
++  code        TEXT PRIMARY KEY,
++  description TEXT NULL,
++  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++-- Seed known event types used by workflows (keep this list in sync with docs/EVENT_TYPES.md)
++INSERT INTO ops.security_event_types(code, description) VALUES
++  ('AUTH_DENY', 'Auth token invalid / access denied'),
++  ('AUDIO_URL_BLOCKED', 'Voice URL rejected by security gate'),
++  ('RETENTION_RUN', 'Retention purge job execution log')
++ON CONFLICT (code) DO NOTHING;
++
++-- Create enum once (idempotent)
++DO $$
++DECLARE
++  v_vals TEXT;
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'security_event_type_enum') THEN
++    SELECT string_agg(quote_literal(code), ', ' ORDER BY code)
++      INTO v_vals
++    FROM ops.security_event_types;
++
++    IF v_vals IS NULL THEN
++      v_vals := quote_literal('RETENTION_RUN');
++    END IF;
++
++    EXECUTE format('CREATE TYPE security_event_type_enum AS ENUM (%s)', v_vals);
++  END IF;
++END $$;
++
++-- Ensure enum contains seeded values (safe for replays)
++DO $$
++DECLARE
++  r RECORD;
++BEGIN
++  FOR r IN SELECT code FROM ops.security_event_types ORDER BY code LOOP
++    BEGIN
++      EXECUTE format('ALTER TYPE security_event_type_enum ADD VALUE %L', r.code);
++    EXCEPTION WHEN duplicate_object THEN
++      NULL;
++    END;
++  END LOOP;
++END $$;
++
++-- Convert column type (only if security_events exists and column is not already enum)
++DO $$
++DECLARE
++  v_udt_name TEXT;
++BEGIN
++  IF to_regclass('public.security_events') IS NULL THEN
++    RETURN;
++  END IF;
++
++  SELECT udt_name INTO v_udt_name
++  FROM information_schema.columns
++  WHERE table_schema='public' AND table_name='security_events' AND column_name='event_type';
++
++  IF v_udt_name IS NULL THEN
++    RETURN;
++  END IF;
++
++  IF v_udt_name <> 'security_event_type_enum' THEN
++    -- Defensive trim to avoid unexpected whitespace values
++    UPDATE public.security_events
++       SET event_type = btrim(event_type)
++     WHERE event_type IS NOT NULL;
++
++    ALTER TABLE public.security_events
++      ALTER COLUMN event_type TYPE security_event_type_enum
++      USING event_type::text::security_event_type_enum;
++  END IF;
++END $$;
+diff -ruN /mnt/data/orig/docs/CHANGELOG.md /mnt/data/work/docs/CHANGELOG.md
+--- /mnt/data/orig/docs/CHANGELOG.md	2026-01-21 16:49:53.000000000 +0000
++++ /mnt/data/work/docs/CHANGELOG.md	2026-01-22 06:35:27.155111157 +0000
+@@ -1,5 +1,13 @@
+ # CHANGELOG
+ 
++## 3.0.2 - 2026-01-22 (P1 DB: perf + retention + event type constraints)
++### Added
++- DB retention primitives: `ops.retention_runs`, batch purge helpers, and scheduled “Retention Purge” job in `W8_OPS`.
++- Indexes for high-churn tables to keep reads + purge index-friendly.
++- `security_events.event_type` standardized via enum + reference table (`ops.security_event_types`).
++- `scripts/db_explain.sh` and docs (`docs/DB_RETENTION.md`, `docs/EVENT_TYPES.md`).
++
++
+ ## 3.0.1 - 2026-01-21 (P0 patches)
+ ### Added
+ - Multi-tenant inbound auth via `api_clients` (hashed tokens) + security_events logging.
+diff -ruN /mnt/data/orig/docs/DB_RETENTION.md /mnt/data/work/docs/DB_RETENTION.md
+--- /mnt/data/orig/docs/DB_RETENTION.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/work/docs/DB_RETENTION.md	2026-01-22 06:31:35.970318495 +0000
+@@ -0,0 +1,67 @@
++# DB Retention (P1-DB-002)
++
++## Goals
++
++High‑churn tables must not grow unbounded. This project uses a **safe, parametric purge** executed by **W8_OPS → “Retention Purge”**.
++
++Tables covered:
++
++- `public.inbound_messages` (timestamp: `received_at`)
++- `public.security_events` (timestamp: `created_at`)
++- `public.outbound_messages` (purge SENT rows by `sent_at`)
++- `public.workflow_errors` (timestamp: `created_at`)
++
++All executions are audited in `ops.retention_runs`.
++
++## Environment variables
++
++| Variable | Default | Meaning |
++|---|---:|---|
++| `RETENTION_DAYS_INBOUND` | 30 | Keep last N days in `inbound_messages` |
++| `RETENTION_DAYS_SECURITY` | 90 | Keep last N days in `security_events` |
++| `RETENTION_DAYS_OUTBOX_SENT` | 30 | Keep last N days of SENT rows in `outbound_messages` |
++| `RETENTION_DAYS_WORKFLOW_ERRORS` | 30 | Keep last N days in `workflow_errors` |
++| `RETENTION_BATCH_SIZE` | 5000 | Max rows deleted per batch |
++| `RETENTION_MAX_ITERATIONS` | 200 | Safety cap per table per run |
++| `RETENTION_DRY_RUN` | false | If true, counts rows but does not delete |
++
++## How it works (safe purge)
++
++The migration `2026-01-22_p1_db_indexes_retention.sql` adds:
++
++- `ops.retention_runs` audit table
++- `ops.purge_table_batch(table, cutoff, batch_size, dry_run)` generic batched delete
++- `ops.purge_outbound_sent_batch(cutoff, batch_size, dry_run)` specialized purge for outbox SENT rows
++- indexes to keep the purge **index‑friendly**
++
++The workflow executes batches until:
++
++- a batch deletes **less** than `RETENTION_BATCH_SIZE`, or
++- `RETENTION_MAX_ITERATIONS` is reached (hard stop)
++
++## Operational notes
++
++### Recommended schedule
++
++Run daily during low traffic (e.g., **03:30 local time**).
++
++### Vacuum / bloat
++
++Deletes can create bloat. The migration applies table‑level autovacuum hints (lower scale factors) for the high‑churn tables. Monitor vacuum activity and adjust if needed.
++
++### Dry‑run
++
++Set `RETENTION_DRY_RUN=true` to validate cutoffs and expected deletion volumes without deleting.
++
++## Manual run
++
++You can run one batch manually:
++
++```sql
++SELECT * FROM ops.purge_table_batch('public.security_events', now() - interval '90 days', 5000, false);
++SELECT * FROM ops.purge_outbound_sent_batch(now() - interval '30 days', 5000, false);
++```
++
++## Rollback
++
++See `ROLLBACK.md`.
+diff -ruN /mnt/data/orig/docs/EVENT_TYPES.md /mnt/data/work/docs/EVENT_TYPES.md
+--- /mnt/data/orig/docs/EVENT_TYPES.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/work/docs/EVENT_TYPES.md	2026-01-22 06:32:06.092938055 +0000
+@@ -0,0 +1,27 @@
++# Event Types (P1-DB-003)
++
++## Why
++
++`public.security_events.event_type` is enforced by a Postgres **ENUM** to prevent accidental drift (typos, inconsistent naming).
++
++The allowed values are also listed in `ops.security_event_types` (reference / documentation table).
++
++## Allowed `security_events.event_type`
++
++| Code | Description |
++|---|---|
++| `AUTH_DENY` | Auth token invalid / access denied |
++| `AUDIO_URL_BLOCKED` | Voice URL rejected by security gate |
++| `RETENTION_RUN` | Retention purge job execution log |
++
++## Adding a new event type
++
++1. Add the new code to `ops.security_event_types` (migration).
++2. Add the value to the enum `security_event_type_enum` (same migration).
++3. Update this doc.
++
++This must be done via a migration to keep environments consistent.
++
++## Rollback
++
++See `ROLLBACK.md`.
+\ No newline at end of file
+diff -ruN /mnt/data/orig/scripts/db_explain.sh /mnt/data/work/scripts/db_explain.sh
+--- /mnt/data/orig/scripts/db_explain.sh	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/work/scripts/db_explain.sh	2026-01-22 06:31:10.968803949 +0000
+@@ -0,0 +1,67 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++# P1-DB-002 — quick EXPLAIN ANALYZE bundle to validate index usage.
++# Requires: psql
++
++: "${DATABASE_URL:?Missing DATABASE_URL}"
++
++# Optional selectors
++: "${CONVERSATION_KEY:=demo_conversation}"
++: "${EVENT_TYPE:=AUTH_DENY}"
++: "${STATUS:=PENDING}"
++
++echo "== db_explain.sh =="
++echo "DATABASE_URL set (hidden)"
++echo "CONVERSATION_KEY=$CONVERSATION_KEY"
++echo "EVENT_TYPE=$EVENT_TYPE"
++echo
++
++psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
++\timing on
++
++-- 1) inbound_messages: window query by conversation_key / received_at
++\echo '--- EXPLAIN inbound_messages (conversation_key + received_at)'
++EXPLAIN (ANALYZE, BUFFERS)
++SELECT id, conversation_key, msg_id, channel, received_at
++FROM public.inbound_messages
++WHERE conversation_key = :'CONVERSATION_KEY'
++  AND received_at > (now() - interval '7 days')
++ORDER BY received_at DESC
++LIMIT 50;
++
++-- 2) security_events: filter by event_type + created_at
++\echo '--- EXPLAIN security_events (event_type + created_at)'
++EXPLAIN (ANALYZE, BUFFERS)
++SELECT id, tenant_id, restaurant_id, conversation_key, event_type, created_at
++FROM public.security_events
++WHERE event_type = :'EVENT_TYPE'::text
++  AND created_at > (now() - interval '30 days')
++ORDER BY created_at DESC
++LIMIT 100;
++
++-- 3) outbound_messages: pending/retry due by next_retry_at (representative of W8_OPS picker)
++\echo '--- EXPLAIN outbound_messages (status + next_retry_at)'
++EXPLAIN (ANALYZE, BUFFERS)
++SELECT outbound_id
++FROM public.outbound_messages
++WHERE status IN ('PENDING','RETRY')
++  AND next_retry_at <= now()
++ORDER BY next_retry_at ASC
++LIMIT 20;
++
++-- 4) outbound_messages: purge path (status SENT + sent_at)
++\echo '--- EXPLAIN outbound_messages purge (SENT + sent_at)'
++EXPLAIN (ANALYZE, BUFFERS)
++SELECT outbound_id
++FROM public.outbound_messages
++WHERE status='SENT'
++  AND sent_at IS NOT NULL
++  AND sent_at < (now() - interval '30 days')
++ORDER BY sent_at ASC
++LIMIT 200;
++
++SQL
++
++echo
++echo "Tip: look for Index Scan / Bitmap Index Scan on the indexes added by P1-DB-002."
+diff -ruN /mnt/data/orig/scripts/db_migrate.sh /mnt/data/work/scripts/db_migrate.sh
+--- /mnt/data/orig/scripts/db_migrate.sh	2026-01-21 16:40:00.000000000 +0000
++++ /mnt/data/work/scripts/db_migrate.sh	2026-01-22 06:37:53.862656973 +0000
+@@ -2,7 +2,19 @@
+ set -euo pipefail
+ 
+ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.hostinger.prod.yml}"
+-MIGRATION_FILE="${1:-db/migrations/2026-01-21_p0_prod_patches.sql}"
++
++# Usage:
++#   ./scripts/db_migrate.sh <migration.sql>
++#   ./scripts/db_migrate.sh <compose.yml> <migration.sql>
++
++MIGRATION_FILE="db/migrations/2026-01-21_p0_prod_patches.sql"
++
++if [[ $# -eq 1 ]]; then
++  MIGRATION_FILE="$1"
++elif [[ $# -ge 2 ]]; then
++  COMPOSE_FILE="$1"
++  MIGRATION_FILE="$2"
++fi
+ 
+ if [[ ! -f "$MIGRATION_FILE" ]]; then
+   echo "❌ Migration file not found: $MIGRATION_FILE"
+diff -ruN /mnt/data/orig/scripts/integrity_gate.sh /mnt/data/work/scripts/integrity_gate.sh
+--- /mnt/data/orig/scripts/integrity_gate.sh	2026-01-22 05:43:18.000000000 +0000
++++ /mnt/data/work/scripts/integrity_gate.sh	2026-01-22 06:36:41.891697401 +0000
+@@ -13,10 +13,10 @@
+ 
+ # 1) Bash syntax
+ 
+-echo "\n[1/5] Bash syntax check"
++echo "\n[1/6] Bash syntax check"
+ bash -n scripts/*.sh || fail "bash -n failed"
+ 
+-echo "\n[2/5] Secret scan (forbidden placeholders)"
++echo "\n[2/6] Secret scan (forbidden placeholders)"
+ if grep -R --line-number --fixed-string "CHANGE_ME" \
+   --exclude-dir=docs --exclude-dir=patches \
+   --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md \
+@@ -29,7 +29,7 @@
+   fail "CHANGE_ME placeholder found"
+ fi
+ 
+-echo "\n[3/5] Workflow JSON validation"
++echo "\n[3/6] Workflow JSON validation"
+ for wf in workflows/*.json; do
+   jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and (.active|type=="boolean")' "$wf" >/dev/null \
+     || fail "Invalid workflow JSON: $wf"
+@@ -41,7 +41,7 @@
+   fi
+ done
+ 
+-echo "\n[4/5] DB bootstrap ordering check"
++echo "\n[4/6] DB bootstrap ordering check"
+ orders_line=$(grep -n -- "CREATE TABLE IF NOT EXISTS orders" db/bootstrap.sql | head -n1 | cut -d: -f1 || true)
+ outbox_line=$(grep -n -- "CREATE TABLE IF NOT EXISTS outbound_messages" db/bootstrap.sql | head -n1 | cut -d: -f1 || true)
+ if [[ -n "$orders_line" && -n "$outbox_line" ]]; then
+@@ -52,7 +52,19 @@
+   fail "db/bootstrap.sql: could not locate orders/outbound_messages definitions"
+ fi
+ 
+-echo "\n[5/5] Compose YAML parse (best-effort)"
++echo "\n[5/6] Patch presence checks (P1 DB)"
++
++[[ -f db/migrations/2026-01-22_p1_db_indexes_retention.sql ]] || fail "Missing migration: 2026-01-22_p1_db_indexes_retention.sql"
++[[ -f db/migrations/2026-01-22_p1_event_types_constraints.sql ]] || fail "Missing migration: 2026-01-22_p1_event_types_constraints.sql"
++[[ -f docs/DB_RETENTION.md ]] || fail "Missing docs: docs/DB_RETENTION.md"
++[[ -f docs/EVENT_TYPES.md ]] || fail "Missing docs: docs/EVENT_TYPES.md"
++[[ -f scripts/db_explain.sh ]] || fail "Missing script: scripts/db_explain.sh"
++
++# Validate W8 contains retention nodes
++jq -e '.nodes[] | select(.name=="R1 - Retention Purge (Daily 03:30)")' workflows/W8_OPS.json >/dev/null \
++  || fail "W8_OPS missing Retention Purge schedule"
++
++echo "\n[6/6] Compose YAML parse (best-effort)"
+ python3 - <<'PY'
+ import sys
+ from pathlib import Path
+diff -ruN /mnt/data/orig/workflows/W8_OPS.json /mnt/data/work/workflows/W8_OPS.json
+--- /mnt/data/orig/workflows/W8_OPS.json	2026-01-21 16:46:01.000000000 +0000
++++ /mnt/data/work/workflows/W8_OPS.json	2026-01-22 06:34:12.009833071 +0000
+@@ -193,6 +193,229 @@
+         300,
+         260
+       ]
++    },
++    {
++      "parameters": {
++        "rule": {
++          "cronExpression": "30 3 * * *"
++        }
++      },
++      "id": "d1bdf929-592e-4912-93a3-156bde227d7a",
++      "name": "R1 - Retention Purge (Daily 03:30)",
++      "type": "n8n-nodes-base.scheduleTrigger",
++      "typeVersion": 1,
++      "position": [
++        -360,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const asBool = (v) => ['1','true','yes','y','on'].includes(String(v||'').toLowerCase());\nconst asInt = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };\n\nconst now = Date.now();\nconst dryRun = asBool($env.RETENTION_DRY_RUN ?? 'false');\nconst batchSize = asInt($env.RETENTION_BATCH_SIZE, 5000);\nconst maxIter = asInt($env.RETENTION_MAX_ITERATIONS, 200);\n\nconst tables = [\n  { kind: 'inbound', table_name: 'public.inbound_messages', retention_days: asInt($env.RETENTION_DAYS_INBOUND, 30) },\n  { kind: 'security', table_name: 'public.security_events', retention_days: asInt($env.RETENTION_DAYS_SECURITY, 90) },\n  { kind: 'outbox_sent', table_name: 'public.outbound_messages', retention_days: asInt($env.RETENTION_DAYS_OUTBOX_SENT, 30) },\n  { kind: 'workflow_errors', table_name: 'public.workflow_errors', retention_days: asInt($env.RETENTION_DAYS_WORKFLOW_ERRORS, 30) },\n];\n\nconst items = tables.map(t => {\n  const cutoffTs = new Date(now - t.retention_days * 24*3600*1000).toISOString();\n  return { json: {\n    kind: t.kind,\n    table_name: t.table_name,\n    retention_days: t.retention_days,\n    cutoff_ts: cutoffTs,\n    batch_size: batchSize,\n    dry_run: dryRun,\n    max_iterations: maxIter,\n  }};\n});\n\nreturn items;"
++      },
++      "id": "185a5fff-ce80-41ed-ab3e-8eccda9997d1",
++      "name": "R2 - Build Retention Plan",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        -140,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "batchSize": 1,
++        "options": {}
++      },
++      "id": "7c3ab0f2-6d0e-47a7-9dfd-8db87a387fbe",
++      "name": "R3 - Split Tables",
++      "type": "n8n-nodes-base.splitInBatches",
++      "typeVersion": 1,
++      "position": [
++        80,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO ops.retention_runs (dry_run, table_name, cutoff_ts, batch_size, details_json, status)\nVALUES ($1,$2,$3::timestamptz,$4, jsonb_build_object('retention_days',$5,'max_iterations',$6), 'STARTED')\nRETURNING run_id;",
++        "additionalFields": {
++          "queryParams": "={{[$json.dry_run, $json.table_name, $json.cutoff_ts, $json.batch_size, $json.retention_days, $json.max_iterations]}}"
++        }
++      },
++      "id": "c4b6ebe3-e364-47d1-af8b-9f1bc34d1326",
++      "name": "R4 - Retention Start Run (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        300,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const runId = $json.run_id ?? $json[0]?.run_id;\nreturn [{json:{...$json, run_id: runId, _total_deleted:0, _iteration:0, _time_column:null, _deleted_last:0}}];"
++      },
++      "id": "fbb2578e-7b32-49a5-998a-c89723638071",
++      "name": "R5 - Init Counters",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        520,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "conditions": {
++          "string": [
++            {
++              "value1": "={{$json.kind}}",
++              "operation": "equal",
++              "value2": "outbox_sent"
++            }
++          ]
++        }
++      },
++      "id": "c7b54184-8b55-47b3-be1e-9bf9aba8a101",
++      "name": "R6 - Is Outbox SENT?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2,
++      "position": [
++        740,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "SELECT deleted_count, time_column FROM ops.purge_table_batch($1, $2::timestamptz, $3::int, $4::boolean);",
++        "additionalFields": {
++          "queryParams": "={{[$json.table_name, $json.cutoff_ts, $json.batch_size, $json.dry_run]}}"
++        }
++      },
++      "id": "d59c17b0-9ed1-42ac-b08d-0f4efd15217c",
++      "name": "R7a - Purge Generic Batch (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        980,
++        -320
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "SELECT deleted_count, 'sent_at'::text AS time_column FROM ops.purge_outbound_sent_batch($1::timestamptz, $2::int, $3::boolean);",
++        "additionalFields": {
++          "queryParams": "={{[$json.cutoff_ts, $json.batch_size, $json.dry_run]}}"
++        }
++      },
++      "id": "3591b127-8452-46a3-bc23-b468742022f7",
++      "name": "R7b - Purge Outbox SENT Batch (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        980,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const row = Array.isArray($json) ? ($json[0]||{}) : $json;\n// Postgres node returns object with fields. In batch mode, n8n may nest results.\nconst deleted = Number(row.deleted_count ?? row[0]?.deleted_count ?? 0);\nconst timeCol = row.time_column ?? row[0]?.time_column ?? null;\nconst total = Number($json._total_deleted ?? 0) + deleted;\nconst iter = Number($json._iteration ?? 0) + 1;\nreturn [{json:{...$json, _deleted_last: deleted, _total_deleted: total, _iteration: iter, _time_column: timeCol}}];"
++      },
++      "id": "5f076331-d2e3-4139-8afb-cbb46709dc81",
++      "name": "R8 - Accumulate",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        1220,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "conditions": {
++          "boolean": [
++            {
++              "value1": "={{$json.dry_run}}",
++              "operation": "isFalse"
++            }
++          ],
++          "number": [
++            {
++              "value1": "={{$json._deleted_last}}",
++              "operation": "equal",
++              "value2": "={{$json.batch_size}}"
++            },
++            {
++              "value1": "={{$json._iteration}}",
++              "operation": "smaller",
++              "value2": "={{$json.max_iterations}}"
++            }
++          ]
++        }
++      },
++      "id": "4f89f9eb-e83b-4b9d-adda-65e1d6a67d90",
++      "name": "R9 - Continue Purge?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2,
++      "position": [
++        1440,
++        -220
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "UPDATE ops.retention_runs\nSET run_finished_at = now(),\n    deleted_rows = $2::bigint,\n    details_json = jsonb_strip_nulls(jsonb_build_object(\n      'time_column',$3::text,\n      'iterations',$4::int,\n      'cutoff_ts',$5::timestamptz,\n      'dry_run',$6::boolean\n    )),\n    status = 'DONE'\nWHERE run_id = $1::bigint\nRETURNING run_id;",
++        "additionalFields": {
++          "queryParams": "={{[$json.run_id, $json._total_deleted, $json._time_column, $json._iteration, $json.cutoff_ts, $json.dry_run]}}"
++        }
++      },
++      "id": "58db7131-2a21-4e1d-a901-3bb0232da98d",
++      "name": "R10 - Finalize Run (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        1680,
++        -320
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO security_events (tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES (NULL,NULL,NULL,NULL,NULL,'RETENTION_RUN','LOW',\n  jsonb_build_object('table',$1,'cutoff_ts',$2::timestamptz,'dry_run',$3::boolean,'deleted_rows',$4::bigint,'iterations',$5::int)\n) RETURNING id;",
++        "additionalFields": {
++          "queryParams": "={{[$json.table_name, $json.cutoff_ts, $json.dry_run, $json._total_deleted, $json._iteration]}}"
++        }
++      },
++      "id": "06ae02d6-05ff-417e-ba08-57b42feea3ea",
++      "name": "R11 - Log Security Event (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        1680,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "// pass-through end-of-table marker\nreturn [{json:{...$json, _retention_done:true}}];"
++      },
++      "id": "1dca8a8f-3851-49cf-91d4-5405d34d753a",
++      "name": "R12 - Next Table",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        1900,
++        -220
++      ]
+     }
+   ],
+   "connections": {
+@@ -294,6 +517,163 @@
+           }
+         ]
+       ]
++    },
++    "R1 - Retention Purge (Daily 03:30)": {
++      "main": [
++        [
++          {
++            "node": "R2 - Build Retention Plan",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R2 - Build Retention Plan": {
++      "main": [
++        [
++          {
++            "node": "R3 - Split Tables",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R3 - Split Tables": {
++      "main": [
++        [
++          {
++            "node": "R4 - Retention Start Run (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R4 - Retention Start Run (DB)": {
++      "main": [
++        [
++          {
++            "node": "R5 - Init Counters",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R5 - Init Counters": {
++      "main": [
++        [
++          {
++            "node": "R6 - Is Outbox SENT?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R6 - Is Outbox SENT?": {
++      "main": [
++        [
++          {
++            "node": "R7b - Purge Outbox SENT Batch (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "R7a - Purge Generic Batch (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R7a - Purge Generic Batch (DB)": {
++      "main": [
++        [
++          {
++            "node": "R8 - Accumulate",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R7b - Purge Outbox SENT Batch (DB)": {
++      "main": [
++        [
++          {
++            "node": "R8 - Accumulate",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R8 - Accumulate": {
++      "main": [
++        [
++          {
++            "node": "R9 - Continue Purge?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R9 - Continue Purge?": {
++      "main": [
++        [
++          {
++            "node": "R6 - Is Outbox SENT?",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "R10 - Finalize Run (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R10 - Finalize Run (DB)": {
++      "main": [
++        [
++          {
++            "node": "R11 - Log Security Event (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R11 - Log Security Event (DB)": {
++      "main": [
++        [
++          {
++            "node": "R12 - Next Table",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "R12 - Next Table": {
++      "main": [
++        [
++          {
++            "node": "R3 - Split Tables",
++            "type": "main",
++            "index": 1
++          }
++        ]
++      ]
+     }
+   }
+ }
+\ No newline at end of file

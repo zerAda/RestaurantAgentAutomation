@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resto-bot.local/schemas/inbound/v2.json",
+  "title": "Inbound Envelope v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "provider",
+    "msg_id",
+    "sender",
+    "message",
+    "timestamp"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "v2"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "wa",
+        "ig",
+        "msg"
+      ]
+    },
+    "msg_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "sender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "display_name": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "attachments": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/definitions/attachment"
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "required": [
+            "attachments"
+          ]
+        }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 20
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "ip": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "user_agent": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "idempotency_key": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "tenant_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Never trusted from payload without proof. 'hints' may be sent by upstream but is ignored until verified.",
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "restaurant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "untrusted_payload",
+            "auth_db",
+            "legacy_shared"
+          ]
+        },
+        "hints": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  "definitions": {
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "url",
+        "mime"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "audio",
+            "image"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "mime": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 100,
+          "pattern": "^(audio|image)/"
+        }
+      }
+    }
+  }
+}

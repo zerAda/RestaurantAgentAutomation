@@ -1,0 +1,246 @@
+[
+  {
+    "text": "chno kayn",
+    "expect": "menu"
+  },
+  {
+    "text": "chno kayen",
+    "expect": "menu"
+  },
+  {
+    "text": "wach kayn",
+    "expect": "menu"
+  },
+  {
+    "text": "wesh kayn",
+    "expect": "menu"
+  },
+  {
+    "text": "menu",
+    "expect": "menu"
+  },
+  {
+    "text": "menou",
+    "expect": "menu"
+  },
+  {
+    "text": "minou",
+    "expect": "menu"
+  },
+  {
+    "text": "lmnu",
+    "expect": "menu"
+  },
+  {
+    "text": "lmenu",
+    "expect": "menu"
+  },
+  {
+    "text": "carte",
+    "expect": "menu"
+  },
+  {
+    "text": "nchouf menu",
+    "expect": "menu"
+  },
+  {
+    "text": "nchouf lmenu",
+    "expect": "menu"
+  },
+  {
+    "text": "nchoof menu",
+    "expect": "menu"
+  },
+  {
+    "text": "nchoof lmenu",
+    "expect": "menu"
+  },
+  {
+    "text": "show menu",
+    "expect": "menu"
+  },
+  {
+    "text": "bghit menu",
+    "expect": "menu"
+  },
+  {
+    "text": "bghit nchoof menu",
+    "expect": "menu"
+  },
+  {
+    "text": "bghit nchouf menu",
+    "expect": "menu"
+  },
+  {
+    "text": "menu svp",
+    "expect": "menu"
+  },
+  {
+    "text": "menu daba",
+    "expect": "menu"
+  },
+  {
+    "text": "menu please",
+    "expect": "menu"
+  },
+  {
+    "text": "carte svp",
+    "expect": "menu"
+  },
+  {
+    "text": "wach kayn f menu",
+    "expect": "menu"
+  },
+  {
+    "text": "chno kayn f lmenu",
+    "expect": "menu"
+  },
+  {
+    "text": "nchouf menu svp",
+    "expect": "menu"
+  },
+  {
+    "text": "kml",
+    "expect": "checkout"
+  },
+  {
+    "text": "kammel",
+    "expect": "checkout"
+  },
+  {
+    "text": "kmel",
+    "expect": "checkout"
+  },
+  {
+    "text": "kml commande",
+    "expect": "checkout"
+  },
+  {
+    "text": "kmel commande",
+    "expect": "checkout"
+  },
+  {
+    "text": "kml daba",
+    "expect": "checkout"
+  },
+  {
+    "text": "kmel daba",
+    "expect": "checkout"
+  },
+  {
+    "text": "checkout",
+    "expect": "checkout"
+  },
+  {
+    "text": "check out",
+    "expect": "checkout"
+  },
+  {
+    "text": "tchekout",
+    "expect": "checkout"
+  },
+  {
+    "text": "confirm",
+    "expect": "checkout"
+  },
+  {
+    "text": "confirmer",
+    "expect": "checkout"
+  },
+  {
+    "text": "valider",
+    "expect": "checkout"
+  },
+  {
+    "text": "validé",
+    "expect": "checkout"
+  },
+  {
+    "text": "bghit ncommandi",
+    "expect": "checkout"
+  },
+  {
+    "text": "bghit ncommandi daba",
+    "expect": "checkout"
+  },
+  {
+    "text": "ncommandi",
+    "expect": "checkout"
+  },
+  {
+    "text": "ncmdi",
+    "expect": "checkout"
+  },
+  {
+    "text": "order",
+    "expect": "checkout"
+  },
+  {
+    "text": "passer commande",
+    "expect": "checkout"
+  },
+  {
+    "text": "commande",
+    "expect": "checkout"
+  },
+  {
+    "text": "finaliser",
+    "expect": "checkout"
+  },
+  {
+    "text": "payer",
+    "expect": "checkout"
+  },
+  {
+    "text": "cmd",
+    "expect": "checkout"
+  },
+  {
+    "text": "wach kayn menu daba",
+    "expect": "menu"
+  },
+  {
+    "text": "bghit nchouf lmenu daba",
+    "expect": "menu"
+  },
+  {
+    "text": "kmel svp",
+    "expect": "checkout"
+  },
+  {
+    "text": "kml svp",
+    "expect": "checkout"
+  },
+  {
+    "text": "confirmi",
+    "expect": "checkout"
+  },
+  {
+    "text": "menu plz",
+    "expect": "menu"
+  },
+  {
+    "text": "nchouf lmenu please",
+    "expect": "menu"
+  },
+  {
+    "text": "finaliser commande",
+    "expect": "checkout"
+  },
+  {
+    "text": "passer cmd",
+    "expect": "checkout"
+  },
+  {
+    "text": "show lmenu",
+    "expect": "menu"
+  },
+  {
+    "text": "lmenu svp",
+    "expect": "menu"
+  },
+  {
+    "text": "kmel daba svp",
+    "expect": "checkout"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "contract_version": "v1",
+  "provider": "wa",
+  "msg_id": "smoke-001",
+  "from": "user-123",
+  "text": "Bonjour",
+  "timestamp": "2026-01-22T10:00:00Z",
+  "attachments": [
+    {
+      "type": "audio",
+      "url": "https://mmg.whatsapp.net/audio.ogg",
+      "mime": "audio/ogg"
+    }
+  ],
+  "meta": {
+    "locale": "fr-FR",
+    "timezone": "Europe/Paris"
+  }
+}

@@ -1,0 +1,125 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: n8npass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  n8n:
+    # Dev-only compose. For production, use docker-compose.hostinger.prod.yml
+    image: n8nio/n8n:${N8N_VERSION:-1.80.0}
+    container_name: n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+
+      # n8n auth UI
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-dev_password}
+
+      # Encryption key (REQUIRED in prod)
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev_encryption_key_please_change_32chars_minimum_123456}
+
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: n8npass
+
+      # Public webhook URL (ngrok / prod domain)
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
+
+      # Bot security / behavior
+      WEBHOOK_SHARED_TOKEN: ${WEBHOOK_SHARED_TOKEN:-dev_shared_token}
+      ALLOW_QUERY_TOKEN: ${ALLOW_QUERY_TOKEN:-false}
+      RATE_LIMIT_PER_30S: ${RATE_LIMIT_PER_30S:-6}
+      ALLOWED_AUDIO_DOMAINS: ${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
+      L10N_ENABLED: ${L10N_ENABLED:-false}
+      L10N_STICKY_AR_ENABLED: ${L10N_STICKY_AR_ENABLED:-false}
+      L10N_STICKY_AR_THRESHOLD: ${L10N_STICKY_AR_THRESHOLD:-2}
+
+      # Support (EPIC6)
+      SUPPORT_ENABLED: ${SUPPORT_ENABLED:-false}
+      FAQ_ENABLED: ${FAQ_ENABLED:-false}
+      ADMIN_WA_CONSOLE_ENABLED: ${ADMIN_WA_CONSOLE_ENABLED:-false}
+      ADMIN_WA_CONSOLE_WORKFLOW_ID: ${ADMIN_WA_CONSOLE_WORKFLOW_ID:-}
+
+      # LLM / STT endpoints
+      LLM_API_URL: ${LLM_API_URL:-http://ollama:11434/api/generate}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-r1}
+      STT_API_URL: ${STT_API_URL:-http://mock-api:8080/asr}
+
+      # Send APIs (mock by default)
+      WA_SEND_URL: ${WA_SEND_URL:-http://mock-api:8080/send/whatsapp}
+      IG_SEND_URL: ${IG_SEND_URL:-http://mock-api:8080/send/instagram}
+      MSG_SEND_URL: ${MSG_SEND_URL:-http://mock-api:8080/send/messenger}
+      WA_API_TOKEN: ${WA_API_TOKEN:-}
+      IG_API_TOKEN: ${IG_API_TOKEN:-}
+      MSG_API_TOKEN: ${MSG_API_TOKEN:-}
+
+      # Alerts
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://mock-api:8080/alert}
+
+      # Contracts
+      SCHEMAS_ROOT: ${SCHEMAS_ROOT:-/opt/resto/schemas}
+      SLO_WINDOW_MIN: ${SLO_WINDOW_MIN:-15}
+      SLO_INBOUND_TO_OUTBOX_P95_MS: ${SLO_INBOUND_TO_OUTBOX_P95_MS:-2000}
+      SLO_OUTBOX_PENDING_AGE_MAX_SEC: ${SLO_OUTBOX_PENDING_AGE_MAX_SEC:-600}
+      SLO_DLQ_RATE_MAX: ${SLO_DLQ_RATE_MAX:-0.05}
+      SLO_DLQ_COUNT_MAX: ${SLO_DLQ_COUNT_MAX:-5}
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./schemas:/opt/resto/schemas:ro
+
+  # Local LLM (optional)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  # STT service placeholder (replace by your real Whisper API)
+  whisper:
+    image: ghcr.io/openai/whisper:latest
+    container_name: whisper
+    command: ["bash", "-lc", "echo 'Provide a real STT API here (expects /asr).'; sleep infinity"]
+
+  # Mock endpoints so you can test end-to-end without Meta
+  mock-api:
+    image: node:18-alpine
+    container_name: mock-api
+    working_dir: /app
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./mock-api:/app
+    command: sh -c "node server.js"
+
+volumes:
+  n8n_data:
+  postgres_data:
+  ollama_data:

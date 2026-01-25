@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resto-bot.local/schemas/inbound/v1.json",
+  "title": "Inbound Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "provider",
+    "msg_id",
+    "from",
+    "text",
+    "timestamp"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "v1"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "wa",
+        "ig",
+        "msg"
+      ]
+    },
+    "msg_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "from": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 8000
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "attachments": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/definitions/attachment"
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 20
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "ip": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "user_agent": {
+          "type": "string",
+          "maxLength": 512
+        }
+      }
+    },
+    "tenant_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Never trusted from payload without proof. Any ids here are ignored unless verified by auth (api client token).",
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "restaurant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "untrusted_payload",
+            "auth_db",
+            "legacy_shared"
+          ]
+        },
+        "hints": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  "definitions": {
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "url",
+        "mime"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "audio",
+            "image"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "mime": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 100
+        }
+      }
+    }
+  }
+}

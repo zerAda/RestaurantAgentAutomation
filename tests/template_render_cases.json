@@ -1,0 +1,72 @@
+[
+  {
+    "label": "basic_substitution",
+    "content": "Hello {{name}}",
+    "vars": {"name": "Anis"},
+    "allowed": ["name"],
+    "expected": "Hello Anis"
+  },
+  {
+    "label": "missing_var",
+    "content": "Hi {{name}}",
+    "vars": {},
+    "allowed": ["name"],
+    "expected": "Hi"
+  },
+  {
+    "label": "unallowed_var_ignored",
+    "content": "Order {{order_id}} {{secret}}",
+    "vars": {"order_id": "A1", "secret": "X"},
+    "allowed": ["order_id"],
+    "expected": "Order A1"
+  },
+  {
+    "label": "unknown_placeholder_removed",
+    "content": "X {{nope}} Y",
+    "vars": {"nope": "Z"},
+    "allowed": [],
+    "expected": "X  Y"
+  },
+  {
+    "label": "multiple_placeholders",
+    "content": "#{{order_id}} {{eta}}",
+    "vars": {"order_id": "123", "eta": "\nETA: 20-30 min"},
+    "allowed": ["order_id", "eta"],
+    "expected": "#123 \nETA: 20-30 min"
+  },
+  {
+    "label": "trim_result",
+    "content": "  {{a}}   ",
+    "vars": {"a": "b"},
+    "allowed": ["a"],
+    "expected": "b"
+  },
+  {
+    "label": "braces_garbage_removed",
+    "content": "{{{weird}}} ok",
+    "vars": {"weird": "X"},
+    "allowed": ["weird"],
+    "expected": "{X} ok"
+  },
+  {
+    "label": "numeric_var",
+    "content": "Qty {{qty}}",
+    "vars": {"qty": 2},
+    "allowed": ["qty"],
+    "expected": "Qty 2"
+  },
+  {
+    "label": "null_var",
+    "content": "X {{x}}",
+    "vars": {"x": null},
+    "allowed": ["x"],
+    "expected": "X"
+  },
+  {
+    "label": "underscore_var",
+    "content": "ID {{order_id}}",
+    "vars": {"order_id": "abc"},
+    "allowed": ["order_id"],
+    "expected": "ID abc"
+  }
+]

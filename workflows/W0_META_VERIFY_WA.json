@@ -1,0 +1,75 @@
+{
+  "name": "W0 - Meta Webhook Verify (WhatsApp)",
+  "active": false,
+  "settings": {},
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/inbound/whatsapp",
+        "responseMode": "responseNode"
+      },
+      "id": "meta_verify_webhook",
+      "name": "IN - Meta Verify Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const q = $json.query || $json.qs || {};\nconst mode = (q['hub.mode'] || q['hub_mode'] || '').toString();\nconst token = (q['hub.verify_token'] || q['hub_verify_token'] || '').toString();\nconst challenge = (q['hub.challenge'] || q['hub_challenge'] || '').toString();\n\nconst enabled = (($env.META_VERIFY_ENABLED || 'true').toString().toLowerCase() === 'true');\nconst expected = ($env.META_VERIFY_TOKEN || '').toString();\n\nif (!enabled) {\n  return [{json:{_code:404, ok:false, error:'verify_disabled'}}];\n}\nif (!expected) {\n  return [{json:{_code:500, ok:false, error:'META_VERIFY_TOKEN not set'}}];\n}\nif (mode !== 'subscribe') {\n  return [{json:{_code:400, ok:false, error:'invalid_mode', mode}}];\n}\nif (token !== expected) {\n  return [{json:{_code:403, ok:false, error:'verify_token_mismatch'}}];\n}\n// Meta expects raw challenge string\nreturn [{json:{_code:200, ok:true, challenge}}];\n"
+      },
+      "id": "meta_verify_logic",
+      "name": "B0 - Verify Challenge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -450,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": "={{$json._code || 200}}",
+        "responseBody": "={{$json.challenge || $json}}",
+        "options": {}
+      },
+      "id": "meta_verify_resp",
+      "name": "RESP - Verify",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "IN - Meta Verify Webhook": {
+      "main": [
+        [
+          {
+            "node": "B0 - Verify Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Verify Challenge": {
+      "main": [
+        [
+          {
+            "node": "RESP - Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

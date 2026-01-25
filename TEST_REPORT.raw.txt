@@ -1,0 +1,8 @@
+== RESTO BOT v3.0 - Integrity Gate ==
+\n[1/5] Bash syntax check
+\n[2/5] Secret scan (forbidden placeholders)
+\n[3/5] Workflow JSON validation
+\n[4/5] DB bootstrap ordering check
+\n[5/5] Compose YAML parse (best-effort)
+YAML parse OK
+\n✅ Integrity Gate PASS

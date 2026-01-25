@@ -1,0 +1,49 @@
+{
+  "name": "W5 - OUT WhatsApp Sender",
+  "active": false,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "2679a5a9-fe7a-44b0-ad65-f17fa329f6e0",
+      "name": "IN - From CORE",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Input expected from CORE: {\n//   channel, restaurantId, userId, replyText, buttons:[{id,title}], actions, debug\n// }\nconst payload = $json;\n\nconst url = ($env.WA_SEND_URL || '').toString();\nif (!url) {\n  return [{json: {sent:false, reason:'WA_SEND_URL not set', payload} }];\n}\n\nconst token = ($env.WA_API_TOKEN || '').toString();\n\n// Generic send format (adapt to your provider / Meta Cloud API).\nconst body = {\n  channel: 'whatsapp',\n  to: payload.userId,\n  restaurantId: payload.restaurantId,\n  text: payload.replyText || '',\n  buttons: Array.isArray(payload.buttons) ? payload.buttons : [],\n  attachments: Array.isArray(payload.attachments) ? payload.attachments : []\n};\n\nconst res = await $httpRequest({\n  method: 'POST',\n  url,\n  headers: token ? { Authorization: 'Bearer ' + token } : {},\n  body,\n  json: true,\n  timeout: 30000\n});\n\nreturn [{json: {sent:true, providerResponse: res, body} }];"
+      },
+      "id": "fd8fc539-6895-4732-8b02-3cfd0a3db2ad",
+      "name": "OUT - Send Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2150,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "IN - From CORE": {
+      "main": [
+        [
+          {
+            "node": "OUT - Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

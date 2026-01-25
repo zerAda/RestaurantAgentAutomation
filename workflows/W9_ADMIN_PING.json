@@ -1,0 +1,153 @@
+{
+  "name": "W9 - ADMIN Ping (Scopes Enforced)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 60,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/admin/ping",
+        "responseMode": "responseNode"
+      },
+      "id": "b0d8b3d4-70b6-4e13-bf48-5b3b94f98112",
+      "name": "IN - Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-1200, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\n\nconst headers = ($json.headers ?? {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst headerToken = (headers['x-api-token'] || headers['X-Api-Token'] || headers['x-webhook-token'] || headers['X-Webhook-Token'] || '').toString().trim();\n\nconst token = (headerToken || bearer || '').toString().trim();\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nreturn [{\n  json: {\n    channel: 'admin',\n    userId: 'admin',\n    metadata: { ip, userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString() },\n    _auth: { tokenPresent: !!token, tokenHash }\n  }\n}];\n"
+      },
+      "id": "a6c646d3-1d80-4f60-9d0e-5d7f3a7c64cb",
+      "name": "B0 - Parse Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-980, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
+        "additionalFields": {
+          "queryParams": "={{[$json._auth.tokenHash]}}"
+        }
+      },
+      "id": "9c5e6f51-7a30-4d9c-bd3a-9d2b1a21f62c",
+      "name": "B0 - Resolve Client (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-740, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $items(\"B0 - Parse Auth\")[0].json;\nconst r = $json;\n\nconst matched = !!r.matched;\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && r.tenant_id && r.restaurant_id) {\n  tenantId = r.tenant_id.toString();\n  restaurantId = r.restaurant_id.toString();\n  authMode = 'api_client';\n  try { scopes = Array.isArray(r.scopes) ? r.scopes : (typeof r.scopes === 'string' ? JSON.parse(r.scopes) : (r.scopes?.scopes || [])); } catch { scopes = []; }\n}\n\nconst authOk = authMode !== 'deny';\n\nconst requiredScopes = ['admin:read'];\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\nconst scopeOk = authOk && (requiredScopes.length === 0 || requiredScopes.some(rq => hasScope(rq, scopes)));\n\nconst endpoint_group = 'admin';\nconst endpoint_path = '/v1/admin/ping';\n\nconst denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    _auth: {\n      ...e._auth,\n      authOk,\n      scopeOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (r.client_id || null) : null,\n      clientName: matched ? (r.client_name || null) : null\n    }\n  }\n}];\n"
+      },
+      "id": "f4f63b2e-2d54-4b85-9c74-f9a37c1f67c1",
+      "name": "B0 - Apply Auth Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-500, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{$json._auth.authOk}}", "operation": "isTrue" },
+            { "value1": "={{$json._auth.scopeOk}}", "operation": "isTrue" }
+          ]
+        }
+      },
+      "id": "c7b8a6b1-0d14-4a0c-9f5a-6a4c8a7e4090",
+      "name": "B0 - Access OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-280, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,$6,'HIGH', jsonb_build_object('token_hash',$7,'ip',$8,'ua',$9,'auth_mode',$10,'required_scopes',$11::jsonb,'scopes',$12::jsonb,'endpoint_group',$13,'endpoint_path',$14)) RETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId||null, $json.restaurantId||null, null, $json.channel, $json.userId, ($json._auth.denyReason || 'AUTH_DENY'), $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.authMode, JSON.stringify($json._auth.requiredScopes || []), JSON.stringify($json._auth.scopes || []), $json._auth.endpoint_group, $json._auth.endpoint_path]}}"
+        }
+      },
+      "id": "f0cf1b91-7a49-4f2c-9c92-c8d7a1f7d5fe",
+      "name": "B0 - Log Deny (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-40, 120]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO admin_audit_log(tenant_id, restaurant_id, actor_client_id, actor_name, action, object_type, object_id, ip, user_agent, payload_json) VALUES ($1,$2,$3,$4,'ADMIN_PING',NULL,NULL,$5,$6,jsonb_build_object('scopes',$7::jsonb)) RETURNING id;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId||null, $json.restaurantId||null, $json._auth.clientId||null, $json._auth.clientName||null, $json.metadata.ip, $json.metadata.userAgent, JSON.stringify($json._auth.scopes || [])]}}"
+        }
+      },
+      "id": "2c93f9b4-8e3b-4e4b-bb73-3f3c6888b1d1",
+      "name": "B0 - Log Allow (Audit)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-40, -120]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ { ok: true, service: 'admin', tenantId: $json.tenantId, client: $json._auth.clientName } }}"
+      },
+      "id": "a3fa0f2e-07c3-4c1f-98c0-8d3e2c7a6c2d",
+      "name": "RESP - 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [220, -120]
+    },
+    {
+      "parameters": {
+        "responseCode": 403,
+        "responseData": "={{ { ok: false, error: ($json._auth.denyReason || 'AUTH_DENY'), message: 'Forbidden' } }}"
+      },
+      "id": "9bb0cf7b-1f6d-4af1-8b0b-8f2d2d0b8d91",
+      "name": "RESP - 403 Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [220, 120]
+    }
+  ],
+  "connections": {
+    "IN - Webhook": {
+      "main": [[{ "node": "B0 - Parse Auth", "type": "main", "index": 0 }]]
+    },
+    "B0 - Parse Auth": {
+      "main": [[{ "node": "B0 - Resolve Client (DB)", "type": "main", "index": 0 }]]
+    },
+    "B0 - Resolve Client (DB)": {
+      "main": [[{ "node": "B0 - Apply Auth Context", "type": "main", "index": 0 }]]
+    },
+    "B0 - Apply Auth Context": {
+      "main": [[{ "node": "B0 - Access OK?", "type": "main", "index": 0 }]]
+    },
+    "B0 - Access OK?": {
+      "main": [
+        [{ "node": "B0 - Log Allow (Audit)", "type": "main", "index": 0 }],
+        [{ "node": "B0 - Log Deny (DB)", "type": "main", "index": 0 }]
+      ]
+    },
+    "B0 - Log Allow (Audit)": {
+      "main": [[{ "node": "RESP - 200 OK", "type": "main", "index": 0 }]]
+    },
+    "B0 - Log Deny (DB)": {
+      "main": [[{ "node": "RESP - 403 Forbidden", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}

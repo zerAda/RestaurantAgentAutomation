@@ -1,0 +1,1218 @@
+{
+  "name": "W4 - CORE Agent (State + Voice + Secure)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a4b9f8d3-eddb-4b9f-93ba-ea4b00b520d6",
+      "name": "IN - From Adapters",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst required = ['channel','tenantId','restaurantId','userId','conversationKey','message','metadata'];\nconst missing = required.filter(k => e[k] === undefined || e[k] === null);\nif (missing.length) {\n  return [{json: { ...e, _err: { code:'BAD_EVENT', missing } }}];\n}\n// Normalize message fields\ne.message = e.message || {};\ne.message.type = (e.message.type || 'text').toString();\ne.message.text = (e.message.text || '').toString();\ne.message.buttonId = (e.message.buttonId || '').toString();\nreturn [{json: e}];"
+      },
+      "id": "5594fe8a-92cd-4d2c-909d-c9286e1a26e2",
+      "name": "C0 - Validate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2150,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COALESCE((SELECT state_json FROM public.conversation_state WHERE conversation_key=$1), '{}'::jsonb) AS state_json,\n  COALESCE((SELECT cart_json  FROM public.carts WHERE conversation_key=$1),  '{\"items\":[]}'::jsonb) AS cart_json,\n  (SELECT locale FROM public.customer_preferences WHERE tenant_id=$2 AND phone=$3) AS pref_locale,\n  COALESCE((\n    SELECT jsonb_object_agg(x.key||'::'||x.locale, x.content)\n    FROM (\n      SELECT DISTINCT ON (key, locale)\n        key, locale, content\n      FROM public.message_templates\n      WHERE (tenant_id=$2 OR tenant_id='_GLOBAL')\n        AND locale IN ('fr','ar')\n      ORDER BY key, locale, CASE WHEN tenant_id=$2 THEN 0 ELSE 1 END\n    ) x\n  ), '{}'::jsonb) AS templates_json,\n  COALESCE((\n    SELECT jsonb_object_agg(x.key||'::'||x.locale, x.variables)\n    FROM (\n      SELECT DISTINCT ON (key, locale)\n        key, locale, variables\n      FROM public.message_templates\n      WHERE (tenant_id=$2 OR tenant_id='_GLOBAL')\n        AND locale IN ('fr','ar')\n      ORDER BY key, locale, CASE WHEN tenant_id=$2 THEN 0 ELSE 1 END\n    ) x\n  ), '{}'::jsonb) AS template_vars_json;\n",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey, $json.tenantId, $json.userId]}}"
+        }
+      },
+      "id": "32592903-4875-4883-9115-b570fb587af0",
+      "name": "C1 - Load State+Cart (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -1920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const event = $json;\nconst state = ($json.state_json && typeof $json.state_json === 'object') ? $json.state_json : {};\nconst cart = ($json.cart_json && typeof $json.cart_json === 'object') ? $json.cart_json : {items:[]};\n\nconst l10nEnabled = (($env.L10N_ENABLED || 'false').toString().toLowerCase() === 'true');\nconst stickyArEnabled = (($env.L10N_STICKY_AR_ENABLED || 'false').toString().toLowerCase() === 'true');\nconst stickyArThreshold = parseInt(($env.L10N_STICKY_AR_THRESHOLD || '2').toString(), 10);\n\nconst prefLocaleDb = ($json.pref_locale || '').toString().trim().toLowerCase();\nconst text = (event?.message?.text || '').toString();\n\n// Arabic script detection (Unicode blocks)\nconst hasArabic = /[\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF]/.test(text);\nconst detectedLocale = hasArabic ? 'ar' : 'fr';\n\n// Persisted preference (only set by LANG command); do not overwrite based on message script.\nconst localePref = (state.localePref || state.locale || prefLocaleDb || event.metadata?.locale || 'fr').toString().trim().toLowerCase();\n\n// Sticky Arabic session rule: if user sent Arabic script N times, allow Darija (Latin) to respond in AR\nconst prevArCount = parseInt((state.arabicScriptCount || 0).toString(), 10) || 0;\nconst newArCount = (l10nEnabled && stickyArEnabled && hasArabic) ? (prevArCount + 1) : prevArCount;\nconst stickyAr = !!state.stickyAr || (l10nEnabled && stickyArEnabled && (newArCount >= (isNaN(stickyArThreshold) ? 2 : stickyArThreshold)));\n\nconst merged = {\n  stage: state.stage || 'START',               // START | COLLECTING | CONFIRMING | PLACED\n  serviceMode: state.serviceMode || null,      // sur_place | a_emporter | livraison\n  localePref,                                  // persisted preference\n  locale: localePref,                           // legacy field (kept for backward compatibility)bility\n  arabicScriptCount: newArCount,                  // sticky AR counter\n  stickyAr: stickyAr,                             // sticky AR flag\n  lastIntent: state.lastIntent || null,\n  lastReplyAt: state.lastReplyAt || null\n};\n\nconst safeCart = {\n  serviceMode: cart.serviceMode || merged.serviceMode,\n  items: Array.isArray(cart.items) ? cart.items : [],\n  note: (cart.note || '').toString()\n};\n\n// Attach templates loaded from DB (may be empty if not seeded yet)\nconst templates = ($json.templates_json && typeof $json.templates_json === 'object') ? $json.templates_json : {};\nconst templateVars = ($json.template_vars_json && typeof $json.template_vars_json === 'object') ? $json.template_vars_json : {};\n\nreturn [{\n  json: {\n    ...event,\n    state: merged,\n    cart: safeCart,\n    l10n: {\n      enabled: l10nEnabled,\n      prefLocale: localePref,\n      detectedLocale,\n      hasArabic,\n      stickyArEnabled,\n      stickyArThreshold: (isNaN(stickyArThreshold) ? 2 : stickyArThreshold),\n    },\n    templates,\n    templateVars\n  }\n}];\n"
+      },
+      "id": "fe44ee07-cb63-4764-bf72-753efa6e4cce",
+      "name": "C2 - Merge State Defaults",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\n\nfunction isIpLiteral(host) {\n  return /^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host);\n}\nfunction isPrivateIp(ip) {\n  const parts = ip.split('.').map(x => Number(x));\n  if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return true;\n  const [a,b] = parts;\n  if (a === 10) return true;\n  if (a === 127) return true;\n  if (a === 0) return true;\n  if (a === 169 && b === 254) return true;\n  if (a === 192 && b === 168) return true;\n  if (a === 172 && b >= 16 && b <= 31) return true;\n  return false;\n}\nfunction normalizeAllowlist(v) {\n  return (v || '').toString()\n    .split(',')\n    .map(s => s.trim().toLowerCase())\n    .filter(Boolean);\n}\nfunction hostAllowed(host, allow) {\n  const h = host.toLowerCase();\n  // exact match or subdomain match\n  return allow.some(a => h === a || h.endsWith('.' + a));\n}\nfunction validateAudioUrl(u) {\n  try {\n    const url = new URL(u);\n    if (url.protocol !== 'https:') return { ok:false, reason:'https_only' };\n    if (url.username || url.password) return { ok:false, reason:'no_credentials' };\n    const host = url.hostname || '';\n    if (!host) return { ok:false, reason:'missing_host' };\n    if (host === 'localhost' || host.endsWith('.local')) return { ok:false, reason:'localhost_blocked' };\n    // Block any IP literal (public or private) to avoid SSRF bypasses.\n    if (isIpLiteral(host)) return { ok:false, reason:'ip_literal_blocked', host };\n    // Block IPv6 literals as well.\n    if (host.includes(':')) return { ok:false, reason:'ipv6_literal_blocked', host };\n\n    const allow = normalizeAllowlist($env.ALLOWED_AUDIO_DOMAINS || '');\n    if (!allow.length) return { ok:false, reason:'allowlist_empty' };\n    if (!hostAllowed(host, allow)) return { ok:false, reason:'domain_not_allowed', host, allow };\n    return { ok:true, host };\n  } catch (err) {\n    return { ok:false, reason:'invalid_url' };\n  }\n}\n\nif (e.message?.type !== 'audio' || !e.message?.audio?.url) {\n  return [{json: {...e, userText: (e.message?.type === 'button') ? e.message.buttonId : e.message.text }}];\n}\n\nconst sttUrl = ($env.STT_API_URL || '').toString();\nif (!sttUrl) {\n  return [{json: {...e, userText: '', stt: {ok:false, reason:'STT_API_URL not set'} }}];\n}\n\nconst audioUrl = e.message.audio.url.toString();\nconst v = validateAudioUrl(audioUrl);\nif (!v.ok) {\n  return [{\n    json: {\n      ...e,\n      userText: '',\n      stt: { ok:false, reason:'AUDIO_URL_BLOCKED', details: v },\n      _sec: { ...(e._sec||{}), audioUrlBlocked:true, audioBlockReason: v.reason, audioHost: v.host || '' }\n    }\n  }];\n}\n\ntry {\n  const sttRes = await $httpRequest({\n    method: 'POST',\n    url: sttUrl,\n    body: { audioUrl, mime: e.message.audio.mime || 'audio/ogg' },\n    json: true,\n    timeout: 60000\n  });\n\n  const transcript = (sttRes.text || sttRes.transcript || '').toString().trim();\n  const confidence = Number(sttRes.confidence ?? 0);\n\n  e.stt = { ok:true, transcript, confidence, provider: sttRes.provider || 'stt' };\n  e.userText = transcript;\n\n  return [{json: e}];\n} catch (err) {\n  return [{json: {...e, userText: '', stt: {ok:false, error: (err && err.message) ? err.message : 'stt_failed'} }}];\n}\n"
+      },
+      "id": "3245f83b-5ca2-440a-8e4a-f51849433a47",
+      "name": "C3 - Voice STT (optional)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n      $1::text AS restaurant_id,\n      COALESCE((\n        SELECT jsonb_agg(row_to_json(mi)) FROM (\n          SELECT item_code, label, price_cents, category\n          FROM menu_items\n          WHERE restaurant_id=$1 AND active=true\n          ORDER BY category, item_code\n        ) mi\n      ), '[]'::jsonb) AS items,\n      COALESCE((\n        SELECT jsonb_agg(row_to_json(mo)) FROM (\n          SELECT option_code, item_code, label, kind, price_delta_cents\n          FROM menu_item_options\n          WHERE restaurant_id=$1 AND active=true\n          ORDER BY item_code, option_code\n        ) mo\n      ), '[]'::jsonb) AS options;",
+        "additionalFields": {
+          "queryParams": "={{[$json.restaurantId]}}"
+        }
+      },
+      "id": "8963c7d6-dd8e-49f3-964e-25e0a0ecb2a6",
+      "name": "C4 - Load Menu Index (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -1260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst items = Array.isArray($json.items) ? $json.items : [];\nconst options = Array.isArray($json.options) ? $json.options : [];\n\nconst itemMap = {};\nfor (const it of items) itemMap[it.item_code] = it;\n\nconst optionMap = {};\nfor (const op of options) optionMap[op.option_code] = op;\n\n// grouped options by item\nconst optionsByItem = {};\nfor (const op of options) {\n  optionsByItem[op.item_code] = optionsByItem[op.item_code] || [];\n  optionsByItem[op.item_code].push(op);\n}\n\nreturn [{json: {...e, menu: {items, options, itemMap, optionMap, optionsByItem}}}];"
+      },
+      "id": "2ea6726a-ba2a-4a32-a70e-753d04865b63",
+      "name": "C5 - Build Menu Maps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\n\n// Raw text inputs\nconst textRaw = (e.userText || '').toString().trim();\nconst buttonId = (e.message?.buttonId || '').toString().trim();\nconst msgText = (e.message?.text || '').toString().trim();\nconst text = (e.message?.type === 'button') ? buttonId : (msgText || textRaw);\nconst isButton = (e.message?.type === 'button');\n\n// ---- L10N: respond AR if message contains Arabic script, else FR.\n// LANG FR / LANG AR still works and persists preference.\nconst l10nEnabled = !!(e.l10n && e.l10n.enabled);\nconst hasArabic = (e.l10n && typeof e.l10n.hasArabic === 'boolean') ? e.l10n.hasArabic : /[؀-ۿݐ-ݿࢠ-ࣿ]/.test(msgText || text || '');\nlet responseLocale = hasArabic ? 'ar' : 'fr';\n\n// Buttons carry no script; keep last response locale to avoid flipping language on UI actions\nif (l10nEnabled && isButton) {\n  const prev = ((e.state && (e.state.lastResponseLocale || e.state.localePref || e.state.locale)) || '').toString().trim().toLowerCase();\n  if (prev === 'ar' || prev === 'fr') responseLocale = prev;\n}\n\n// NO REGRESSION: if feature disabled, keep legacy locale selection\nif (!l10nEnabled) {\n  responseLocale = ((e.state && (e.state.localePref || e.state.locale)) || 'fr').toString().toLowerCase();\n}\n\n// Normalize\nresponseLocale = (responseLocale === 'ar') ? 'ar' : 'fr';\n\nconst langMatch = /^\\s*lang\\s+(fr|ar)\\s*$/i.exec((msgText || textRaw || '').toString());\nif (l10nEnabled && langMatch) {\n  responseLocale = langMatch[1].toLowerCase();\n  e.state = e.state || {};\n  e.state.localePref = responseLocale;\n  e.state.locale = responseLocale; // keep legacy field aligned\n  // Sticky AR session control (only if enabled)\n  if (e.l10n && e.l10n.stickyArEnabled && responseLocale === 'fr') {\n    e.state.arabicScriptCount = 0;\n    e.state.stickyAr = false;\n  } else if (e.l10n && e.l10n.stickyArEnabled && responseLocale === 'ar') {\n    const thr = (e.l10n && e.l10n.stickyArThreshold) ? e.l10n.stickyArThreshold : 2;\n    e.state.arabicScriptCount = Math.max(parseInt(e.state.arabicScriptCount || 0, 10) || 0, thr);\n    e.state.stickyAr = true;\n  }\n  e.l10nPersistLocale = true;\n}\n\n// Templates (loaded from DB) + safe renderer\nconst templates = (e.templates && typeof e.templates === 'object') ? e.templates : {};\nconst templateVars = (e.templateVars && typeof e.templateVars === 'object') ? e.templateVars : {};\n\nfunction renderTemplate(content, vars, allowed) {\n  const v = vars && typeof vars === 'object' ? vars : {};\n  const allow = Array.isArray(allowed) ? new Set(allowed.map(String)) : null;\n  return (content || '').replace(/\\{\\{\\s*([a-zA-Z0-9_]+)\\s*\\}\\}/g, (_, k) => {\n    const key = String(k);\n    if (allow && !allow.has(key)) return '';\n    const val = v[key];\n    return (val === undefined || val === null) ? '' : String(val);\n  }).replace(/\\{\\{[^}]+\\}\\}/g,'').trim();\n}\n\nfunction T(key, vars = {}, locale = responseLocale, fallback = '') {\n  const k = `${key}::${locale}`;\n  const kfr = `${key}::fr`;\n  const content = templates[k] || templates[kfr] || fallback || '';\n  const allowed = templateVars[k] || templateVars[kfr] || null;\n  return renderTemplate(content, vars, allowed);\n}\n\nfunction BTN(id, frTitle, arTitle) {\n  const title = (responseLocale === 'ar') ? arTitle : frTitle;\n  return { id, title };\n}\n\n\nconst menuItems = e.menu?.items || [];\nconst itemMap = e.menu?.itemMap || {};\nconst optionMap = e.menu?.optionMap || {};\nconst optionsByItem = e.menu?.optionsByItem || {};\n\nconst riskFlags = [];\nconst lower = (text || '').toLowerCase();\n/**\n * Darija (translit Latin) shortcuts.\n * Note: default replies follow script rule (AR when Arabic script is used).\n * Extra: if sticky AR is active (after N Arabic-script messages), Darija (Latin) can also reply in AR.\n */\nconst darijaMenu = [\n  'chno kayn','chnou kayen','chno kayen','wach kayn','wesh kayn','wesh kayen','wach kayen',\n  'menu','menou','minou','mnu','lmenu','lmnu','carte','la carte','carte svp',\n  'nchouf menu','nchouf lmenu','nchoof menu','nchoof lmenu','bghit nchoof menu','bghit nchouf menu',\n  'show menu','show lmenu','affiche menu','voir menu','menu daba','menu m3ak','menu m3aya'\n];\nconst darijaCheckout = [\n  'kml','kammel','kmel','kmel commande','kml commande','kml daba','kmel daba',\n  'checkout','check out','tchekout','confirm','confirmer','valider','validation',\n  'bghit ncommandi','bghit ncommandi daba','bghit ncmdi','ncommandi','ncmdi','ndir commande','bghit ndir commande',\n  'order','commande'\n];\n\n// Arabic keywords (script) to map to intents\nconst arabicMenuTokens = ['قائمة','القائمة','منيو','المنيو','menu','مينو'];\nconst arabicCheckoutTokens = ['كمل','كمّل','اكمل','أكمل','تأكيد','تاكيد','أكد','اكّد','confirm','اطلب','طلب'];\n\nlet normalizedLower = lower;\nlet darijaMatched = false;\n\nif (l10nEnabled && hasArabic) {\n  const t = (msgText || text || '').toString();\n  if (arabicMenuTokens.some(tok => t.includes(tok))) { normalizedLower = 'menu'; darijaMatched = true; }\n  if (arabicCheckoutTokens.some(tok => t.includes(tok))) { normalizedLower = 'checkout'; darijaMatched = true; }\n}\n\nif (darijaMenu.some(p => normalizedLower.includes(p))) { normalizedLower = 'menu'; darijaMatched = true; }\nif (darijaCheckout.some(p => normalizedLower.includes(p))) { normalizedLower = 'checkout'; darijaMatched = true; }\n\n// Sticky Arabic session rule: once user has sent Arabic script enough times (see C2), allow Darija (Latin) messages to be answered in AR for the rest of the session.\n// This is behind L10N_STICKY_AR_ENABLED.\nif (l10nEnabled && (e.l10n && e.l10n.stickyArEnabled) && !hasArabic && darijaMatched && (e.state && e.state.stickyAr)) {\n  responseLocale = 'ar';\n}\n\n\n\n// Prompt injection / jailbreak patterns\nconst inj = /(ignore (all|the) (previous|instructions)|system prompt|reveal|secret|token|api key|dump|sql|drop table|delete from|--|;)/i;\nif (inj.test(text || '')) riskFlags.push('PROMPT_INJECTION_SUSPECT');\n\n// If no reliable text (STT failed)\nif (!text || text.length < 2) {\n  const fallbackFR = \"Je n’ai pas bien compris. Tu peux réessayer en écrivant ou refaire un vocal plus clair ?\";\n  const fallbackAR = \"لم أفهم جيداً. حاول كتابة رسالتك مرة أخرى أو أرسل رسالة صوتية أوضح.\";\n  const msg = (responseLocale === 'ar')\n    ? T('CORE_CLARIFY', {}, 'ar', fallbackAR)\n    : T('CORE_CLARIFY', {}, 'fr', fallbackFR);\n\n  return [{json: {\n    ...e,\n    intent: 'CLARIFY',\n    response: {\n      replyText: msg,\n      buttons: [\n        BTN('HELP_MENU','📋 Voir le menu','📋 عرض القائمة'),\n        BTN('VOICE_RETRY','🎤 Refaire un vocal','🎤 أعد إرسال رسالة صوتية')\n      ]\n    },\n    debug: {riskFlags, responseLocale}\n  }}];\n}\n\n// EPIC6 flags\nconst supportEnabled = (($env.SUPPORT_ENABLED || 'false').toString().toLowerCase() === 'true');\nconst faqEnabled = (($env.FAQ_ENABLED || 'false').toString().toLowerCase() === 'true');\n\n\n\n// Support handoff (explicit)\nif (supportEnabled) {\n  const helpTokens = new Set(['help','aide','agent','support']);\n  const t = (lower || '').trim();\n  if (helpTokens.has(t)) {\n    return [{json:{\n      ...e,\n      intent:'HANDOFF_SUPPORT',\n      action:'SUPPORT_HANDOFF',\n      reason_code:'HELP',\n      response:{\n        replyText: T('SUPPORT_HANDOFF_ACK', {}, responseLocale, (responseLocale==='ar' ? '🧑‍💬 شكراً. سيتواصل معك أحد الموظفين قريباً.' : '🧑‍💬 Merci. Un agent va vous contacter rapidement.')),\n        buttons:[ BTN('HELP_MENU','📋 Voir le menu','📋 عرض القائمة') ]\n      },\n      debug:{riskFlags, responseLocale}\n    }}];\n  }\n}\n\n// Owner/Admin shortcuts (RBAC handled by DB table later; here we just route)\nif (lower === 'admin' || lower.includes('kpi') || text === 'ADMIN_HOME') {\n  return [{json:{\n    ...e,\n    intent:'ADMIN_HOME',\n    response:{\n      replyText:'Menu admin :',\n      buttons:[\n        {id:'ADMIN_KPI_TODAY',title:'📊 KPI 24h'},\n        {id:'ADMIN_TOP_ITEMS',title:'⭐ Top ventes'},\n        {id:'ADMIN_ALERTS',title:'🚨 Alertes'}\n      ]\n    },\n    debug:{riskFlags}\n  }}];\n}\n\n// LANG SWITCH\nif (l10nEnabled && langMatch) {\n  const loc = responseLocale;\n  const reply = (loc === 'ar')\n    ? T('CORE_LANG_SET_AR', {}, 'ar', '✅ تم تغيير اللغة إلى العربية. اكتب \"menu\" لعرض القائمة.')\n    : T('CORE_LANG_SET_FR', {}, 'fr', '✅ Langue définie sur Français. Tape \"menu\" pour voir la carte.');\n\n  return [{json:{\n    ...e,\n    intent:'LANG_SET',\n    response:{\n      replyText: reply,\n      buttons:[\n        BTN('HELP_MENU','📋 Voir le menu','📋 عرض القائمة')\n      ]\n    },\n    debug:{riskFlags, responseLocale},\n    l10nPersistLocale: true\n  }}];\n}\n\n// HELP / MENU\nif (normalizedLower === 'menu' || text === 'HELP_MENU' || lower === 'menu') {\n  const cats = {};\n  for (const it of menuItems) {\n    const cat = it.category || 'Autres';\n    cats[cat] = cats[cat] || [];\n    cats[cat].push(it);\n  }\n  let msg = T('CORE_MENU_HEADER', {}, responseLocale, (responseLocale==='ar' ? '📋 القائمة (استخدم المعرفات في رسالتك)\\n' : '📋 Menu (IDs utilisables dans ton message)\\n'));\n  for (const [cat, arr] of Object.entries(cats)) {\n    msg += `\\n*${cat}*\\n`;\n    for (const it of arr.slice(0, 12)) {\n      msg += `- ${it.item_code} : ${it.label} (${(it.price_cents/100).toFixed(2)}€)\\n`;\n    }\n  }\n  return [{json:{...e, intent:'SHOW_MENU', response:{replyText:msg, buttons:[{id:'MODE_SUR_PLACE',title:'🍽️ Sur place'},{id:'MODE_A_EMPORTER',title:'🛍️ À emporter'},{id:'MODE_LIVRAISON',title:'🛵 Livraison'}]}, debug:{riskFlags}}}];\n}\n\n// Service mode selection (buttons or text)\nconst modeFromText = (() => {\n  if (lower.includes('sur place')) return 'sur_place';\n  if (lower.includes('emporter') || lower.includes('à emporter') || lower.includes('a emporter')) return 'a_emporter';\n  if (lower.includes('livraison') || lower.includes('livrer')) return 'livraison';\n  return null;\n})();\n\nif (text === 'MODE_SUR_PLACE') e.state.serviceMode = 'sur_place';\nif (text === 'MODE_A_EMPORTER') e.state.serviceMode = 'a_emporter';\nif (text === 'MODE_LIVRAISON') e.state.serviceMode = 'livraison';\nif (modeFromText) e.state.serviceMode = modeFromText;\n\nif (!e.state.serviceMode) {\n  return [{json:{\n    ...e,\n    intent:'ASK_MODE',\n    response:{\n      replyText:\"Tu veux *sur place*, *à emporter* ou *livraison* ?\",\n      buttons:[\n        {id:'MODE_SUR_PLACE',title:'🍽️ Sur place'},\n        {id:'MODE_A_EMPORTER',title:'🛍️ À emporter'},\n        {id:'MODE_LIVRAISON',title:'🛵 Livraison'}\n      ]\n    },\n    debug:{riskFlags}\n  }}];\n}\n\n// Parse item codes and qty: example \"P01 x2 +S01\"\nconst upper = text.toUpperCase();\nconst codeMatches = upper.match(/[A-Z]{1,3}\\d{2,4}/g) || [];\nconst uniqueCodes = [...new Set(codeMatches)];\n\n// Checkout intents\nconst isCheckout = (lower.includes('valider') || lower.includes('checkout') || lower.includes('commander') || text === 'CHECKOUT');\nconst isConfirmYes = (text === 'CONFIRM_YES' || lower === 'oui');\nconst isConfirmNo  = (text === 'CONFIRM_NO'  || lower === 'non');\n\n// Confirm stage handling\nif (e.state.stage === 'CONFIRMING') {\n  if (isConfirmYes) {\n    // Delivery: collect structured address before checkout\n    const deliveryEnabled = (($env.DELIVERY_ENABLED || 'false').toString() === 'true');\n    if (e.state.serviceMode === 'livraison') {\n      if (!deliveryEnabled) {\n        e.state.serviceMode = 'a_emporter';\n        e.state.stage = 'COLLECTING';\n        return [{json:{...e, intent:'DELIVERY_DISABLED', response:{replyText:\"🚫 Livraison indisponible pour le moment. Je passe en À emporter.\", buttons:[{id:'HELP_MENU',title:'📋 Menu'},{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags}}}];\n      }\n      const d = e.state.delivery || {};\n      const missing = [];\n      if (!d.wilaya) missing.push('wilaya');\n      if (!d.commune) missing.push('commune');\n      if (!d.details) missing.push('adresse');\n      if (!d.phone) missing.push('tel');\n      // persist last known total for quote\n      e.state.lastTotalCents = Number((e.debug && e.debug.totalCents) || e.state.lastTotalCents || 0);\n      if (missing.length) {\n        e.state.stage = 'DELIVERY_ADDRESS';\n        const t = \"📍 Pour la livraison, j’ai besoin de : Wilaya, Commune, Adresse (repère), Téléphone.\n\nFormat :\nWilaya: <...>\nCommune: <...>\nAdresse: <...>\nTel: <...>\";\n        return [{json:{...e, intent:'DELIVERY_ADDRESS', action:'ADDRESS_AMBIGUOUS', missing_fields: missing, response:{replyText:t}, debug:{riskFlags}}}];\n      }\n      // Address already present\n      if (d.quote_shown) {\n        return [{json:{...e, intent:'CHECKOUT', action:'CHECKOUT', debug:{riskFlags}}}];\n      }\n      // compute quote/slots before final checkout\n      return [{json:{...e, intent:'DELIVERY_QUOTE', action:'DELIVERY_QUOTE', debug:{riskFlags}}}];\n    }\n    return [{json:{...e, intent:'CHECKOUT', action:'CHECKOUT', debug:{riskFlags}}}];\n  }\n  if (isConfirmNo) {\n    e.state.stage = 'COLLECTING';\n    return [{json:{...e, intent:'BACK_TO_CART', response:{replyText:\"Ok, on modifie le panier. Envoie les IDs (ex: P01 x2) ou tape MENU.\", buttons:[{id:'HELP_MENU',title:'📋 Menu'},{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags}}}];\n  }\n}\n\n\n// Delivery address clarification stage\nif (e.state.stage === 'DELIVERY_ADDRESS') {\n  const d = (e.state.delivery || {});\n  const lines = text.split(/\\n|,|;/).map(s => s.trim()).filter(Boolean);\n  for (const line of lines) {\n    const l = line.toLowerCase();\n    const val = line.split(':').slice(1).join(':').trim();\n    if (l.startsWith('wilaya') && val) d.wilaya = val;\n    else if (l.startsWith('commune') && val) d.commune = val;\n    else if ((l.startsWith('adresse') || l.startsWith('address') || l.startsWith('rue')) && val) d.details = val;\n    else if ((l.startsWith('tel') || l.startsWith('telephone') || l.startsWith('phone')) && val) d.phone = val;\n  }\n  // Fallback: if user sent 4 parts without labels\n  if (lines.length >= 4 && (!d.wilaya || !d.commune || !d.details || !d.phone)) {\n    const parts = lines.map(x => x.replace(/^[-•]/,'').trim());\n    d.wilaya = d.wilaya || parts[0];\n    d.commune = d.commune || parts[1];\n    d.details = d.details || parts[2];\n    d.phone = d.phone || parts[3];\n  }\n  e.state.delivery = d;\n  const missing = [];\n  if (!d.wilaya) missing.push('wilaya');\n  if (!d.commune) missing.push('commune');\n  if (!d.details) missing.push('adresse');\n  if (!d.phone) missing.push('tel');\n  if (missing.length) {\n    const attempts = Number(e.state.delivery_attempts || 0) + 1;\n    e.state.delivery_attempts = attempts;\n    const maxA = Number(($env.DELIVERY_ADDRESS_MAX_ATTEMPTS || '3'));\n    if (($env.DELIVERY_ADDRESS_CLARIFY || 'true').toString() === 'true' && attempts > maxA) {\n      e.state.stage = 'HANDOFF';\n      return [{json:{...e, intent:'DELIVERY_HANDOFF', action:'ADDRESS_AMBIGUOUS', missing_fields: missing, response:{replyText:\"Je n'arrive pas à clarifier l’adresse. Je te mets en relation avec un humain.\"}, debug:{riskFlags}}}];\n    }\n    return [{json:{...e, intent:'DELIVERY_ADDRESS', action:'ADDRESS_AMBIGUOUS', missing_fields: missing, response:{replyText:\"Il manque : \"+missing.join(', ')+\". Reprends le format : Wilaya/Commune/Adresse/Tel.\"}, debug:{riskFlags}}}];\n  }\n  // Address OK → compute quote/slots\n  e.state.stage = 'CONFIRMING';\n  return [{json:{...e, intent:'DELIVERY_QUOTE', action:'DELIVERY_QUOTE', debug:{riskFlags}}}];\n}\n\n// Delivery slot pick stage\nif (e.state.stage === 'DELIVERY_SLOT_PICK') {\n  if (text.startsWith('SLOT_')) {\n    const slotId = text.slice('SLOT_'.length).trim();\n    e.state.delivery = e.state.delivery || {};\n    e.state.delivery.slot_id = slotId;\n    e.state.stage = 'CONFIRMING';\n    return [{json:{...e, intent:'SLOT_OK', response:{replyText:\"✅ Créneau enregistré. Clique Valider pour confirmer la commande.\", buttons:[{id:'CHECKOUT',title:'✅ Valider'},{id:'CONFIRM_NO',title:'✏️ Modifier'}]}, debug:{riskFlags}}}];\n  }\n}\n// If user asks to checkout but cart empty\nif (isCheckout && (!e.cart.items || e.cart.items.length === 0)) {\n  return [{json:{...e, intent:'EMPTY_CART', response:{replyText:\"Ton panier est vide. Tape MENU pour choisir des plats (ex: P01 x2).\", buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags}}}];\n}\n\n// If item codes present -> add/update cart\nif (uniqueCodes.length) {\n  const newItems = [...(e.cart.items || [])];\n\n  for (const code of uniqueCodes) {\n    if (!itemMap[code]) {\n      return [{json:{...e, intent:'UNKNOWN_ITEM', response:{replyText:`Je ne trouve pas l’ID *${code}*. Tape MENU ou renvoie l’ID exact.`, buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags}}}];\n    }\n\n    // qty: try CODE xN or CODE N\n    let qty = 1;\n    const r1 = new RegExp(code + '\\\\s*x\\\\s*(\\\\d{1,2})','i');\n    const r2 = new RegExp(code + '\\\\s+(\\\\d{1,2})','i');\n    const m1 = upper.match(r1);\n    const m2 = upper.match(r2);\n    if (m1 && m1[1]) qty = Math.max(1, Math.min(20, parseInt(m1[1],10)));\n    else if (m2 && m2[1]) qty = Math.max(1, Math.min(20, parseInt(m2[1],10)));\n\n    // options: +OPT or -OPT (we accept OPT alone too)\n    const optMatches = upper.match(/[\\+\\-]?[A-Z]{1,3}\\d{2,4}/g) || [];\n    const options = [];\n    for (const raw of optMatches) {\n      const oc = raw.replace('+','').replace('-','');\n      if (optionMap[oc] && optionMap[oc].item_code === code) options.push(oc);\n    }\n\n    const existing = newItems.find(x => x.item === code);\n    if (existing) {\n      existing.qty = Math.max(1, Math.min(20, Number(existing.qty || 1) + qty));\n      const set = new Set([...(existing.options||[]), ...options]);\n      existing.options = [...set];\n    } else {\n      newItems.push({item: code, qty, options});\n    }\n  }\n\n  e.cart.items = newItems;\n  e.state.stage = 'COLLECTING';\n\n  // Build short cart recap\n  let recap = '🧺 Panier :\\n';\n  let total = 0;\n  for (const line of newItems) {\n    const it = itemMap[line.item];\n    const base = Number(it.price_cents||0);\n    let opt = 0;\n    const opts = Array.isArray(line.options)?line.options:[];\n    for (const oc of opts) opt += Number(optionMap[oc]?.price_delta_cents || 0);\n    const lineTotal = (base + opt) * Number(line.qty||1);\n    total += lineTotal;\n    recap += `- ${line.item} ${it.label} x${line.qty} = ${(lineTotal/100).toFixed(2)}€\\n`;\n  }\n  recap += `\\nTotal estimé : ${(total/100).toFixed(2)}€\\n`;\n  recap += 'Tape *VALIDER* ou clique ✅';\n\n  return [{json:{...e, intent:'CART_UPDATED', response:{replyText:recap, buttons:[{id:'HELP_MENU',title:'➕ Ajouter'},{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags, totalCents: total}}}];\n}\n\n// If checkout requested -> confirm recap\nif (isCheckout) {\n  e.state.stage = 'CONFIRMING';\n  let recap = `✅ Récap commande (${e.state.serviceMode.replace('_',' ')}) :\\n`;\n  let total = 0;\n  for (const line of (e.cart.items||[])) {\n    const it = itemMap[line.item];\n    const base = Number(it.price_cents||0);\n    let opt = 0;\n    const opts = Array.isArray(line.options)?line.options:[];\n    for (const oc of opts) opt += Number(optionMap[oc]?.price_delta_cents || 0);\n    const lineTotal = (base + opt) * Number(line.qty||1);\n    total += lineTotal;\n    recap += `- ${line.item} ${it.label} x${line.qty} = ${(lineTotal/100).toFixed(2)}€\\n`;\n  }\n  recap += `\\nTotal : ${(total/100).toFixed(2)}€\\nConfirmer ?`;\n  return [{json:{...e, intent:'CONFIRM', response:{replyText:recap, buttons:[{id:'CONFIRM_YES',title:'✅ Oui'},{id:'CONFIRM_NO',title:'✏️ Modifier'}]}, debug:{riskFlags, totalCents: total}}}];\n}\n\n\n// FAQ (RAG light): detect question-like messages and route to DB full-text search\nif (faqEnabled) {\n  const looksLikeItem = /\b[A-Z]{1,3}\\d{2,4}\b/.test((upper || ''));\n  const faqHints = /(horaire|horaires|ouvert|ouvrir|ferme|fermeture|paiement|payment|carte|cash|esp[eè]ces|livraison|delivery|adresse|where|when|open|close)/i;\n  const isQuestion = /\\?/.test(text) || faqHints.test(text || '');\n  const isAdminWord = (lower === 'admin');\n  const isMenuWord = (normalizedLower === 'menu' || lower === 'menu');\n  if (isQuestion && !looksLikeItem && !isCheckout && !isAdminWord && !isMenuWord) {\n    return [{json:{\n      ...e,\n      intent:'FAQ_QUERY',\n      action:'FAQ_QUERY',\n      faq_question: (text || '').toString(),\n      debug:{riskFlags, responseLocale}\n    }}];\n  }\n}\n\n// Optional LLM fallback (only if enabled and no risk flags)\nconst llmUrl = ($env.LLM_API_URL || '').toString();\nconst llmModel = ($env.LLM_MODEL || 'llama3').toString();\nconst useLLM = (!!llmUrl) && (riskFlags.length === 0);\n\nif (useLLM) {\n  const menuCompact = menuItems.slice(0, 120).map(it => ({id:it.item_code, label:it.label, price_cents:it.price_cents, category:it.category}));\n  const optsCompact = (e.menu?.options || []).slice(0, 200).map(op => ({id:op.option_code, item:op.item_code, label:op.label, kind:op.kind, delta:op.price_delta_cents}));\n\n  const prompt = [\n    'Tu es un assistant commande restaurant. Réponds UNIQUEMENT en JSON valide (pas de texte).',\n    'Objectif: comprendre la demande du client et proposer une action.',\n    'Schéma: {\"action\":\"add|checkout|menu|clarify\",\"lines\":[{\"item\":\"ID\",\"qty\":1,\"options\":[\"OPT\"]}],\"reply\":\"...\"}',\n    'Si tu ne peux pas mapper précisément à des IDs, action=\"clarify\".',\n    'MenuItems=' + JSON.stringify(menuCompact),\n    'Options=' + JSON.stringify(optsCompact),\n    'UserMessage=' + JSON.stringify(text)\n  ].join('\\n');\n\n  try {\n    const llmRes = await $httpRequest({\n      method:'POST',\n      url: llmUrl,\n      body: { model: llmModel, prompt, stream: false },\n      json: true,\n      timeout: 120000\n    });\n\n    const raw = (llmRes.response || llmRes.text || llmRes.output || '').toString();\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) {\n      const parsed = JSON.parse(m[0]);\n      if (parsed.action === 'menu') {\n        return [{json:{...e, intent:'SHOW_MENU', response:{replyText:'Tape MENU pour afficher le menu.', buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags, llm:true}}}];\n      }\n      if (parsed.action === 'checkout') {\n        return [{json:{...e, intent:'CONFIRM', response:{replyText:'Clique ✅ Valider pour confirmer.', buttons:[{id:'CHECKOUT',title:'✅ Valider'}]}, debug:{riskFlags, llm:true}}}];\n      }\n      if (parsed.action === 'add' && Array.isArray(parsed.lines) && parsed.lines.length) {\n        // Convert to same pipeline by simulating codes\n        const codes = parsed.lines.map(l => l.item).filter(Boolean);\n        if (!codes.length) throw new Error('LLM lines missing item');\n        // attach helper field for later handling by user: ask to resend codes (safe)\n        return [{json:{...e, intent:'CLARIFY', response:{replyText:'Pour être sûr, peux-tu renvoyer les IDs comme ceci : ' + codes.join(' ') + ' (ex: P01 x2) ?', buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags, llm:true}}}];\n      }\n    }\n  } catch (err) {\n    // ignore and fallback\n  }\n}\n\n// Default clarification\ne.state = e.state || {}; e.state.lastResponseLocale = responseLocale;\nreturn [{json:{...e, intent:'CLARIFY', response:{replyText:\"Je n’ai pas compris. Envoie l’ID du plat (ex: P01 x2) ou tape MENU.\", buttons:[{id:'HELP_MENU',title:'📋 Menu'}]}, debug:{riskFlags}}}];"
+      },
+      "id": "1b9e5bc6-421e-40cd-a92c-8f22fe73ba46",
+      "name": "C6 - Router (safe, LLM optional)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.intent === 'FAQ_QUERY' && (($env.FAQ_ENABLED||'false').toString().toLowerCase()==='true')}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "d41dd94f-9582-4f8d-a1b1-227faa741268",
+      "name": "S0 - Is FAQ Query?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        60,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT faq_id, locale, question, answer\nFROM faq_entries\nWHERE tenant_id = $2::uuid\n  AND restaurant_id = $3::uuid\n  AND is_active = true\n  AND locale = ANY($4::text[])\n  AND search_tsv @@ plainto_tsquery('simple', $1)\nORDER BY ts_rank(search_tsv, plainto_tsquery('simple', $1)) DESC, updated_at DESC\nLIMIT 1;",
+        "queryParameters": "={{[ $json.faq_question || '', $json.tenantId, $json.restaurantId, [($json.debug && $json.debug.responseLocale) ? $json.debug.responseLocale : 'fr', 'fr', 'ar'] ]}}"
+      },
+      "id": "0be5fe4e-dda1-4b80-94e4-67ba13360551",
+      "name": "S1 - Search FAQ (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        280,
+        -220
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst rows = Array.isArray(e.query) ? e.query : (Array.isArray(e.data) ? e.data : (Array.isArray(e.rows) ? e.rows : []));\nconst r = rows && rows[0] ? rows[0] : null;\nconst loc = (e.debug && e.debug.responseLocale) ? e.debug.responseLocale : 'fr';\nfunction T(key, fallback) {\n  const templates = e.templates || {};\n  const k = `${key}::${loc}`;\n  const kfr = `${key}::fr`;\n  return (templates[k] || templates[kfr] || fallback || '').toString();\n}\nif (r && r.answer) {\n  e.response = e.response || {};\n  e.response.replyText = String(r.answer);\n  e.intent = 'FAQ_ANSWER';\n  e.action = 'FAQ_ANSWER';\n  e.faq_match = { faq_id: r.faq_id, locale: r.locale, question: r.question };\n  return [{json:e}];\n}\n// No match -> handoff\ne.response = e.response || {};\ne.response.replyText = T('FAQ_NO_MATCH', (loc==='ar' ? 'لم أجد إجابة. سأحوّلك إلى موظف.' : 'Je n'ai pas trouvé de réponse. Je te mets en relation avec un agent.'));\ne.intent = 'HANDOFF_SUPPORT';\ne.action = 'SUPPORT_HANDOFF';\ne.reason_code = 'FAQ_FALLBACK';\nreturn [{json:e}];\n"
+      },
+      "id": "bae3b683-5b5b-4dc6-b7cd-d8ffda4a705d",
+      "name": "S2 - Apply FAQ Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$input.item];"
+      },
+      "id": "a4e4ef9b-b4aa-4294-8a86-74c63ba7e10d",
+      "name": "Sx - PassThrough",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{(($env.SUPPORT_ENABLED||'false').toString().toLowerCase()==='true') && (['HANDOFF_SUPPORT','DELIVERY_HANDOFF'].includes($json.intent))}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "634f3e1a-3155-4b32-aaf1-809b97075e42",
+      "name": "S4 - Is Support Handoff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH existing AS (\n  SELECT ticket_id, status\n  FROM support_tickets\n  WHERE restaurant_id = $1::uuid\n    AND conversation_key = $2\n    AND status IN ('OPEN','ASSIGNED')\n  ORDER BY created_at DESC\n  LIMIT 1\n),\nins AS (\n  INSERT INTO support_tickets(tenant_id, restaurant_id, channel, conversation_key, customer_user_id, status, reason_code, context_json)\n  SELECT $3::uuid, $1::uuid, $4, $2, $5, 'OPEN', $6, $7::jsonb\n  WHERE NOT EXISTS (SELECT 1 FROM existing)\n  RETURNING ticket_id, status\n)\nSELECT * FROM ins\nUNION ALL\nSELECT * FROM existing;",
+        "queryParameters": "={{[ $json.restaurantId, $json.conversationKey, $json.tenantId, $json.channel || 'whatsapp', $json.userId, ($json.intent==='DELIVERY_HANDOFF' ? 'DELIVERY_AMBIGUOUS' : ($json.reason_code || 'HELP')), JSON.stringify({msgId: $json.metadata?.msgId, intent: $json.intent, riskFlags: $json.debug?.riskFlags || []}) ]}}"
+      },
+      "id": "424b77c3-b1d1-4342-884a-7057330eded7",
+      "name": "S5 - Upsert Ticket (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        940,
+        -220
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO support_ticket_messages(ticket_id, direction, from_user_id, to_user_id, body_text, meta_json)\nVALUES ($1::bigint, 'INBOUND', $2, NULL, $3, $4::jsonb)\nON CONFLICT DO NOTHING;",
+        "queryParameters": "={{[ ($json.query && $json.query[0] && $json.query[0].ticket_id) ? $json.query[0].ticket_id : ($json.data && $json.data[0] && $json.data[0].ticket_id), $json.userId, ($json.message?.text || $json.userText || ''), JSON.stringify({msgId: $json.metadata?.msgId || null}) ]}}"
+      },
+      "id": "ae261ce0-1bdc-44fa-926e-52b7399a1936",
+      "name": "S6 - Log Ticket Message (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        -220
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst loc = (e.debug && e.debug.responseLocale) ? e.debug.responseLocale : 'fr';\nconst templates = e.templates || {};\nfunction pick(key, fallback){\n  const k = `${key}::${loc}`;\n  const kfr = `${key}::fr`;\n  return (templates[k] || templates[kfr] || fallback || '').toString();\n}\ne.response = e.response || {};\nif (!e.response.replyText) {\n  e.response.replyText = pick('SUPPORT_HANDOFF_ACK', (loc==='ar' ? '🧑‍💬 شكراً. سيتواصل معك أحد الموظفين قريباً.' : '🧑‍💬 Merci. Un agent va vous contacter rapidement.'));\n}\nreturn [{json:e}];\n"
+      },
+      "id": "19efd076-edbf-4675-9465-54948bbe193a",
+      "name": "S7 - Ensure Support Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH up_state AS (\n  INSERT INTO public.conversation_state (conversation_key, tenant_id, restaurant_id, channel, user_id, state_json)\n  VALUES ($1,$2,$3,$4,$5,$6::jsonb)\n  ON CONFLICT (conversation_key) DO UPDATE\n    SET state_json=EXCLUDED.state_json, updated_at=now()\n  RETURNING 1\n),\nup_cart AS (\n  INSERT INTO public.carts (conversation_key, cart_json)\n  VALUES ($1, $7::jsonb)\n  ON CONFLICT (conversation_key) DO UPDATE\n    SET cart_json=EXCLUDED.cart_json, updated_at=now()\n  RETURNING 1\n),\nup_pref AS (\n  INSERT INTO public.customer_preferences(tenant_id, phone, locale)\n  SELECT $2, $5, $9\n  WHERE COALESCE($8::boolean,false) = true\n    AND $9 IS NOT NULL\n    AND length(trim($9)) > 0\n  ON CONFLICT (tenant_id, phone) DO UPDATE\n    SET locale=EXCLUDED.locale, updated_at=now()\n  RETURNING 1\n)\nSELECT 1 AS ok;\n",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey,$json.tenantId,$json.restaurantId,$json.channel,$json.userId, JSON.stringify($json.state), JSON.stringify($json.cart), !!$json.l10nPersistLocale, ($json.state && $json.state.localePref) ? $json.state.localePref : null]}}"
+        }
+      },
+      "id": "c627f006-396c-4b8c-a695-6bfd1389e349",
+      "name": "C7 - Save State+Cart (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.action === 'CHECKOUT' || $json.intent === 'CHECKOUT'}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "efa1099f-a828-4814-b426-a736c33991da",
+      "name": "C8 - Action CHECKOUT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM create_order($1);",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey]}}"
+        }
+      },
+      "id": "0863c74e-f55c-4de1-9ea3-d38d7d392fda",
+      "name": "C9 - Create Order (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst row = $json; // create_order returns columns on current item\nconst orderId = row.order_id || row.orderid || row.id;\nconst total = Number(row.total_cents || 0);\nconst summary = row.summary || '';\n\nconst replyText = `✅ Commande confirmée !\\nID: ${orderId}\\n${summary}\\nTotal: ${(total/100).toFixed(2)}€\\nMerci 🙏`;\n\nreturn [{json:{\n  ...e,\n  response: {\n    replyText,\n    buttons: [{id:'FEEDBACK_LATER',title:'⭐ Donner un avis'}]\n  },\n  actions: { sendToKitchen: true },\n  debug: { ...(e.debug||{}), orderId, totalCents: total }\n}}];"
+      },
+      "id": "965859ef-70ec-4350-9883-29de839728e1",
+      "name": "C10 - Build Order Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst resp = e.response || { replyText: 'OK', buttons: [] };\n\nconst out = {\n  channel: e.channel,\n  tenantId: e.tenantId || '',\n  restaurantId: e.restaurantId,\n  conversationKey: e.conversationKey || '',\n  userId: e.userId,\n  orderId: e.debug?.orderId || null,\n  replyText: resp.replyText || '',\n  buttons: Array.isArray(resp.buttons) ? resp.buttons : [],\n  attachments: Array.isArray(resp.attachments) ? resp.attachments : [],\n  actions: e.actions || { sendToKitchen:false },\n  debug: {\n    traceId: e.metadata?.msgId || '',\n    intent: e.intent || '',\n    riskFlags: e.debug?.riskFlags || []\n  }\n};\nreturn [{json: out}];\n"
+      },
+      "id": "561fff75-d491-4d33-8295-4d8e5b56425c",
+      "name": "C11 - Finalize Response (default)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\nconst out = $json;\n\nconst ch = (out.channel || '').toString();\nconst orderId = out.orderId ? out.orderId.toString() : '';\nconst traceId = (out.debug?.traceId || '').toString();\n\nconst dedupeKey = orderId\n  ? `order:${orderId}:${ch}:reply`\n  : `msg:${ch}:${traceId || crypto.randomUUID()}`;\n\nconst payload = {\n  channel: ch,\n  to: out.userId,\n  restaurantId: out.restaurantId,\n  text: out.replyText,\n  buttons: out.buttons || [],\n  attachments: out.attachments || [],\n  meta: { intent: out.debug?.intent || '' }\n};\n\nreturn [{\n  json: {\n    ...out,\n    outbox_dedupe_key: dedupeKey,\n    outbox_template: 'reply',\n    outbox_payload: payload\n  }\n}];\n"
+      },
+      "id": "42e4a69d-d415-45d9-81e3-23c68d422d9b",
+      "name": "C12 - Enqueue Outbox (P0)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "id": "3c6591c1-0ab7-4c2b-a34c-4a59aec61ebf",
+      "name": "C3b - Menu Cache Get",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -1500,
+        -80
+      ],
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const sd = this.getWorkflowStaticData('global');\nconst ttl = Number($env.MENU_CACHE_TTL_SEC || 300);\nconst rid = ($json.restaurantId || '').toString();\nconst key = `menu:${rid}`;\nconst now = Date.now();\nconst entry = sd[key];\nif (entry && entry.ts && (now - entry.ts) < (ttl*1000) && Array.isArray(entry.items) && Array.isArray(entry.options)) {\n  return [{ json: { ...$json, items: entry.items, options: entry.options, _menuCache: 'HIT' } }];\n}\nreturn [{ json: { ...$json, _menuCache: 'MISS' } }];\n"
+      }
+    },
+    {
+      "id": "66352fcb-b39c-4002-b3af-f462ebea0d91",
+      "name": "C3c - Menu Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -1280,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json._menuCache}}",
+              "operation": "equal",
+              "value2": "HIT"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "174c9d7e-0915-407e-bc8d-20f7a7861fe6",
+      "name": "C4b - Menu Cache Set",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        0
+      ],
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const sd = this.getWorkflowStaticData('global');\nconst rid = ($json.restaurant_id || $json.restaurantId || '').toString();\nif (rid) {\n  sd[`menu:${rid}`] = { ts: Date.now(), items: ($json.items||[]), options: ($json.options||[]) };\n}\nreturn [{ json: { ...$json, _menuCache: 'SET' } }];\n"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO outbound_messages(dedupe_key, tenant_id, restaurant_id, conversation_key, channel, user_id, order_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+        "additionalFields": {
+          "queryParams": "={{[$json.outbox_dedupe_key, $json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json.orderId, $json.outbox_template, $json.outbox_payload]}}"
+        }
+      },
+      "id": "4c47eb41-69d2-48e4-a924-0f95623bbd65",
+      "name": "C12b - Outbox Enqueue (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nreturn [{\n  json: {\n    ...e,\n    _send: {\n      ok: true,\n      queued: true,\n      outboundId: e.outbound_id || e.outboundid || e.outbound_id,\n      status: e.status || 'PENDING'\n    }\n  }\n}];"
+      },
+      "id": "91548ca5-94ad-4c09-8dc5-a2c6208636cd",
+      "name": "C12c - Outbox Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._sec.audioUrlBlocked}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "8b05a0d1-3841-4d30-91e8-93fa578e3d23",
+      "name": "C3x - AudioUrl Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        420,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES ($1,$2,$3,$4,$5,'AUDIO_URL_BLOCKED','HIGH',\njsonb_build_object('reason',$6,'host',$7,'audio_url',$8,'trace_id',$9))\nRETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json._sec.audioBlockReason, $json._sec.audioHost, $json.message.audio.url, $json.metadata.msgId]}}"
+        }
+      },
+      "id": "ed8e840f-3f4c-4908-9d31-b230ff847d9f",
+      "name": "C3y - Log SSRF Block (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        640,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "DELIVERY_QUOTE"
+            }
+          ]
+        }
+      },
+      "id": "C8A_DELIVERY_QUOTE",
+      "name": "C8A - Action DELIVERY_QUOTE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "ADDRESS_AMBIGUOUS"
+            }
+          ]
+        }
+      },
+      "id": "C8B_ADDRESS_AMBIGUOUS",
+      "name": "C8B - Action ADDRESS_AMBIGUOUS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.delivery_quote($1::uuid,$2::text,$3::text,$4::int);",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "wilaya",
+              "value": "={{$json.state.delivery.wilaya}}"
+            },
+            {
+              "name": "commune",
+              "value": "={{$json.state.delivery.commune}}"
+            },
+            {
+              "name": "total_cents",
+              "value": "={{$json.state.lastTotalCents || 0}}"
+            }
+          ]
+        }
+      },
+      "id": "DQ1_DELIVERY_QUOTE_DB",
+      "name": "DQ1 - Delivery Quote (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$env.DELIVERY_SLOTS_ENABLED === 'true'}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "DQ2_SLOTS_ENABLED",
+      "name": "DQ2 - Slots enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.slot_id, to_char(s.start_time,'HH24:MI') AS start_time, to_char(s.end_time,'HH24:MI') AS end_time, s.capacity,\n       GREATEST(s.capacity - COALESCE(r.cnt,0),0) AS remaining\nFROM public.delivery_time_slots s\nLEFT JOIN (SELECT slot_id, count(*) cnt FROM public.delivery_slot_reservations GROUP BY slot_id) r ON r.slot_id=s.slot_id\nWHERE s.restaurant_id=$1::uuid\n  AND s.day_of_week = EXTRACT(DOW FROM (now() at time zone 'Europe/Paris'))::int\n  AND s.is_active=true\nORDER BY s.start_time ASC\nLIMIT 6;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            }
+          ]
+        }
+      },
+      "id": "DQ3_LIST_SLOTS_DB",
+      "name": "DQ3 - List Slots (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst row = ($items(\"DQ1 - Delivery Quote (DB)\")[0]?.json || {});\nconst strictAr = (($env.STRICT_AR_OUT || 'true').toString().toLowerCase() === 'true');\nconst msgIn = ((e.message?.text || '') + ' ' + (e.userText || '')).toString();\nconst hasArabic = /[؀-ۿݐ-ݿࢠ-ࣿ]/.test(msgIn);\nconst locHint = (e.debug?.responseLocale || e.state?.localePref || e.state?.locale || 'fr').toString().toLowerCase();\nconst locale = (strictAr && hasArabic) ? 'ar' : (locHint.startsWith('ar') ? 'ar' : 'fr');\n\nconst ok = (row.reason === 'OK');\nif (!e.state) e.state = {};\nif (!e.state.delivery) e.state.delivery = {};\ne.state.delivery.quote_shown = true;\n\nfunction money(cents) {\n  const n = Number(cents || 0);\n  return (n/100).toFixed(2);\n}\n\nlet reply = '';\nlet buttons = [];\n\nif (!ok) {\n  const code = (row.reason || 'DELIVERY_ZONE_NOT_FOUND').toString();\n  if (locale === 'ar') {\n    if (code === 'DELIVERY_ZONE_NOT_FOUND') reply = '🚫 التوصيل غير متوفر لهذه المنطقة. أرسل: الولاية / البلدية / العنوان / الهاتف.';\n    else if (code === 'DELIVERY_ZONE_INACTIVE') reply = '🚫 التوصيل غير متوفر حالياً لهذه المنطقة. اختر: في المطعم أو للطلب الخارجي.';\n    else if (code === 'DELIVERY_MIN_ORDER') reply = `🛵 الحد الأدنى للتوصيل هو ${money(row.min_order_cents)}. أضف للطلب أو غيّر طريقة الخدمة.`;\n    else reply = `🚫 التوصيل غير متوفر (${code}). أعد إرسال: الولاية / البلدية / العنوان / الهاتف.`;\n    buttons = [\n      {id:'MODE_A_EMPORTER',title:'🛍️ للطلب الخارجي'},\n      {id:'MODE_SUR_PLACE',title:'🍽️ في المطعم'},\n      {id:'CONFIRM_NO',title:'✏️ تعديل'}\n    ];\n  } else {\n    if (code === 'DELIVERY_ZONE_NOT_FOUND') reply = '🚫 Livraison indisponible pour cette zone. Envoie : Wilaya / Commune / Adresse / Tel.';\n    else if (code === 'DELIVERY_ZONE_INACTIVE') reply = '🚫 Livraison indisponible sur cette zone (inactive). Choisis : sur place ou à emporter.';\n    else if (code === 'DELIVERY_MIN_ORDER') reply = `🛵 Minimum livraison : ${money(row.min_order_cents)}. Ajoute au panier ou change de mode.`;\n    else reply = `🚫 Livraison indisponible (${code}). Envoie : Wilaya / Commune / Adresse / Tel.`;\n    buttons = [\n      {id:'MODE_A_EMPORTER',title:'🛍️ À emporter'},\n      {id:'MODE_SUR_PLACE',title:'🍽️ Sur place'},\n      {id:'CONFIRM_NO',title:'✏️ Modifier'}\n    ];\n  }\n} else {\n  const fee = Number(row.final_fee_cents||0);\n  const minO = Number(row.min_order_cents||0);\n  const etaMin = row.eta_min ?? '';\n  const etaMax = row.eta_max ?? '';\n  const feeTxt = (fee === 0)\n    ? (locale === 'ar' ? 'مجاني' : 'Gratuit')\n    : money(fee);\n\n  if (locale === 'ar') {\n    reply = `🚚 التوصيل متاح ✅\\nرسوم التوصيل: ${feeTxt}\\nالحد الأدنى: ${money(minO)}\\nالوقت المتوقع: ${etaMin}-${etaMax} دقيقة`;\n  } else {\n    reply = `🚚 Livraison OK ✅\\nFrais : ${feeTxt}\\nMin commande : ${money(minO)}\\nETA : ${etaMin}-${etaMax} min`;\n  }\n\n  const slotsEnabled = ($env.DELIVERY_SLOTS_ENABLED === 'true');\n  if (slotsEnabled) {\n    const slots = $items(\"DQ3 - List Slots (DB)\").map(i => i.json).filter(s => Number(s.remaining||0)>0);\n    if (slots.length) {\n      e.state.stage = 'DELIVERY_SLOT_PICK';\n      reply += (locale === 'ar') ? `\\n\\nاختر وقت التوصيل:` : `\\n\\nChoisis un créneau :`;\n      buttons = slots.slice(0,4).map(s => ({\n        id:`SLOT_${s.slot_id}`,\n        title:`🕒 ${s.start_time}-${s.end_time} (${s.remaining})`\n      }));\n      buttons.push({id:'CONFIRM_NO',title: (locale==='ar' ? '✏️ تعديل' : '✏️ Modifier')});\n    } else {\n      reply += (locale === 'ar') ? `\\n\\nلا توجد أوقات متاحة اليوم.` : `\\n\\nPlus de créneaux disponibles aujourd’hui.`;\n      buttons = [{id:'CHECKOUT',title:(locale==='ar'?'✅ تأكيد':'✅ Valider')},{id:'CONFIRM_NO',title:(locale==='ar'?'✏️ تعديل':'✏️ Modifier')}];\n    }\n  } else {\n    buttons = [{id:'CHECKOUT',title:(locale==='ar'?'✅ تأكيد':'✅ Valider')},{id:'CONFIRM_NO',title:(locale==='ar'?'✏️ تعديل':'✏️ Modifier')}];\n  }\n}\n\ne.response = {replyText: reply, buttons};\ne.debug = {...(e.debug||{}), deliveryQuoteReason: (row.reason||null), responseLocale: locale};\nreturn [{json: e}];"
+      },
+      "id": "DQ4_BUILD_QUOTE_RESP",
+      "name": "DQ4 - Build Delivery Quote Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH up_state AS (\n      INSERT INTO conversation_state (conversation_key, tenant_id, restaurant_id, channel, user_id, state_json)\n      VALUES ($1,$2,$3,$4,$5,$6::jsonb)\n      ON CONFLICT (conversation_key) DO UPDATE\n        SET state_json=EXCLUDED.state_json, updated_at=now()\n      RETURNING 1\n    ),\n    up_cart AS (\n      INSERT INTO carts (conversation_key, cart_json)\n      VALUES ($1, $7::jsonb)\n      ON CONFLICT (conversation_key) DO UPDATE\n        SET cart_json=EXCLUDED.cart_json, updated_at=now()\n      RETURNING 1\n    )\n    SELECT 1 AS ok;",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey,$json.tenantId,$json.restaurantId,$json.channel,$json.userId, JSON.stringify($json.state), JSON.stringify($json.cart)]}}"
+        }
+      },
+      "id": "DQ5_SAVE_STATE",
+      "name": "DQ5 - Save State (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        2280,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.address_clarification_requests (order_id, conversation_key, missing_fields, attempts, status)\nVALUES (NULL, $1::text, to_jsonb(string_to_array($2::text,',')), 1, 'PENDING')\nON CONFLICT DO NOTHING;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "conversation_key",
+              "value": "={{$json.conversationKey}}"
+            },
+            {
+              "name": "missing_fields",
+              "value": "={{($json.missing_fields || []).join(',')}}"
+            }
+          ]
+        }
+      },
+      "id": "CA1_UPSERT_CLARIFY",
+      "name": "CA1 - Upsert Clarification (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.security_events (tenant_id, restaurant_id, conversation_key, user_id, event_type, details) VALUES ($1::uuid,$2::uuid,$3::text,$4::text,'ADDRESS_AMBIGUOUS', jsonb_build_object('missing_fields',$5::jsonb));",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "tenant_id",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "conversation_key",
+              "value": "={{$json.conversationKey}}"
+            },
+            {
+              "name": "user_id",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "missing_fields",
+              "value": "={{JSON.stringify($json.missing_fields || [])}}"
+            }
+          ]
+        }
+      },
+      "id": "CA2_SECURITY_EVENT",
+      "name": "CA2 - Log ADDRESS_AMBIGUOUS (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES ($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::text,$8::jsonb)\nRETURNING id;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "tenant_id",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "conversation_key",
+              "value": "={{$json.conversationKey}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel || 'whatsapp'}}"
+            },
+            {
+              "name": "user_id",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "event_type",
+              "value": "={{($items('DQ1 - Delivery Quote (DB)')[0].json.reason === 'OK') ? 'DELIVERY_QUOTE_OK' : ($items('DQ1 - Delivery Quote (DB)')[0].json.reason || 'DELIVERY_ZONE_NOT_FOUND')}}"
+            },
+            {
+              "name": "severity",
+              "value": "={{($items('DQ1 - Delivery Quote (DB)')[0].json.reason === 'OK') ? 'LOW' : 'MEDIUM'}}"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{JSON.stringify({wilaya: $json.state?.delivery?.wilaya, commune: $json.state?.delivery?.commune, total_cents: $json.state?.lastTotalCents || 0, reason: $items('DQ1 - Delivery Quote (DB)')[0].json.reason})}}"
+            }
+          ]
+        }
+      },
+      "id": "DQ1B_LOG_DELIVERY_EVENT",
+      "name": "DQ1b - Log Delivery Quote Event (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        360
+      ]
+    }
+  ],
+  "connections": {
+    "IN - From Adapters": {
+      "main": [
+        [
+          {
+            "node": "C0 - Validate Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C0 - Validate Event": {
+      "main": [
+        [
+          {
+            "node": "C1 - Load State+Cart (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C1 - Load State+Cart (DB)": {
+      "main": [
+        [
+          {
+            "node": "C2 - Merge State Defaults",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C2 - Merge State Defaults": {
+      "main": [
+        [
+          {
+            "node": "C3 - Voice STT (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3 - Voice STT (optional)": {
+      "main": [
+        [
+          {
+            "node": "C3x - AudioUrl Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C4 - Load Menu Index (DB)": {
+      "main": [
+        [
+          {
+            "node": "C4b - Menu Cache Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C5 - Build Menu Maps": {
+      "main": [
+        [
+          {
+            "node": "C6 - Router (safe, LLM optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C6 - Router (safe, LLM optional)": {
+      "main": [
+        [
+          {
+            "node": "S0 - Is FAQ Query?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C7 - Save State+Cart (DB)": {
+      "main": [
+        [
+          {
+            "node": "C8A - Action DELIVERY_QUOTE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C8 - Action CHECKOUT?": {
+      "main": [
+        [
+          {
+            "node": "C9 - Create Order (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C9 - Create Order (DB)": {
+      "main": [
+        [
+          {
+            "node": "C10 - Build Order Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C10 - Build Order Response": {
+      "main": [
+        [
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C11 - Finalize Response (default)": {
+      "main": [
+        [
+          {
+            "node": "C12 - Enqueue Outbox (P0)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3b - Menu Cache Get": {
+      "main": [
+        [
+          {
+            "node": "C3c - Menu Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3c - Menu Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "C5 - Build Menu Maps",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C4 - Load Menu Index (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C4b - Menu Cache Set": {
+      "main": [
+        [
+          {
+            "node": "C5 - Build Menu Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C12 - Enqueue Outbox (P0)": {
+      "main": [
+        [
+          {
+            "node": "C12b - Outbox Enqueue (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C12b - Outbox Enqueue (DB)": {
+      "main": [
+        [
+          {
+            "node": "C12c - Outbox Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3x - AudioUrl Blocked?": {
+      "main": [
+        [
+          {
+            "node": "C3y - Log SSRF Block (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C3b - Menu Cache Get",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3y - Log SSRF Block (DB)": {
+      "main": [
+        [
+          {
+            "node": "C3b - Menu Cache Get",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C8A - Action DELIVERY_QUOTE?": {
+      "main": [
+        [
+          {
+            "node": "DQ1 - Delivery Quote (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C8B - Action ADDRESS_AMBIGUOUS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ1 - Delivery Quote (DB)": {
+      "main": [
+        [
+          {
+            "node": "DQ2 - Slots enabled?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DQ1b - Log Delivery Quote Event (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ2 - Slots enabled?": {
+      "main": [
+        [
+          {
+            "node": "DQ3 - List Slots (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DQ4 - Build Delivery Quote Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ3 - List Slots (DB)": {
+      "main": [
+        [
+          {
+            "node": "DQ4 - Build Delivery Quote Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ4 - Build Delivery Quote Response": {
+      "main": [
+        [
+          {
+            "node": "DQ5 - Save State (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ5 - Save State (DB)": {
+      "main": [
+        [
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C8B - Action ADDRESS_AMBIGUOUS?": {
+      "main": [
+        [
+          {
+            "node": "CA1 - Upsert Clarification (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C8 - Action CHECKOUT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CA1 - Upsert Clarification (DB)": {
+      "main": [
+        [
+          {
+            "node": "CA2 - Log ADDRESS_AMBIGUOUS (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CA2 - Log ADDRESS_AMBIGUOUS (DB)": {
+      "main": [
+        [
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S0 - Is FAQ Query?": {
+      "main": [
+        [
+          {
+            "node": "S1 - Search FAQ (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sx - PassThrough",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S1 - Search FAQ (DB)": {
+      "main": [
+        [
+          {
+            "node": "S2 - Apply FAQ Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S2 - Apply FAQ Result": {
+      "main": [
+        [
+          {
+            "node": "S4 - Is Support Handoff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sx - PassThrough": {
+      "main": [
+        [
+          {
+            "node": "S4 - Is Support Handoff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S4 - Is Support Handoff?": {
+      "main": [
+        [
+          {
+            "node": "S5 - Upsert Ticket (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C7 - Save State+Cart (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S5 - Upsert Ticket (DB)": {
+      "main": [
+        [
+          {
+            "node": "S6 - Log Ticket Message (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S6 - Log Ticket Message (DB)": {
+      "main": [
+        [
+          {
+            "node": "S7 - Ensure Support Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S7 - Ensure Support Reply": {
+      "main": [
+        [
+          {
+            "node": "C7 - Save State+Cart (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

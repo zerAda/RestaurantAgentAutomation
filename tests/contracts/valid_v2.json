@@ -1,0 +1,17 @@
+{
+  "contract_version": "v2",
+  "provider": "ig",
+  "msg_id": "ig-002",
+  "sender": {
+    "id": "ig_user_1",
+    "display_name": "Alice"
+  },
+  "message": {
+    "text": "Hello"
+  },
+  "timestamp": "2026-01-22T10:00:00Z",
+  "meta": {
+    "locale": "en-US",
+    "timezone": "Europe/Paris"
+  }
+}

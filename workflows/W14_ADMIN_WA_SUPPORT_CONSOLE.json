@@ -1,0 +1,1505 @@
+{
+  "name": "W14 - ADMIN WA Support Console",
+  "active": false,
+  "settings": {
+    "executionTimeout": 60,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c97073dd-abe4-4ad0-b23c-80e221f13d5c",
+      "name": "IN - From Adapters",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst msgText = (e.message?.text || '').toString().trim();\nconst buttonId = (e.message?.buttonId || '').toString().trim();\nconst text = (e.message?.type === 'button') ? buttonId : msgText;\n\nconst enabled = (($env.ADMIN_WA_CONSOLE_ENABLED || 'false').toString().toLowerCase() === 'true');\nconst strictAr = (($env.STRICT_AR_OUT || 'true').toString().toLowerCase()==='true');\nconst hasArabic = /[؀-ۿݐ-ݿࢠ-ࣿ]/.test(msgText || '');\nconst locale = (strictAr && hasArabic) ? 'ar' : 'fr';\n\nconst raw = (text || '').trim();\nconst isCmd = raw.startsWith('!');\nconst parts = raw.replace(/^!+/, '!').slice(1).trim().split(/\\s+/).filter(Boolean);\nconst cmd = (parts[0] || '').toLowerCase();\nconst args = parts.slice(1);\n\nreturn [{json:{\n  ...e,\n  adminConsole: {\n    enabled,\n    raw,\n    isCmd,\n    cmd,\n    args,\n    // for reply: keep original tail text\n    tail: raw.startsWith('!reply') ? raw.replace(/^!reply\\s+/i,'') : '',\n    hasArabic,\n    locale\n  }\n}}];"
+      },
+      "id": "83d4a8d6-8ba5-4cc6-943c-aca030dae219",
+      "name": "A0 - Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.adminConsole.enabled === true && $json.adminConsole.isCmd === true}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "0b339863-1ee0-44f2-afd3-a29cbf244184",
+      "name": "A1 - Is Admin Command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "return $input.all();"
+      },
+      "id": "fb5ff687-c8dd-4da0-add1-4792d8962c67",
+      "name": "END - Drop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role FROM restaurant_users WHERE tenant_id=$1 AND restaurant_id=$2 AND channel='whatsapp' AND user_id=$3 AND role IN ('admin','owner') LIMIT 1;",
+        "additionalFields": {},
+        "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.userId]}}"
+      },
+      "id": "698418e6-d709-4690-b9e6-66a3c5c9f806",
+      "name": "A2 - RBAC (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{($json.data && $json.data.length) ? 1 : 0}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "ce280986-6f0b-4dc4-88cb-a70ae58b50d2",
+      "name": "A3 - Authorized?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst reply = '⛔️ Accès refusé. (admin uniquement)';\nreturn [{json:{...e, adminReplyText: reply}}];"
+      },
+      "id": "1f5b76e0-9a56-4c1a-bd70-44a33a2ae63b",
+      "name": "A4 - Not Authorized",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst cmd = (e.adminConsole?.cmd || '').toLowerCase();\nconst args = Array.isArray(e.adminConsole?.args) ? e.adminConsole.args : [];\nconst raw = (e.adminConsole?.raw || '').toString();\n\nfunction usage() {\n  return [\n    '*Console Support + L10N*',\n    '- !help',\n    '- !tickets [open|all]',\n    '- !take <ticket_id>',\n    '- !close <ticket_id>',\n    '- !reply <ticket_id> <message>',\n    '',\n    '*Templates (FR/AR)*',\n    '- !template get <KEY> [fr|ar]',\n    '- !template set <KEY> [fr|ar] <CONTENT...>',\n    '- !template vars <KEY> [fr|ar] <var1,var2,...>',\n    '',\n    '*Delivery Zones*',\n    '- !zone list',\n    '- !zone set <wilaya> ; <commune> ; <fee_cents> ; <min_cents> ; <eta_min> ; <eta_max> ; <active:true|false>'\n  ].join('\\n');\n}\n\n\nfunction normLocale(x) {\n  const l = (x || 'fr').toString().trim().toLowerCase();\n  return (l.startsWith('ar')) ? 'ar' : 'fr';\n}\n\nlet action = 'HELP';\nlet ticketId = null;\nlet filter = 'open';\nlet message = '';\n\nlet templateKey = null;\nlet templateLocale = 'fr';\nlet templateContent = '';\nlet templateVars = [];\n\nlet zoneWilaya = null;\nlet zoneCommune = null;\nlet zoneFee = null;\nlet zoneMin = null;\nlet zoneEtaMin = null;\nlet zoneEtaMax = null;\nlet zoneActive = null;\nlet zoneOp = null;\n\nif (!cmd || cmd === 'help') action = 'HELP';\nelse if (cmd === 'tickets') { action = 'TICKETS'; filter = (args[0]||'open').toLowerCase(); }\nelse if (cmd === 'take') { action = 'TAKE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'close') { action = 'CLOSE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'reply') {\n  action = 'REPLY';\n  // raw tail: \"<id> <message>\"\n  const tail = (e.adminConsole?.tail || '').trim();\n  const m = tail.match(/^(\\d+)\\s+([\\s\\S]{1,2000})$/);\n  ticketId = m ? (parseInt(m[1],10)||0) : 0;\n  message = m ? m[2].trim() : '';\n}\nelse if (cmd === 'template') {\n  const sub = (args[0] || '').toLowerCase();\n  templateKey = (args[1] || '').toString().trim();\n  // locale can be args[2] if looks like fr/ar\n  const maybeLoc = (args[2] || '').toString().trim();\n  const hasLoc = /^(fr|ar)([-_].+)?$/i.test(maybeLoc);\n  templateLocale = normLocale(hasLoc ? maybeLoc : 'fr');\n\n  if (!templateKey) {\n    action = 'UNKNOWN';\n  } else if (sub === 'get') {\n    action = 'TEMPLATE_GET';\n  } else if (sub === 'set') {\n    action = 'TEMPLATE_SET';\n    // Parse tail: !template set KEY [loc] CONTENT...\n    const m = raw.match(/^!template\\s+set\\s+([^\\s]+)\\s+((fr|ar)([-_].+)?)?\\s*([\\s\\S]{0,4000})$/i);\n    if (m) {\n      templateKey = m[1].trim();\n      templateLocale = normLocale(m[2]);\n      templateContent = (m[5] || '').toString().trim();\n    } else {\n      templateContent = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    }\n    if (templateContent.length > 2000) templateContent = templateContent.slice(0, 2000);\n  } else if (sub === 'vars') {\n    action = 'TEMPLATE_VARS';\n    const rest = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    templateVars = rest.split(/[\\s,]+/).map(s => s.trim()).filter(Boolean);\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse if (cmd === 'zone' || cmd === 'delzone') {\n  const sub = (args[0] || 'list').toLowerCase();\n  zoneOp = sub;\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ZONE_LIST';\n  } else if (sub === 'set' || sub === 'add' || sub === 'upsert') {\n    action = 'ZONE_SET';\n    const m = raw.match(/^!zone\\s+(set|add|upsert)\\s+([\\s\\S]{1,500})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    zoneFee = parseInt(parts[2] || args[3] || '0', 10) || 0;\n    zoneMin = parseInt(parts[3] || args[4] || '0', 10) || 0;\n    zoneEtaMin = parseInt(parts[4] || args[5] || '45', 10) || 45;\n    zoneEtaMax = parseInt(parts[5] || args[6] || '60', 10) || 60;\n    const actRaw = (parts[6] || args[7] || 'true').toString().trim().toLowerCase();\n    zoneActive = !(actRaw === 'false' || actRaw === '0' || actRaw === 'off' || actRaw === 'inactive');\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else if (sub === 'del' || sub === 'delete' || sub === 'rm') {\n    action = 'ZONE_DELETE';\n    const m = raw.match(/^!zone\\s+(del|delete|rm)\\s+([\\s\\S]{1,200})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse action = 'UNKNOWN';\n\nreturn [{json:{\n  ...e,\n  adminAction: action,\n  adminTicketId: ticketId,\n  adminFilter: filter,\n  adminMessage: message,\n  adminUsage: usage(),\n  adminTemplateKey: templateKey,\n  adminTemplateLocale: templateLocale,\n  adminTemplateContent: templateContent,\n  adminTemplateVars: templateVars,\n  adminTemplateVarsJson: JSON.stringify(templateVars),\n  adminZoneOp: zoneOp,\n  adminZoneWilaya: zoneWilaya,\n  adminZoneCommune: zoneCommune,\n  adminZoneFeeCents: zoneFee,\n  adminZoneMinCents: zoneMin,\n  adminZoneEtaMin: zoneEtaMin,\n  adminZoneEtaMax: zoneEtaMax,\n  adminZoneActive: zoneActive\n}}];\n"
+      },
+      "id": "f146c550-0219-4ecf-84d8-24d5a7b64ec0",
+      "name": "A5 - Parse Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "UNKNOWN"
+            }
+          ]
+        }
+      },
+      "id": "8b2e124f-52f0-40db-b34c-e2bcc9d16f1a",
+      "name": "B6 - Is UNKNOWN?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "return [{json:{...$json, adminReplyText: '❓ Commande inconnue. Tape !help'}}];"
+      },
+      "id": "a8cbebad-e6cc-4249-9081-325b47f96631",
+      "name": "B6 - Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "HELP"
+            }
+          ]
+        }
+      },
+      "id": "8a74cc9b-b848-4e62-87c4-4dbb4eced951",
+      "name": "B1 - Is HELP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "return [{json:{...$json, adminReplyText: $json.adminUsage}}];"
+      },
+      "id": "82979ea2-b46a-406a-877f-f2a80af593bd",
+      "name": "B1a - Reply HELP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "TICKETS"
+            }
+          ]
+        }
+      },
+      "id": "d00f074e-816b-4f04-a481-f15ea5d99c7a",
+      "name": "B2 - Is TICKETS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ticket_id, status, reason_code, created_at, customer_user_id FROM support_tickets WHERE restaurant_id=$1 AND ( ($2='all') OR status IN ('OPEN','ASSIGNED')) ORDER BY created_at DESC LIMIT 10;",
+        "queryParams": "={{[$json.restaurantId, ($json.adminFilter||'open')]}}"
+      },
+      "id": "80a43ece-8ee3-49bc-9ea2-c7d8d4e1f5eb",
+      "name": "B2a - List Tickets (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const rows = ($json.data || []);\nif (!rows.length) {\n  return [{json:{...$json, adminReplyText:'✅ Aucun ticket.'}}];\n}\nlet out = '*Tickets*\\n';\nfor (const r of rows) {\n  const id = r.ticket_id;\n  const st = r.status;\n  const reason = r.reason_code;\n  const cust = r.customer_user_id;\n  out += `#${id} — ${st} — ${reason} — user:${cust}\\n`;\n}\nout += '\\nActions: !take <id> | !reply <id> <msg> | !close <id>';\nreturn [{json:{...$json, adminReplyText: out}}];"
+      },
+      "id": "bdfe697f-7f33-4114-9549-d014828214a3",
+      "name": "B2b - Format Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "TAKE"
+            }
+          ]
+        }
+      },
+      "id": "6d81cc1e-197d-4b92-acfd-ed9c540c7eb6",
+      "name": "B3 - Is TAKE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH t AS (UPDATE support_tickets SET status='ASSIGNED', updated_at=now() WHERE ticket_id=$1 AND restaurant_id=$2 AND status IN ('OPEN','ASSIGNED') RETURNING ticket_id, status), a AS (INSERT INTO support_assignments(ticket_id, admin_user_id) SELECT $1,$3 WHERE EXISTS (SELECT 1 FROM t) RETURNING id) SELECT (SELECT ticket_id FROM t) AS ticket_id;",
+        "queryParams": "={{[$json.adminTicketId, $json.restaurantId, $json.userId]}}"
+      },
+      "id": "e1c80492-e72d-4e0f-9554-fa497f2cf295",
+      "name": "B3a - Take Ticket (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const ok = ($json.data && $json.data[0] && $json.data[0].ticket_id); return [{json:{...$json, adminReplyText: ok ? ('✅ Ticket #' + ok + ' pris.') : '⚠️ Ticket introuvable.'}}];"
+      },
+      "id": "06d4b8ec-5988-44bf-98dc-913645979a53",
+      "name": "B3b - Format Take",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "CLOSE"
+            }
+          ]
+        }
+      },
+      "id": "53189cc4-7a9f-4f7f-a9a6-34a6953b2149",
+      "name": "B4 - Is CLOSE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE support_tickets SET status='CLOSED', closed_at=now(), updated_at=now() WHERE ticket_id=$1 AND restaurant_id=$2 RETURNING ticket_id;",
+        "queryParams": "={{[$json.adminTicketId, $json.restaurantId]}}"
+      },
+      "id": "10d59a54-034e-422b-af43-3a22eeff7ed5",
+      "name": "B4a - Close Ticket (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const ok = ($json.data && $json.data[0] && $json.data[0].ticket_id); return [{json:{...$json, adminReplyText: ok ? ('✅ Ticket #' + ok + ' clôturé.') : '⚠️ Ticket introuvable.'}}];"
+      },
+      "id": "d24a9ab3-a977-4d3b-b5d6-4597e35bb712",
+      "name": "B4b - Format Close",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "REPLY"
+            }
+          ]
+        }
+      },
+      "id": "5275e076-fe11-4915-afeb-04bb97edd4c9",
+      "name": "B5 - Is REPLY?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ticket_id, tenant_id, restaurant_id, channel, conversation_key, customer_user_id, status FROM support_tickets WHERE ticket_id=$1 AND restaurant_id=$2 LIMIT 1;",
+        "queryParams": "={{[$json.adminTicketId, $json.restaurantId]}}"
+      },
+      "id": "518d4c70-71ed-41bb-adae-25f63dcada61",
+      "name": "B5a - Load Ticket (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO support_ticket_messages(ticket_id, direction, from_user_id, to_user_id, body_text, meta_json) VALUES ($1,'OUTBOUND',$2,$3,$4,$5::jsonb) RETURNING id;",
+        "queryParams": "={{[($json.data && $json.data[0] ? $json.data[0].ticket_id : 0), $json.userId, ($json.data && $json.data[0] ? $json.data[0].customer_user_id : ''), ($json.adminMessage||''), JSON.stringify({source:'admin_wa_console'})]}}"
+      },
+      "id": "8a5c9470-2fb3-442e-a690-5c14d64b5297",
+      "name": "B5b - Log Message (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        520,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst row = (e.data && e.data[0]) ? e.data[0] : null;\nif (!row || !e.adminMessage) {\n  return [{json:{...e, customerOutbox: null, adminReplyText: '⚠️ Utilisation: !reply <ticket_id> <message>'}}];\n}\nconst dedupe = `support_reply:${row.ticket_id}:${e.inbound_message_id || e.message?.id || Date.now()}`;\nconst payload = {\n  channel: 'whatsapp',\n  to_user_id: row.customer_user_id,\n  conversation_key: row.conversation_key,\n  text: e.adminMessage\n};\nreturn [{json:{\n  ...e,\n  customerOutbox: {\n    tenant_id: row.tenant_id,\n    restaurant_id: row.restaurant_id,\n    channel: 'whatsapp',\n    conversation_key: row.conversation_key,\n    user_id: row.customer_user_id,\n    template_key: 'TEXT',\n    locale: 'fr',\n    payload_json: payload,\n    dedupe_key: dedupe\n  },\n  adminReplyText: `✅ Envoyé au client (ticket #${row.ticket_id}).`\n}}];"
+      },
+      "id": "33e89e1f-da26-4f22-aff4-bc689ae1eacf",
+      "name": "B5c - Build Customer Outbox",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO outbound_messages(tenant_id, restaurant_id, channel, conversation_key, user_id, template_key, locale, payload_json, outbox_dedupe_key, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'PENDING') ON CONFLICT (outbox_dedupe_key) DO NOTHING;",
+        "queryParams": "={{[$json.customerOutbox.tenant_id, $json.customerOutbox.restaurant_id, $json.customerOutbox.channel, $json.customerOutbox.conversation_key, $json.customerOutbox.user_id, $json.customerOutbox.template_key, $json.customerOutbox.locale, JSON.stringify($json.customerOutbox.payload_json), $json.customerOutbox.dedupe_key]}}"
+      },
+      "id": "ebea9c9f-c754-4b27-9e50-599af6d1b7cc",
+      "name": "B5d - Enqueue Customer Outbox (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        920,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst txt = (e.adminReplyText || '').toString();\nconst adminConv = `t:${e.tenantId}:r:${e.restaurantId}:whatsapp:${e.userId}`;\nconst dedupe = `admin_console:${e.userId}:${e.inbound_message_id || e.message?.id || crypto.randomUUID()}`;\nconst payload = { channel: 'whatsapp', to_user_id: e.userId, conversation_key: adminConv, text: txt };\nreturn [{json:{...e, adminOutbox:{\n  tenant_id: e.tenantId,\n  restaurant_id: e.restaurantId,\n  channel: 'whatsapp',\n  conversation_key: adminConv,\n  user_id: e.userId,\n  template_key: 'TEXT',\n  locale: (e.adminConsole?.locale || 'fr'),\n  payload_json: payload,\n  dedupe_key: dedupe\n}}}];"
+      },
+      "id": "0e59f7a4-fd82-4bcc-9667-f9b64ff8ddf4",
+      "name": "O0 - Build Admin Outbox",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO outbound_messages(tenant_id, restaurant_id, channel, conversation_key, user_id, template_key, locale, payload_json, outbox_dedupe_key, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'PENDING') ON CONFLICT (outbox_dedupe_key) DO NOTHING;",
+        "queryParams": "={{[$json.adminOutbox.tenant_id, $json.adminOutbox.restaurant_id, $json.adminOutbox.channel, $json.adminOutbox.conversation_key, $json.adminOutbox.user_id, $json.adminOutbox.template_key, $json.adminOutbox.locale, JSON.stringify($json.adminOutbox.payload_json), $json.adminOutbox.dedupe_key]}}"
+      },
+      "id": "840153cc-efcf-4ca3-970f-d39a03a2d325",
+      "name": "O1 - Enqueue Admin Outbox (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        760,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "TEMPLATE_GET"
+            }
+          ]
+        }
+      },
+      "id": "7a87afc9-dd15-483f-8dcb-fdd15a07e1e8",
+      "name": "B7 - Is TEMPLATE_GET?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT tenant_id, key, locale, content, variables\nFROM public.message_templates\nWHERE (tenant_id=$1 OR tenant_id='_GLOBAL')\n  AND key=$2 AND locale=lower($3)\nORDER BY CASE WHEN tenant_id=$1 THEN 0 ELSE 1 END\nLIMIT 1;",
+        "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale]}}"
+      },
+      "id": "90084aeb-596b-42ed-ab9a-d31f4fa54c9f",
+      "name": "B7a - Template Get (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const rows = ($json.data || []);\nconst key = ($json.adminTemplateKey || '').toString();\nconst loc = ($json.adminTemplateLocale || 'fr').toString();\nif (!rows.length) {\n  return [{json:{...$json, adminReplyText: `❌ Aucun template trouvé pour *${key}* (${loc}).\n➡️ Utilise: !template set ${key} ${loc} <contenu>`}}];\n}\nconst r = rows[0];\nconst from = (r.tenant_id === '_GLOBAL') ? '_GLOBAL' : 'tenant';\nconst vars = Array.isArray(r.variables) ? r.variables : (r.variables || []);\nlet out = `🧩 *Template* ${r.key} (${r.locale}) [source: ${from}]\n`;\nout += `Vars: ${(vars && vars.length) ? vars.join(', ') : '(none)'}\n\n`;\nout += r.content;\nreturn [{json:{...$json, adminReplyText: out}}];"
+      },
+      "id": "a5ac0e79-b095-4698-8cf1-fa29ff994f77",
+      "name": "B7b - Format Template Get",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "TEMPLATE_SET"
+            }
+          ]
+        }
+      },
+      "id": "67c986a2-064d-4273-9612-15107ed03566",
+      "name": "B8 - Is TEMPLATE_SET?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)\nVALUES ($1,$2,lower($3),$4, COALESCE((SELECT variables FROM public.message_templates WHERE tenant_id=$1 AND key=$2 AND locale=lower($3)), '[]'::jsonb))\nON CONFLICT (tenant_id, key, locale) DO UPDATE\n  SET content=EXCLUDED.content, updated_at=now()\nRETURNING tenant_id, key, locale, content, variables;",
+        "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale, $json.adminTemplateContent]}}"
+      },
+      "id": "289806f5-8308-436f-8ec3-0ae25310328d",
+      "name": "B8a - Template Set (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const rows = ($json.data || []);\nif (!rows.length) {\n  return [{json:{...$json, adminReplyText:'❌ Impossible de sauvegarder le template.'}}];\n}\nconst r = rows[0];\nconst vars = Array.isArray(r.variables) ? r.variables : (r.variables || []);\nlet out = `✅ Template sauvegardé: *${r.key}* (${r.locale}) [tenant]`;\nout += `\nVars: ${(vars && vars.length) ? vars.join(', ') : '(none)'}\n`;\nout += `\nAstuce: pour définir les variables autorisées: !template vars ${r.key} ${r.locale} order_id,eta`;\nreturn [{json:{...$json, adminReplyText: out}}];"
+      },
+      "id": "4239bb4d-8b60-43eb-8b18-92b1991740a6",
+      "name": "B8b - Format Template Set",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "TEMPLATE_VARS"
+            }
+          ]
+        }
+      },
+      "id": "41c9cebd-a063-49c0-ae96-4ffd244c192d",
+      "name": "B9 - Is TEMPLATE_VARS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)\nVALUES ($1,$2,lower($3), COALESCE((SELECT content FROM public.message_templates WHERE tenant_id=$1 AND key=$2 AND locale=lower($3)), ''), $4::jsonb)\nON CONFLICT (tenant_id, key, locale) DO UPDATE\n  SET variables=EXCLUDED.variables, updated_at=now()\nRETURNING tenant_id, key, locale, content, variables;",
+        "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale, $json.adminTemplateVarsJson]}}"
+      },
+      "id": "4f778a36-bd42-4a99-b7e6-02fb63c607a8",
+      "name": "B9a - Template Vars (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const rows = ($json.data || []);\nif (!rows.length) {\n  return [{json:{...$json, adminReplyText:'❌ Impossible de sauvegarder les variables.'}}];\n}\nconst r = rows[0];\nconst vars = Array.isArray(r.variables) ? r.variables : (r.variables || []);\nlet out = `✅ Variables sauvegardées: *${r.key}* (${r.locale})`;\nout += `\nVars: ${(vars && vars.length) ? vars.join(', ') : '(none)'}`;\nout += `\n\nRappel: seules ces variables seront rendues, les autres placeholders seront supprimés.`;\nreturn [{json:{...$json, adminReplyText: out}}];"
+      },
+      "id": "9b38fae0-df0e-4a03-9a9b-e818ce664bc6",
+      "name": "B9b - Format Template Vars",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ZONE_LIST"
+            }
+          ]
+        }
+      },
+      "id": "C1_IS_ZONE_LIST",
+      "name": "C1 - Is ZONE_LIST?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        980
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ZONE_SET"
+            }
+          ]
+        }
+      },
+      "id": "C2_IS_ZONE_SET",
+      "name": "C2 - Is ZONE_SET?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ZONE_DELETE"
+            }
+          ]
+        }
+      },
+      "id": "C3_IS_ZONE_DELETE",
+      "name": "C3 - Is ZONE_DELETE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT zone_id, wilaya, commune, fee_base_cents, min_order_cents, eta_min, eta_max, is_active\nFROM public.delivery_zones\nWHERE restaurant_id = $1\nORDER BY lower(wilaya), lower(commune)\nLIMIT 50;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            }
+          ]
+        }
+      },
+      "id": "C1A_ZONE_LIST_DB",
+      "name": "C1a - Zone List (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1090,
+        980
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst loc = (e.adminConsole?.locale || 'fr');\nconst rows = $items(\"C1a - Zone List (DB)\").map(i => i.json);\nlet txt = '';\nif (!rows.length) {\n  txt = (loc==='ar') ? 'لا توجد مناطق توصيل مُسجلة.' : 'Aucune zone de livraison enregistrée.';\n} else {\n  txt = (loc==='ar') ? '📍 مناطق التوصيل:\\n' : '📍 Zones de livraison :\\n';\n  for (const z of rows.slice(0, 25)) {\n    const active = z.is_active ? (loc==='ar'?'✅ مفعّل':'✅ actif') : (loc==='ar'?'⛔ غير مفعّل':'⛔ inactif');\n    txt += `- ${z.wilaya} / ${z.commune} | fee=${z.fee_base_cents} | min=${z.min_order_cents} | ETA=${z.eta_min}-${z.eta_max} | ${active}\\n`;\n  }\n}\ne.adminReplyText = txt.trim();\nreturn [{json:e}];"
+      },
+      "id": "C1B_FORMAT_ZONE_LIST",
+      "name": "C1b - Format Zone List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1310,
+        980
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH inp AS (\n  SELECT\n    $1::uuid AS restaurant_id,\n    NULLIF(trim($2::text),'') AS wilaya,\n    NULLIF(trim($3::text),'') AS commune,\n    GREATEST(COALESCE($4::int,0),0) AS fee_base_cents,\n    GREATEST(COALESCE($5::int,0),0) AS min_order_cents,\n    GREATEST(COALESCE($6::int,0),0) AS eta_min,\n    GREATEST(COALESCE($7::int,0),0) AS eta_max,\n    COALESCE($8::boolean,true) AS is_active\n), u AS (\n  UPDATE public.delivery_zones z\n  SET fee_base_cents=inp.fee_base_cents,\n      min_order_cents=inp.min_order_cents,\n      eta_min=inp.eta_min,\n      eta_max=GREATEST(inp.eta_max, inp.eta_min),\n      is_active=inp.is_active,\n      updated_at=now()\n  FROM inp\n  WHERE z.restaurant_id=inp.restaurant_id\n    AND lower(z.wilaya)=lower(inp.wilaya)\n    AND lower(z.commune)=lower(inp.commune)\n  RETURNING z.zone_id\n), i AS (\n  INSERT INTO public.delivery_zones(restaurant_id,wilaya,commune,fee_base_cents,min_order_cents,eta_min,eta_max,is_active)\n  SELECT inp.restaurant_id, inp.wilaya, inp.commune, inp.fee_base_cents, inp.min_order_cents, inp.eta_min, GREATEST(inp.eta_max, inp.eta_min), inp.is_active\n  FROM inp\n  WHERE inp.wilaya IS NOT NULL AND inp.commune IS NOT NULL\n    AND NOT EXISTS (SELECT 1 FROM u)\n  RETURNING zone_id\n)\nSELECT COALESCE((SELECT zone_id FROM u), (SELECT zone_id FROM i)) AS zone_id;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "wilaya",
+              "value": "={{$json.adminZoneWilaya}}"
+            },
+            {
+              "name": "commune",
+              "value": "={{$json.adminZoneCommune}}"
+            },
+            {
+              "name": "fee_base_cents",
+              "value": "={{$json.adminZoneFeeCents}}"
+            },
+            {
+              "name": "min_order_cents",
+              "value": "={{$json.adminZoneMinCents}}"
+            },
+            {
+              "name": "eta_min",
+              "value": "={{$json.adminZoneEtaMin}}"
+            },
+            {
+              "name": "eta_max",
+              "value": "={{$json.adminZoneEtaMax}}"
+            },
+            {
+              "name": "is_active",
+              "value": "={{$json.adminZoneActive}}"
+            }
+          ]
+        }
+      },
+      "id": "C2A_ZONE_UPSERT_DB",
+      "name": "C2a - Zone Upsert (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1090,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT insert_admin_wa_audit($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::text,$8::jsonb,NULL,true,NULL) AS audit_id;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "tenant_id",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "actor_phone",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "actor_role",
+              "value": "={{$json.rbac?.role || 'admin'}}"
+            },
+            {
+              "name": "action",
+              "value": "={{$items('C2a - Zone Upsert (DB)')[0].json.zone_id ? 'zone_update' : 'zone_create'}}"
+            },
+            {
+              "name": "target_type",
+              "value": "'zone'"
+            },
+            {
+              "name": "target_id",
+              "value": "={{String($items('C2a - Zone Upsert (DB)')[0].json.zone_id || '')}}"
+            },
+            {
+              "name": "metadata_json",
+              "value": "={{JSON.stringify({wilaya:$json.adminZoneWilaya, commune:$json.adminZoneCommune, fee:$json.adminZoneFeeCents, min:$json.adminZoneMinCents, etaMin:$json.adminZoneEtaMin, etaMax:$json.adminZoneEtaMax, active:$json.adminZoneActive})}}"
+            }
+          ]
+        }
+      },
+      "id": "C2B_AUDIT_ZONE_UPSERT",
+      "name": "C2b - Audit Zone Upsert (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1310,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst loc = (e.adminConsole?.locale || 'fr');\nconst zoneId = $items(\"C2a - Zone Upsert (DB)\")[0]?.json?.zone_id;\nconst active = e.adminZoneActive ? (loc==='ar'?'مفعّل':'actif') : (loc==='ar'?'غير مفعّل':'inactif');\nconst txt = (loc==='ar')\n  ? `✅ تم حفظ منطقة التوصيل.\\n${e.adminZoneWilaya} / ${e.adminZoneCommune}\\nfee=${e.adminZoneFeeCents} min=${e.adminZoneMinCents} ETA=${e.adminZoneEtaMin}-${e.adminZoneEtaMax} (${active})\\nzone_id=${zoneId}`\n  : `✅ Zone enregistrée.\\n${e.adminZoneWilaya} / ${e.adminZoneCommune}\\nfee=${e.adminZoneFeeCents} min=${e.adminZoneMinCents} ETA=${e.adminZoneEtaMin}-${e.adminZoneEtaMax} (${active})\\nzone_id=${zoneId}`;\ne.adminReplyText = txt.trim();\nreturn [{json:e}];"
+      },
+      "id": "C2C_FORMAT_ZONE_UPSERT",
+      "name": "C2c - Format Zone Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1510,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM public.delivery_zones\nWHERE restaurant_id=$1 AND lower(wilaya)=lower($2) AND lower(commune)=lower($3)\nRETURNING zone_id;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "wilaya",
+              "value": "={{$json.adminZoneWilaya}}"
+            },
+            {
+              "name": "commune",
+              "value": "={{$json.adminZoneCommune}}"
+            }
+          ]
+        }
+      },
+      "id": "C3A_ZONE_DELETE_DB",
+      "name": "C3a - Zone Delete (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1090,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT insert_admin_wa_audit($1::uuid,$2::uuid,$3::text,$4::text,'zone_delete','zone',$5::text,$6::text,$7::jsonb,NULL,true,NULL) AS audit_id;",
+        "additionalFields": {
+          "mode": "single",
+          "values": [
+            {
+              "name": "tenant_id",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurant_id",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "actor_phone",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "actor_role",
+              "value": "={{$json.rbac?.role || 'admin'}}"
+            },
+            {
+              "name": "target_id",
+              "value": "={{String($items('C3a - Zone Delete (DB)')[0].json.zone_id || '')}}"
+            },
+            {
+              "name": "command_raw",
+              "value": "={{String($json.adminConsole?.raw || '').slice(0,200)}}"
+            },
+            {
+              "name": "metadata_json",
+              "value": "={{JSON.stringify({wilaya:$json.adminZoneWilaya, commune:$json.adminZoneCommune})}}"
+            }
+          ]
+        }
+      },
+      "id": "C3B_AUDIT_ZONE_DELETE",
+      "name": "C3b - Audit Zone Delete (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1310,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst loc = (e.adminConsole?.locale || 'fr');\nconst zoneId = $items(\"C3a - Zone Delete (DB)\")[0]?.json?.zone_id;\nlet txt = '';\nif (!zoneId) {\n  txt = (loc==='ar')\n    ? `⚠️ لم يتم العثور على المنطقة: ${e.adminZoneWilaya} / ${e.adminZoneCommune}`\n    : `⚠️ Zone introuvable : ${e.adminZoneWilaya} / ${e.adminZoneCommune}`;\n} else {\n  txt = (loc==='ar')\n    ? `🗑️ تم حذف منطقة التوصيل.\\n${e.adminZoneWilaya} / ${e.adminZoneCommune}\\nzone_id=${zoneId}`\n    : `🗑️ Zone supprimée.\\n${e.adminZoneWilaya} / ${e.adminZoneCommune}\\nzone_id=${zoneId}`;\n}\ne.adminReplyText = txt.trim();\nreturn [{json:e}];"
+      },
+      "id": "C3C_FORMAT_ZONE_DELETE",
+      "name": "C3c - Format Zone Delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1510,
+        1300
+      ]
+    }
+  ],
+  "connections": {
+    "IN - From Adapters": {
+      "main": [
+        [
+          {
+            "node": "A0 - Parse Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A0 - Parse Command": {
+      "main": [
+        [
+          {
+            "node": "A1 - Is Admin Command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A1 - Is Admin Command?": {
+      "main": [
+        [
+          {
+            "node": "A2 - RBAC (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END - Drop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A2 - RBAC (DB)": {
+      "main": [
+        [
+          {
+            "node": "A3 - Authorized?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A3 - Authorized?": {
+      "main": [
+        [
+          {
+            "node": "A5 - Parse Intent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A4 - Not Authorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A4 - Not Authorized": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A5 - Parse Intent": {
+      "main": [
+        [
+          {
+            "node": "B6 - Is UNKNOWN?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B1 - Is HELP?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B2 - Is TICKETS?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B3 - Is TAKE?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B4 - Is CLOSE?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B5 - Is REPLY?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B7 - Is TEMPLATE_GET?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B8 - Is TEMPLATE_SET?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B9 - Is TEMPLATE_VARS?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "C1 - Is ZONE_LIST?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "C2 - Is ZONE_SET?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "C3 - Is ZONE_DELETE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B6 - Is UNKNOWN?": {
+      "main": [
+        [
+          {
+            "node": "B6 - Unknown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B6 - Unknown": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Is HELP?": {
+      "main": [
+        [
+          {
+            "node": "B1a - Reply HELP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B1a - Reply HELP": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Is TICKETS?": {
+      "main": [
+        [
+          {
+            "node": "B2a - List Tickets (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B2a - List Tickets (DB)": {
+      "main": [
+        [
+          {
+            "node": "B2b - Format Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2b - Format Tickets": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Is TAKE?": {
+      "main": [
+        [
+          {
+            "node": "B3a - Take Ticket (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B3a - Take Ticket (DB)": {
+      "main": [
+        [
+          {
+            "node": "B3b - Format Take",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3b - Format Take": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Is CLOSE?": {
+      "main": [
+        [
+          {
+            "node": "B4a - Close Ticket (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B4a - Close Ticket (DB)": {
+      "main": [
+        [
+          {
+            "node": "B4b - Format Close",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4b - Format Close": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5 - Is REPLY?": {
+      "main": [
+        [
+          {
+            "node": "B5a - Load Ticket (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B5a - Load Ticket (DB)": {
+      "main": [
+        [
+          {
+            "node": "B5b - Log Message (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5b - Log Message (DB)": {
+      "main": [
+        [
+          {
+            "node": "B5c - Build Customer Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5c - Build Customer Outbox": {
+      "main": [
+        [
+          {
+            "node": "B5d - Enqueue Customer Outbox (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5d - Enqueue Customer Outbox (DB)": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "O0 - Build Admin Outbox": {
+      "main": [
+        [
+          {
+            "node": "O1 - Enqueue Admin Outbox (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B7 - Is TEMPLATE_GET?": {
+      "main": [
+        [
+          {
+            "node": "B7a - Template Get (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B7a - Template Get (DB)": {
+      "main": [
+        [
+          {
+            "node": "B7b - Format Template Get",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B7b - Format Template Get": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B8 - Is TEMPLATE_SET?": {
+      "main": [
+        [
+          {
+            "node": "B8a - Template Set (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B8a - Template Set (DB)": {
+      "main": [
+        [
+          {
+            "node": "B8b - Format Template Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B8b - Format Template Set": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B9 - Is TEMPLATE_VARS?": {
+      "main": [
+        [
+          {
+            "node": "B9a - Template Vars (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "B9a - Template Vars (DB)": {
+      "main": [
+        [
+          {
+            "node": "B9b - Format Template Vars",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B9b - Format Template Vars": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C1 - Is ZONE_LIST?": {
+      "main": [
+        [
+          {
+            "node": "C1a - Zone List (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C1a - Zone List (DB)": {
+      "main": [
+        [
+          {
+            "node": "C1b - Format Zone List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C1b - Format Zone List": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C2 - Is ZONE_SET?": {
+      "main": [
+        [
+          {
+            "node": "C2a - Zone Upsert (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C2a - Zone Upsert (DB)": {
+      "main": [
+        [
+          {
+            "node": "C2b - Audit Zone Upsert (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C2b - Audit Zone Upsert (DB)": {
+      "main": [
+        [
+          {
+            "node": "C2c - Format Zone Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C2c - Format Zone Upsert": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3 - Is ZONE_DELETE?": {
+      "main": [
+        [
+          {
+            "node": "C3a - Zone Delete (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3a - Zone Delete (DB)": {
+      "main": [
+        [
+          {
+            "node": "C3b - Audit Zone Delete (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3b - Audit Zone Delete (DB)": {
+      "main": [
+        [
+          {
+            "node": "C3c - Format Zone Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C3c - Format Zone Delete": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,425 @@
+{
+  "name": "W10 - CUSTOMER Delivery Quote (Zone + Fee + ETA)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 60,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/customer/delivery/quote",
+        "responseMode": "responseNode"
+      },
+      "id": "b0d8b3d4-70b6-4e13-bf48-5b3b94f98112",
+      "name": "IN - Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\n\nconst headers = ($json.headers ?? {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst headerToken = (headers['x-api-token'] || headers['X-Api-Token'] || headers['x-webhook-token'] || headers['X-Webhook-Token'] || '').toString().trim();\n\nconst token = (headerToken || bearer || '').toString().trim();\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nreturn [{\n  json: {\n    channel: 'customer',\n    userId: 'customer',\n    metadata: { ip, userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString() },\n    _auth: { tokenPresent: !!token, tokenHash }\n  }\n}];\n"
+      },
+      "id": "a6c646d3-1d80-4f60-9d0e-5d7f3a7c64cb",
+      "name": "B0 - Parse Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
+        "additionalFields": {
+          "queryParams": "={{[$json._auth.tokenHash]}}"
+        }
+      },
+      "id": "9c5e6f51-7a30-4d9c-bd3a-9d2b1a21f62c",
+      "name": "B0 - Resolve Client (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $items(\"B0 - Parse Auth\")[0].json;\nconst r = $json;\n\nconst matched = !!r.matched;\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && r.tenant_id && r.restaurant_id) {\n  tenantId = r.tenant_id.toString();\n  restaurantId = r.restaurant_id.toString();\n  authMode = 'api_client';\n  try { scopes = Array.isArray(r.scopes) ? r.scopes : (typeof r.scopes === 'string' ? JSON.parse(r.scopes) : (r.scopes?.scopes || [])); } catch { scopes = []; }\n}\n\nconst authOk = authMode !== 'deny';\n\nconst requiredScopes = ['delivery:quote'];\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\nconst scopeOk = authOk && (requiredScopes.length === 0 || requiredScopes.some(rq => hasScope(rq, scopes)));\n\nconst endpoint_group = 'customer';\nconst endpoint_path = '/v1/customer/delivery/quote';\n\nconst denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    _auth: {\n      ...e._auth,\n      authOk,\n      scopeOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (r.client_id || null) : null,\n      clientName: matched ? (r.client_name || null) : null\n    }\n  }\n}];\n"
+      },
+      "id": "f4f63b2e-2d54-4b85-9c74-f9a37c1f67c1",
+      "name": "B0 - Apply Auth Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._auth.authOk}}",
+              "operation": "isTrue"
+            },
+            {
+              "value1": "={{$json._auth.scopeOk}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "c7b8a6b1-0d14-4a0c-9f5a-6a4c8a7e4090",
+      "name": "B0 - Access OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,$6,'HIGH', jsonb_build_object('token_hash',$7,'ip',$8,'ua',$9,'auth_mode',$10,'required_scopes',$11::jsonb,'scopes',$12::jsonb,'endpoint_group',$13,'endpoint_path',$14)) RETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId||null, $json.restaurantId||null, null, $json.channel, $json.userId, ($json._auth.denyReason || 'AUTH_DENY'), $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.authMode, JSON.stringify($json._auth.requiredScopes || []), JSON.stringify($json._auth.scopes || []), $json._auth.endpoint_group, $json._auth.endpoint_path]}}"
+        }
+      },
+      "id": "f0cf1b91-7a49-4f2c-9c92-c8d7a1f7d5fe",
+      "name": "B0 - Log Deny (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{$json._resp}}",
+        "responseCode": 200
+      },
+      "id": "a3fa0f2e-07c3-4c1f-98c0-8d3e2c7a6c2d",
+      "name": "RESP - 200 QUOTE",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        220,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": 403,
+        "responseBody": "={{$json._resp}}"
+      },
+      "id": "9bb0cf7b-1f6d-4af1-8b0b-8f2d2d0b8d91",
+      "name": "RESP - 403 Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        220,
+        120
+      ]
+    },
+    {
+      "id": "daf6fda5-a56a-4c4c-90f1-035ad524517f",
+      "name": "D1 - Delivery Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        860,
+        140
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$env.DELIVERY_ENABLED === \"true\"}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "575ac25c-8d77-491c-be1a-96178c751e0a",
+      "name": "D2 - Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        140
+      ],
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "\nconst e = $json;\nconst body = e.body || e.data || e;\n\nconst wilaya = (body.wilaya || body.Wilaya || body.w || '').toString().trim();\nconst commune = (body.commune || body.Commune || body.c || '').toString().trim();\nconst totalCents = Number(body.totalCents ?? body.total_cents ?? body.total ?? 0);\n\nconst out = {\n  ...e,\n  req: {\n    wilaya,\n    commune,\n    totalCents: Number.isFinite(totalCents) ? Math.max(0, Math.floor(totalCents)) : 0\n  }\n};\n\nif (!wilaya || !commune) {\n  out._resp = { ok:false, code:'DELIVERY_ADDRESS_INCOMPLETE', message:'Wilaya et commune sont obligatoires pour calculer la livraison.', missing:['wilaya','commune'] };\n  out._shortCircuit = true;\n}\n\nreturn [{json: out}];\n"
+      }
+    },
+    {
+      "id": "8f13acda-68fe-4fe9-bad4-372187b261dd",
+      "name": "D2b - Short circuit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        140
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._shortCircuit === true}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a4b569ac-003f-477b-abb8-bc481c9d5266",
+      "name": "D3 - Quote (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        140
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.delivery_quote($1,$2,$3,$4);",
+        "additionalFields": {
+          "queryParams": "={{[$json.restaurantId, $json.req.wilaya, $json.req.commune, $json.req.totalCents]}}"
+        }
+      }
+    },
+    {
+      "id": "c1a069c1-b9ef-4c2b-a58b-848df468b6a5",
+      "name": "D4 - Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        140
+      ],
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "\nconst q = $json;\n\n// Postgres node outputs row fields at top-level\nconst reason = (q.reason || '').toString();\n\nlet ok = (q.zone_found === true || q.zone_found === 't' || q.zone_found === 'true') && (q.zone_active === true || q.zone_active === 't' || q.zone_active === 'true') && reason === '';\n\n// In our DB function, reason is always a code when not OK\nif (reason === '') ok = true;\n\nconst resp = {\n  ok: reason === '' ? true : false,\n  code: reason === '' ? 'OK' : reason,\n  zone: {\n    found: !!q.zone_found,\n    active: !!q.zone_active,\n    wilaya: $items('D2 - Parse Request')[0].json.req.wilaya,\n    commune: $items('D2 - Parse Request')[0].json.req.commune,\n  },\n  fee: {\n    base_cents: Number(q.fee_base_cents||0),\n    surcharge_cents: Number(q.surcharge_cents||0),\n    final_cents: Number(q.final_fee_cents||0),\n    free_threshold_cents: q.free_threshold_cents === null ? null : Number(q.free_threshold_cents||0),\n    min_order_cents: Number(q.min_order_cents||0)\n  },\n  eta: { min: Number(q.eta_min||0), max: Number(q.eta_max||0) }\n};\n\n// User-facing message\nconst fmt = (c) => (Number(c||0)/100).toFixed(2) + '€';\nlet message='';\nif (resp.ok) {\n  message = `✅ Livraison disponible (${resp.zone.wilaya} / ${resp.zone.commune})\nFrais: ${fmt(resp.fee.final_cents)}\nETA: ${resp.eta.min}-${resp.eta.max} min`;\n} else if (resp.code === 'DELIVERY_ZONE_NOT_FOUND') {\n  message = `❌ Zone de livraison introuvable pour *${resp.zone.wilaya} / ${resp.zone.commune}*.\nTu peux :\n- Vérifier la commune\n- Choisir *à emporter*`;\n} else if (resp.code === 'DELIVERY_ZONE_INACTIVE') {\n  message = `⚠️ Livraison indisponible pour *${resp.zone.wilaya} / ${resp.zone.commune}* (zone désactivée).\nChoisis *à emporter*.`;\n} else if (resp.code === 'DELIVERY_MIN_ORDER') {\n  message = `⚠️ Minimum commande pour livraison: ${fmt(resp.fee.min_order_cents)}.\nFrais actuels: ${fmt(resp.fee.final_cents)}`;\n} else {\n  message = `⚠️ Impossible de calculer la livraison (${resp.code}).`;\n}\n\nreturn [{json:{\n  ...$items('B0 - Apply Auth Context')[0].json,\n  _resp: { ...resp, message }\n}}];\n"
+      }
+    },
+    {
+      "id": "c023c33c-6a97-47af-873e-83ea2c4039a6",
+      "name": "D5 - Log Quote Event (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        140
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5::jsonb);",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, ($json._resp.code === \"OK\" ? \"DELIVERY_QUOTE_OK\" : $json._resp.code), ($json._resp.code === \"OK\" ? \"LOW\" : \"MEDIUM\"), JSON.stringify($json._resp)]}}"
+        }
+      }
+    },
+    {
+      "id": "3ff32abd-eb84-444a-b83d-84e61e8bb2e8",
+      "name": "RESP - 503 Delivery Disabled",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        320
+      ],
+      "parameters": {
+        "responseCode": 503,
+        "responseBody": "={{({ok:false, code:\"DELIVERY_DISABLED\", message:\"Delivery disabled\"})}}"
+      }
+    }
+  ],
+  "connections": {
+    "IN - Webhook": {
+      "main": [
+        [
+          {
+            "node": "B0 - Parse Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Parse Auth": {
+      "main": [
+        [
+          {
+            "node": "B0 - Resolve Client (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Resolve Client (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Apply Auth Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Apply Auth Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Access OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Access OK?": {
+      "main": [
+        [
+          {
+            "node": "D1 - Delivery Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B0 - Log Deny (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Allow (Audit)": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Deny (DB)": {
+      "main": [
+        [
+          {
+            "node": "RESP - 403 Forbidden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D1 - Delivery Enabled?": {
+      "main": [
+        [
+          {
+            "node": "D2 - Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESP - 503 Delivery Disabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D2 - Parse Request": {
+      "main": [
+        [
+          {
+            "node": "D2b - Short circuit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D2b - Short circuit?": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 QUOTE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "D3 - Quote (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D3 - Quote (DB)": {
+      "main": [
+        [
+          {
+            "node": "D4 - Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D4 - Build Response": {
+      "main": [
+        [
+          {
+            "node": "D5 - Log Quote Event (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D5 - Log Quote Event (DB)": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 QUOTE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}
