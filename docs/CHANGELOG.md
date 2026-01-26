@@ -1,5 +1,101 @@
 # CHANGELOG
 
+## 2026-01-26 — v3.2.4 (DevSecOps Pipeline Enhancement)
+
+### CI/CD Pipeline (Expert DevSecOps Overhaul)
+
+#### CI Pipeline (`ci.yml`)
+- **Parallel job execution**: Lint, security gates, and Python tests run concurrently
+- **Concurrency control**: Auto-cancels in-progress runs on same branch
+- **Minimal permissions**: Least privilege principle applied
+- **Dependency caching**: Python pip caching for faster builds
+- **Build artifacts**: Includes SHA256 checksums
+- **CI Summary**: Visual job status report in GitHub UI
+
+#### Security Scanning (`security-scan.yml`) - NEW
+- **Gitleaks integration**: Automated secret detection on every push
+- **Custom secret patterns**: Project-specific patterns (webhook tokens, Meta secrets, etc.)
+- **Container scanning**: Trivy vulnerability scan on all Docker images (n8n, postgres, redis, nginx, traefik)
+- **Configuration SAST**: Security audit of Docker Compose, Nginx configs, environment templates
+- **Dependency scanning**: Python dependencies + n8n workflow node audit
+- **SBOM generation**: Software Bill of Materials for compliance
+
+#### CD Deploy (`cd-deploy.yml`)
+- **Environment selection**: Staging vs Production with protection rules
+- **Concurrency lock**: Prevents simultaneous deployments
+- **Pre-deployment validation**: Docker, disk space, directory checks
+- **Database backup**: Automatic pg_dump before every deployment
+- **Configuration backup**: .env and secrets/ archived with deployment ID
+- **Health checks**: 15 retries with 10s intervals
+- **Smoke tests**: Health endpoint, container count, DB connectivity
+- **Auto-rollback**: Automatic recovery on deployment failure
+- **Deployment audit**: Logged to `/var/log/resto-bot/deployments.log`
+- **Notifications**: Slack/webhook alerts on success/failure
+
+#### Rollback (`rollback.yml`)
+- **Multiple rollback types**: config, full (DB+config), code_only
+- **Pre-rollback backup**: Safety backup before any rollback
+- **Database restore**: Full DB restore with proper connection handling
+- **Audit trail**: Rollback reason and actor logged
+- **Recovery instructions**: If rollback fails, provides manual recovery steps
+
+#### Scheduled Backup (`scheduled-backup.yml`) - NEW
+- **Daily backups**: 3:00 AM UTC, 7-day retention
+- **Weekly full backups**: Sunday 4:00 AM UTC, 4-week retention
+- **Backup verification**: Integrity check (gunzip -t, tar -tzf)
+- **Automatic rotation**: Old backups cleaned up
+- **Weekly maintenance**: VACUUM ANALYZE, log cleanup, Docker prune
+
+#### Health Monitor (`health-monitor.yml`) - NEW
+- **Every 15 minutes**: Continuous health monitoring
+- **Service checks**: n8n, PostgreSQL, Redis, container count
+- **Disk space alerts**: Warning at 80%, critical at 90%
+- **Queue monitoring**: Alert on high queue depth
+- **Instant alerts**: Webhook notification on any issue
+
+### DevOps Configuration
+
+#### Dependabot (`dependabot.yml`) - NEW
+- GitHub Actions: Weekly updates on Mondays
+- Docker images: Weekly updates with major version ignore for stability
+
+#### CODEOWNERS - NEW
+- Automatic review assignment for CI/CD, security, database changes
+
+#### Gitleaks Configuration (`.gitleaks.toml`) - NEW
+- Custom rules for Resto Bot secrets
+- Allowlist for safe patterns and example files
+
+#### GitHub Templates - NEW
+- **Bug report**: Structured issue template with severity and channel selection
+- **Feature request**: Categorized feature suggestions
+- **Pull request**: Checklist for testing, security, and database changes
+
+### Documentation
+- **DEVOPS.md**: Complete DevSecOps guide with pipeline architecture, commands, and troubleshooting
+
+### Files Added
+```
+.github/
+├── workflows/
+│   ├── ci.yml (enhanced)
+│   ├── cd-deploy.yml (enhanced)
+│   ├── rollback.yml (enhanced)
+│   ├── security-scan.yml (new)
+│   ├── scheduled-backup.yml (new)
+│   └── health-monitor.yml (new)
+├── dependabot.yml (new)
+├── CODEOWNERS (new)
+├── pull_request_template.md (new)
+└── ISSUE_TEMPLATE/
+    ├── bug_report.yml (new)
+    └── feature_request.yml (new)
+.gitleaks.toml (new)
+docs/DEVOPS.md (new)
+```
+
+---
+
 ## 2026-01-23 — v3.2.2 (P0 Security + P1 Features)
 
 ### Security (P0-SEC-*)

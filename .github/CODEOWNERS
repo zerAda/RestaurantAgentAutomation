@@ -1,0 +1,27 @@
+# =============================================================================
+# CODEOWNERS - Resto Bot
+# =============================================================================
+# Defines code ownership for automatic review requests
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# =============================================================================
+
+# Default owners for everything
+* @ralphé
+
+# CI/CD workflows require DevOps review
+.github/workflows/ @ralphé
+.github/dependabot.yml @ralphé
+
+# Security-sensitive files
+config/.env.example @ralphé
+infra/gateway/ @ralphé
+db/migrations/*sec* @ralphé
+
+# Database changes
+db/ @ralphé
+
+# n8n Workflows
+workflows/ @ralphé
+
+# Documentation
+docs/ @ralphé

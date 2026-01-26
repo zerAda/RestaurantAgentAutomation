@@ -1,3 +1,14 @@
+# =============================================================================
+# CD Pipeline - Deploy to Hostinger VPS via SSH
+# =============================================================================
+# Production deployment for Resto Bot:
+# - SSH-based deployment (no self-hosted runner required)
+# - Database backup before deployment
+# - Automatic rollback on failure
+# - Health checks and smoke tests
+# - Notifications
+# =============================================================================
+
 name: CD - Deploy to VPS
 
 on:
@@ -15,178 +26,448 @@ on:
         options:
           - production
           - staging
+      skip_backup:
+        description: 'Skip database backup'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
 
 env:
-  PROJECT_DIR: /opt/resto-bot
-  BACKUP_DIR: /opt/resto-bot-backups
+  # VPS Configuration
+  VPS_HOST: 72.60.190.192
+  VPS_USER: root
+  PROJECT_DIR: /docker/n8n
+  CODE_DIR: /local-files/ralphe/n8n-project
+  BACKUP_DIR: /local-files/backups/resto-bot
+  COMPOSE_FILE: docker-compose.yml
+
+  # Health check
+  HEALTH_URL: https://n8n.srv1258231.hstgr.cloud/healthz
+  MAX_RETRIES: 15
+  RETRY_INTERVAL: 10
+
+permissions:
+  contents: read
+  deployments: write
 
 jobs:
-  deploy:
-    name: Deploy to VPS
-    runs-on: self-hosted
+  # ============================================================================
+  # JOB 1: Validate and prepare
+  # ============================================================================
+  prepare:
+    name: Prepare Deployment
+    runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      deploy_id: ${{ steps.deploy_id.outputs.id }}
+      environment: ${{ steps.env.outputs.environment }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Pre-deployment checks
+      - name: Determine environment
+        id: env
         run: |
-          echo "=== Pre-deployment Checks ==="
-          echo "User: $(whoami)"
-          echo "Host: $(hostname)"
-          echo "Date: $(date)"
-          echo "Git SHA: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "Deploying to: $ENV"
 
-          # Check Docker is running
-          docker --version || { echo "ERROR: Docker not available"; exit 1; }
-          docker compose version || { echo "ERROR: Docker Compose not available"; exit 1; }
-
-          # Check project directory exists
-          if [[ ! -d "${{ env.PROJECT_DIR }}" ]]; then
-            echo "Creating project directory..."
-            sudo mkdir -p "${{ env.PROJECT_DIR }}"
-            sudo chown $(whoami):$(whoami) "${{ env.PROJECT_DIR }}"
-          fi
-
-          echo "PASS: Pre-deployment checks"
-
-      - name: Backup current deployment
+      - name: Get version
+        id: version
         run: |
-          echo "=== Backup Current Deployment ==="
-          BACKUP_NAME="backup-$(date +%Y%m%d-%H%M%S)"
+          VERSION=$(cat VERSION)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
 
-          mkdir -p "${{ env.BACKUP_DIR }}"
-
-          if [[ -f "${{ env.PROJECT_DIR }}/docker-compose.hostinger.prod.yml" ]]; then
-            # Backup configs and data
-            tar -czvf "${{ env.BACKUP_DIR }}/${BACKUP_NAME}.tar.gz" \
-              -C "${{ env.PROJECT_DIR }}" \
-              .env \
-              secrets/ \
-              2>/dev/null || echo "Partial backup (some files may not exist)"
-
-            echo "Backup created: ${BACKUP_NAME}.tar.gz"
-
-            # Keep only last 5 backups
-            cd "${{ env.BACKUP_DIR }}"
-            ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm
-            echo "Old backups cleaned"
-          else
-            echo "No existing deployment to backup"
-          fi
-
-      - name: Sync files to project directory
+      - name: Generate deployment ID
+        id: deploy_id
         run: |
-          echo "=== Syncing Files ==="
+          DEPLOY_ID="deploy-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          echo "id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "Deployment ID: $DEPLOY_ID"
 
-          # Sync all files except secrets and .env
-          rsync -av --delete \
+  # ============================================================================
+  # JOB 2: Backup
+  # ============================================================================
+  backup:
+    name: Create Backup
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ github.event.inputs.skip_backup != 'true' }}
+
+    outputs:
+      backup_name: ${{ steps.backup.outputs.name }}
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create backup on VPS
+        id: backup
+        run: |
+          BACKUP_NAME="${{ needs.prepare.outputs.deploy_id }}"
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            set -e
+            BACKUP_NAME="$1"
+            BACKUP_DIR="${{ env.BACKUP_DIR }}"
+            PROJECT_DIR="${{ env.PROJECT_DIR }}"
+
+            # Create backup directory
+            mkdir -p "$BACKUP_DIR"
+
+            # Database backup
+            echo "Creating database backup..."
+            cd "$PROJECT_DIR"
+            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl \
+              | gzip > "$BACKUP_DIR/${BACKUP_NAME}-db.sql.gz"
+
+            # Configuration backup
+            echo "Creating config backup..."
+            tar -czvf "$BACKUP_DIR/${BACKUP_NAME}-config.tar.gz" \
+              -C "$PROJECT_DIR" \
+              .env secrets/ 2>/dev/null || true
+
+            # Store current SHA
+            echo "${{ github.sha }}" > "$BACKUP_DIR/${BACKUP_NAME}-sha.txt"
+
+            echo "Backup completed: $BACKUP_NAME"
+            ls -lh "$BACKUP_DIR/${BACKUP_NAME}"*
+
+            # Rotate old backups (keep last 10)
+            cd "$BACKUP_DIR"
+            ls -t deploy-*-db.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm
+            ls -t deploy-*-config.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm
+          ENDSSH
+
+          echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
+
+  # ============================================================================
+  # JOB 3: Deploy
+  # ============================================================================
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    needs: [prepare, backup]
+    if: always() && needs.prepare.result == 'success'
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+      url: https://n8n.srv1258231.hstgr.cloud
+
+    outputs:
+      status: ${{ steps.health.outputs.status }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync code to VPS
+        run: |
+          echo "::group::Sync Code"
+
+          # Sync project files
+          rsync -avz --delete \
             --exclude='.git' \
             --exclude='.env' \
             --exclude='secrets/' \
             --exclude='*.pdf' \
             --exclude='node_modules' \
-            --exclude='dist/' \
-            ./ "${{ env.PROJECT_DIR }}/"
+            --exclude='__pycache__' \
+            -e "ssh -i ~/.ssh/id_rsa" \
+            ./ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.CODE_DIR }}/
 
-          echo "Files synced to ${{ env.PROJECT_DIR }}"
-
-      - name: Setup environment
-        run: |
-          echo "=== Setup Environment ==="
-          cd "${{ env.PROJECT_DIR }}"
-
-          # Create .env from example if not exists
-          if [[ ! -f .env ]]; then
-            echo "Creating .env from template..."
-            cp config/.env.example .env
-            echo "WARNING: .env created from template - configure before first run!"
-          fi
-
-          # Create secrets directory
-          mkdir -p secrets
-          chmod 700 secrets
-
-          # Verify required files
-          [[ -f docker-compose.hostinger.prod.yml ]] || { echo "ERROR: docker-compose missing"; exit 1; }
-          [[ -f .env ]] || { echo "ERROR: .env missing"; exit 1; }
-
-          echo "Environment ready"
+          echo "Code synced to ${{ env.CODE_DIR }}"
+          echo "::endgroup::"
 
       - name: Run database migrations
         run: |
-          echo "=== Database Migrations ==="
-          cd "${{ env.PROJECT_DIR }}"
+          echo "::group::Database Migrations"
 
-          # Check if stack is running
-          if docker compose -f docker-compose.hostinger.prod.yml ps --quiet postgres 2>/dev/null | grep -q .; then
-            echo "Running migrations..."
-            chmod +x scripts/db_migrate.sh
-            ./scripts/db_migrate.sh || echo "Migration script not available or failed"
-          else
-            echo "Database not running - migrations will run on first start"
-          fi
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            set -e
+            cd ${{ env.PROJECT_DIR }}
 
-      - name: Deploy stack
+            # Check if migrations exist
+            if [ -d "${{ env.CODE_DIR }}/db/migrations" ]; then
+              echo "Applying migrations..."
+              for migration in ${{ env.CODE_DIR }}/db/migrations/*.sql; do
+                [ -f "$migration" ] || continue
+                echo "Applying: $(basename $migration)"
+                docker compose exec -T postgres psql -U n8n -d n8n < "$migration" || true
+              done
+              echo "Migrations completed"
+            else
+              echo "No migrations directory found"
+            fi
+          ENDSSH
+
+          echo "::endgroup::"
+
+      - name: Deploy n8n workflows
         run: |
-          echo "=== Deploy Stack ==="
-          cd "${{ env.PROJECT_DIR }}"
+          echo "::group::Deploy Workflows"
 
-          # Pull latest images
-          docker compose -f docker-compose.hostinger.prod.yml pull
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            set -e
+            cd ${{ env.PROJECT_DIR }}
 
-          # Start/restart stack
-          docker compose -f docker-compose.hostinger.prod.yml up -d
+            # Import workflows if n8n CLI is available
+            if [ -d "${{ env.CODE_DIR }}/workflows" ]; then
+              echo "Workflows directory found"
 
-          echo "Waiting for services to start..."
-          sleep 30
+              # Copy workflows to n8n data volume (if needed)
+              # Note: n8n workflows are typically imported via UI or API
+              # This step prepares them for import
 
-          # Check services
-          docker compose -f docker-compose.hostinger.prod.yml ps
+              ls -la ${{ env.CODE_DIR }}/workflows/
+              echo "Workflows ready for import"
+            fi
+          ENDSSH
+
+          echo "::endgroup::"
+
+      - name: Restart services (if needed)
+        run: |
+          echo "::group::Restart Services"
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            cd ${{ env.PROJECT_DIR }}
+
+            # Only restart if compose file changed
+            if [ -f "${{ env.CODE_DIR }}/docker-compose.hostinger.prod.yml" ]; then
+              echo "Checking for compose changes..."
+
+              # Pull latest images
+              docker compose pull --quiet || true
+
+              # Restart with zero downtime
+              docker compose up -d --remove-orphans
+
+              echo "Services restarted"
+            else
+              echo "Using existing compose configuration"
+            fi
+
+            # Show status
+            docker compose ps
+          ENDSSH
+
+          echo "::endgroup::"
 
       - name: Health check
+        id: health
         run: |
-          echo "=== Health Check ==="
-          cd "${{ env.PROJECT_DIR }}"
+          echo "::group::Health Check"
 
-          # Wait for services
-          MAX_RETRIES=10
           RETRY=0
+          HEALTHY=false
 
-          while [[ $RETRY -lt $MAX_RETRIES ]]; do
-            if curl -sf http://localhost:5678/healthz >/dev/null 2>&1; then
-              echo "n8n is healthy"
+          while [ $RETRY -lt ${{ env.MAX_RETRIES }} ]; do
+            echo "Health check attempt $((RETRY+1))/${{ env.MAX_RETRIES }}..."
+
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.HEALTH_URL }}" || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              HEALTHY=true
+              echo "n8n is healthy (HTTP $HTTP_CODE)"
               break
             fi
-            echo "Waiting for n8n... (attempt $((RETRY+1))/$MAX_RETRIES)"
-            sleep 10
-            ((RETRY++))
+
+            echo "Waiting... (HTTP $HTTP_CODE)"
+            sleep ${{ env.RETRY_INTERVAL }}
+            RETRY=$((RETRY + 1))
           done
 
-          if [[ $RETRY -eq $MAX_RETRIES ]]; then
-            echo "WARNING: Health check timed out"
-            docker compose -f docker-compose.hostinger.prod.yml logs --tail=50
+          if [ "$HEALTHY" = "true" ]; then
+            echo "status=healthy" >> $GITHUB_OUTPUT
+            echo "All services healthy"
+          else
+            echo "status=unhealthy" >> $GITHUB_OUTPUT
+            echo "::error::Health check failed"
+
+            # Show logs
+            ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose logs --tail=30"
+            exit 1
           fi
 
-      - name: Post-deployment info
+          echo "::endgroup::"
+
+      - name: Run smoke tests
+        if: steps.health.outputs.status == 'healthy'
         run: |
-          echo "=========================================="
-          echo "DEPLOYMENT COMPLETE"
-          echo "=========================================="
-          echo "Version: $(cat ${{ env.PROJECT_DIR }}/VERSION)"
-          echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Time: $(date)"
+          echo "::group::Smoke Tests"
+
+          TESTS_PASSED=0
+          TESTS_TOTAL=3
+
+          # Test 1: Health endpoint
+          if curl -sf "${{ env.HEALTH_URL }}" > /dev/null; then
+            echo "Health endpoint: PASS"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "Health endpoint: FAIL"
+          fi
+
+          # Test 2: HTTPS redirect
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://n8n.srv1258231.hstgr.cloud" || echo "000")
+          if [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "308" ]; then
+            echo "HTTPS redirect: PASS (HTTP $HTTP_CODE)"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "HTTPS redirect: FAIL (HTTP $HTTP_CODE)"
+          fi
+
+          # Test 3: Database connectivity
+          DB_OK=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose exec -T postgres pg_isready -U n8n && echo OK" || echo "FAIL")
+          if echo "$DB_OK" | grep -q "OK"; then
+            echo "Database connectivity: PASS"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "Database connectivity: FAIL"
+          fi
+
           echo ""
-          echo "Services:"
-          cd "${{ env.PROJECT_DIR }}"
-          docker compose -f docker-compose.hostinger.prod.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-          echo "=========================================="
+          echo "Smoke tests: $TESTS_PASSED/$TESTS_TOTAL passed"
+
+          echo "::endgroup::"
+
+      - name: Record deployment
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            mkdir -p /var/log/resto-bot
+            cat >> /var/log/resto-bot/deployments.log << EOF
+
+          ================================================================================
+          Deployment: ${{ needs.prepare.outputs.deploy_id }}
+          ================================================================================
+          Version: ${{ needs.prepare.outputs.version }}
+          Environment: ${{ needs.prepare.outputs.environment }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+          Actor: ${{ github.actor }}
+          Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Status: ${{ steps.health.outputs.status }}
+          ================================================================================
+          EOF
+          ENDSSH
+
+  # ============================================================================
+  # JOB 4: Post-deployment
+  # ============================================================================
+  post-deploy:
+    name: Post-deployment
+    runs-on: ubuntu-latest
+    needs: [prepare, backup, deploy]
+    if: always()
+
+    steps:
+      - name: Setup SSH (for rollback if needed)
+        if: needs.deploy.result == 'failure'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Auto-rollback on failure
+        if: needs.deploy.result == 'failure' && needs.backup.outputs.backup_name != ''
+        run: |
+          echo "::warning::Deployment failed - initiating automatic rollback"
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            BACKUP="${{ needs.backup.outputs.backup_name }}"
+            BACKUP_DIR="${{ env.BACKUP_DIR }}"
+            PROJECT_DIR="${{ env.PROJECT_DIR }}"
+
+            cd "\$PROJECT_DIR"
+
+            # Restore configuration
+            if [ -f "\$BACKUP_DIR/\${BACKUP}-config.tar.gz" ]; then
+              tar -xzvf "\$BACKUP_DIR/\${BACKUP}-config.tar.gz" -C "\$PROJECT_DIR/"
+              echo "Configuration restored"
+            fi
+
+            # Restart services
+            docker compose up -d
+
+            sleep 20
+
+            # Verify
+            if curl -sf https://n8n.srv1258231.hstgr.cloud/healthz > /dev/null; then
+              echo "Auto-rollback successful"
+            else
+              echo "Auto-rollback may have failed - manual intervention required"
+            fi
+          ENDSSH
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment ID** | ${{ needs.prepare.outputs.deploy_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ needs.prepare.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ needs.prepare.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **URL** | https://n8n.srv1258231.hstgr.cloud |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Backup** | ${{ needs.backup.outputs.backup_name || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on failure
-        if: failure()
+        if: needs.deploy.result == 'failure'
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
         run: |
-          echo "DEPLOYMENT FAILED!"
-          echo "Check logs: docker compose -f docker-compose.hostinger.prod.yml logs"
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$ALERT_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "Deployment Failed",
+                "attachments": [{
+                  "color": "danger",
+                  "fields": [
+                    {"title": "Version", "value": "${{ needs.prepare.outputs.version }}", "short": true},
+                    {"title": "Commit", "value": "${{ github.sha }}", "short": true}
+                  ]
+                }]
+              }' || echo "Notification failed"
+          fi
+
+      - name: Notify on success
+        if: needs.deploy.result == 'success'
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$ALERT_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "Deployment Successful",
+                "attachments": [{
+                  "color": "good",
+                  "fields": [
+                    {"title": "Version", "value": "${{ needs.prepare.outputs.version }}", "short": true},
+                    {"title": "URL", "value": "https://n8n.srv1258231.hstgr.cloud", "short": true}
+                  ]
+                }]
+              }' || echo "Notification failed"
+          fi

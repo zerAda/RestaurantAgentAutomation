@@ -1,0 +1,70 @@
+# =============================================================================
+# Gitleaks Configuration - Resto Bot
+# =============================================================================
+# Custom rules for secret detection
+# https://github.com/gitleaks/gitleaks
+# =============================================================================
+
+title = "Resto Bot Secret Detection"
+
+[extend]
+useDefault = true
+
+# Additional rules specific to this project
+[[rules]]
+id = "resto-bot-webhook-token"
+description = "Resto Bot Webhook Token"
+regex = '''WEBHOOK_SHARED_TOKEN\s*=\s*["']?([^"'\s]{20,})["']?'''
+secretGroup = 1
+tags = ["token", "webhook"]
+
+[[rules]]
+id = "meta-app-secret"
+description = "Meta/WhatsApp App Secret"
+regex = '''META_APP_SECRET\s*=\s*["']?([a-f0-9]{32,})["']?'''
+secretGroup = 1
+tags = ["meta", "secret"]
+
+[[rules]]
+id = "n8n-encryption-key"
+description = "n8n Encryption Key"
+regex = '''N8N_ENCRYPTION_KEY\s*=\s*["']?([^"'\s]{16,})["']?'''
+secretGroup = 1
+tags = ["n8n", "encryption"]
+
+[[rules]]
+id = "postgres-password"
+description = "PostgreSQL Password"
+regex = '''POSTGRES_PASSWORD\s*=\s*["']?([^"'\s]{8,})["']?'''
+secretGroup = 1
+tags = ["database", "password"]
+
+[[rules]]
+id = "api-token-header"
+description = "API Token in Header"
+regex = '''x-webhook-token:\s*["']?([^"'\s]{20,})["']?'''
+secretGroup = 1
+tags = ["api", "token"]
+
+# Allowlist - files and patterns to ignore
+[allowlist]
+description = "Allowlist for known safe patterns"
+
+paths = [
+  '''\.env\.example$''',
+  '''docs/.*\.md$''',
+  '''tests/.*\.json$''',
+  '''\.gitleaks\.toml$''',
+  '''CLAUDE\.md$''',
+]
+
+regexes = [
+  '''CHANGE_ME''',
+  '''your-.*-here''',
+  '''example\.com''',
+  '''localhost''',
+  '''127\.0\.0\.1''',
+]
+
+# Specific commits to ignore (if needed)
+commits = []

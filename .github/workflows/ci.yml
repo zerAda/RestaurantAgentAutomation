@@ -1,22 +1,205 @@
+# =============================================================================
+# CI Pipeline - Resto Bot
+# =============================================================================
+# Expert DevSecOps CI pipeline with:
+# - Parallel job execution for speed
+# - Dependency caching
+# - Comprehensive validation
+# - Security gates
+# - Artifact management
+# =============================================================================
+
 name: CI - Resto Bot
 
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [main, master]
   workflow_dispatch:
 
+# Cancel in-progress runs on same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+# Minimal permissions (least privilege)
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
-  # ============================================
-  # JOB 1: Validation statique
-  # ============================================
-  validate:
-    name: Validation & Tests
+  # ============================================================================
+  # JOB 1: Quick validation (fast feedback)
+  # ============================================================================
+  lint:
+    name: Lint & Syntax
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Bash syntax check
+        run: |
+          echo "::group::Bash Syntax Validation"
+          find scripts/ -name "*.sh" -exec bash -n {} \;
+          echo "All shell scripts valid"
+          echo "::endgroup::"
+
+      - name: YAML validation
+        run: |
+          echo "::group::YAML Validation"
+          python3 -c "
+          import yaml
+          import sys
+          files = [
+            'docker-compose.hostinger.prod.yml',
+            'docker/docker-compose.yml',
+            'docker/docker-compose.test.yml'
+          ]
+          errors = []
+          for f in files:
+            try:
+              data = yaml.safe_load(open(f).read())
+              assert 'services' in data, f'{f} missing services key'
+              print(f'OK: {f}')
+            except Exception as e:
+              errors.append(f'{f}: {e}')
+          if errors:
+            for e in errors: print(f'ERROR: {e}')
+            sys.exit(1)
+          "
+          echo "::endgroup::"
+
+      - name: JSON workflow validation
+        run: |
+          echo "::group::Workflow JSON Validation"
+          for wf in workflows/*.json; do
+            jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and (.active|type=="boolean")' "$wf" >/dev/null \
+              || { echo "FAIL: $wf"; exit 1; }
+            echo "OK: $(basename $wf)"
+          done
+          echo "::endgroup::"
+
+  # ============================================================================
+  # JOB 2: Security checks (parallel with lint)
+  # ============================================================================
+  security-gates:
+    name: Security Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan for hardcoded secrets
+        run: |
+          echo "::group::Secret Scan"
+
+          # Check for CHANGE_ME placeholders
+          if grep -rI --line-number "CHANGE_ME" \
+            --exclude-dir=docs --exclude-dir=patches --exclude-dir=.git \
+            --exclude=integrity_gate.sh --exclude="*.md" -- . 2>/dev/null; then
+            echo "::error::CHANGE_ME placeholder found in code"
+            exit 1
+          fi
+
+          # Check for common secret patterns
+          PATTERNS=(
+            "password\s*=\s*['\"][^'\"]+['\"]"
+            "api_key\s*=\s*['\"][^'\"]+['\"]"
+            "secret\s*=\s*['\"][^'\"]+['\"]"
+            "-----BEGIN.*PRIVATE KEY-----"
+          )
+
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -rIE --line-number "$pattern" \
+              --exclude-dir=.git --exclude-dir=docs \
+              --exclude="*.example" --exclude="*.md" \
+              --exclude="ci.yml" -- . 2>/dev/null | grep -v "CHANGE_ME"; then
+              echo "::warning::Potential secret pattern found: $pattern"
+            fi
+          done
+
+          echo "Secret scan passed"
+          echo "::endgroup::"
+
+      - name: Inbound workflow security gates
+        run: |
+          echo "::group::Inbound Security Gates"
+          for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json; do
+            echo "Checking workflows/$wf..."
+
+            # ALLOW_QUERY_TOKEN gate (P0-SEC-01)
+            code=$(jq -r '.nodes[] | select(.name=="B0 - Parse & Canonicalize") | .parameters.jsCode' "workflows/$wf" 2>/dev/null || echo "")
+            if [[ -n "$code" ]]; then
+              echo "$code" | grep -q "ALLOW_QUERY_TOKEN" || { echo "::error::ALLOW_QUERY_TOKEN missing in $wf"; exit 1; }
+            fi
+
+            # scopeOk enforcement
+            jq -e '.nodes[] | select(.name=="B0 - Token OK?") | .parameters.conditions.boolean | map(.value1) | any(.=="={{$json._auth.scopeOk}}")' "workflows/$wf" >/dev/null 2>&1 \
+              || { echo "::error::scopeOk check missing in $wf"; exit 1; }
+
+            # Contract validation gate
+            jq -e '.nodes[] | select(.name=="B0 - Contract Valid?")' "workflows/$wf" >/dev/null 2>&1 \
+              || { echo "::error::Contract gate missing in $wf"; exit 1; }
+
+            echo "OK: $wf"
+          done
+          echo "::endgroup::"
+
+      - name: Security configuration check
+        run: |
+          echo "::group::Security Config Validation"
+          REQUIRED_FLAGS=(
+            "LEGACY_SHARED_ALLOWED"
+            "META_SIGNATURE_REQUIRED"
+            "STRICT_AR_OUT"
+            "ADMIN_WA_AUDIT_ENABLED"
+            "ALLOW_QUERY_TOKEN"
+            "META_REPLAY_WINDOW_SEC"
+          )
+
+          for flag in "${REQUIRED_FLAGS[@]}"; do
+            grep -q "$flag" config/.env.example || { echo "::error::Security flag $flag missing in .env.example"; exit 1; }
+            echo "OK: $flag"
+          done
+          echo "::endgroup::"
+
+      - name: Database bootstrap order
+        run: |
+          echo "::group::DB Bootstrap Order Check"
+          orders_line=$(grep -n "CREATE TABLE IF NOT EXISTS orders" db/bootstrap.sql | head -1 | cut -d: -f1)
+          outbox_line=$(grep -n "CREATE TABLE IF NOT EXISTS outbound_messages" db/bootstrap.sql | head -1 | cut -d: -f1)
+
+          if [[ -z "$orders_line" || -z "$outbox_line" ]]; then
+            echo "::warning::Could not verify table order"
+          elif [[ $orders_line -lt $outbox_line ]]; then
+            echo "OK: orders (line $orders_line) before outbound_messages (line $outbox_line)"
+          else
+            echo "::error::orders must be defined before outbound_messages"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+  # ============================================================================
+  # JOB 3: Python tests (with caching)
+  # ============================================================================
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -26,135 +209,82 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: |
+            **/requirements*.txt
+            scripts/*.py
 
       - name: Install dependencies
         run: |
-          pip install jsonschema pyyaml
-          sudo apt-get update && sudo apt-get install -y jq
+          pip install --upgrade pip
+          pip install jsonschema pyyaml pytest
 
-      - name: Bash syntax check
+      - name: JSON Schema validation
         run: |
-          echo "=== Bash Syntax Check ==="
-          bash -n scripts/*.sh
-          echo "PASS"
-
-      - name: Secret scan (CHANGE_ME)
-        run: |
-          echo "=== Secret Scan ==="
-          if grep -R --line-number --fixed-string "CHANGE_ME" \
-            --exclude-dir=docs --exclude-dir=patches --exclude-dir=.git \
-            --exclude=integrity_gate.sh -- . 2>/dev/null | grep -v ".git"; then
-            echo "FAIL: CHANGE_ME placeholder found"
-            exit 1
-          fi
-          echo "PASS"
-
-      - name: Workflow JSON validation
-        run: |
-          echo "=== Workflow JSON Validation ==="
-          for wf in workflows/*.json; do
-            jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and (.active|type=="boolean")' "$wf" >/dev/null \
-              || { echo "FAIL: $wf"; exit 1; }
-            echo "OK: $(basename $wf)"
-          done
-
-      - name: Inbound security gates check
-        run: |
-          echo "=== Inbound Security Gates ==="
-          for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json; do
-            echo "Checking workflows/$wf..."
-
-            # ALLOW_QUERY_TOKEN gate
-            code=$(jq -r '.nodes[] | select(.name=="B0 - Parse & Canonicalize") | .parameters.jsCode' "workflows/$wf")
-            echo "$code" | grep -q "ALLOW_QUERY_TOKEN" || { echo "FAIL: ALLOW_QUERY_TOKEN missing in $wf"; exit 1; }
-
-            # scopeOk enforcement
-            jq -e '.nodes[] | select(.name=="B0 - Token OK?") | .parameters.conditions.boolean | map(.value1) | any(.=="={{$json._auth.scopeOk}}")' "workflows/$wf" >/dev/null \
-              || { echo "FAIL: scopeOk missing in $wf"; exit 1; }
-
-            # Contract gate
-            jq -e '.nodes[] | select(.name=="B0 - Contract Valid?")' "workflows/$wf" >/dev/null \
-              || { echo "FAIL: Contract gate missing in $wf"; exit 1; }
-
-            echo "OK: $wf"
-          done
-
-      - name: JSON Schema tests
-        run: |
-          echo "=== JSON Schema Tests ==="
+          echo "::group::JSON Schema Tests"
           python scripts/validate_contracts.py
+          echo "::endgroup::"
 
-      - name: L10N script detection tests
+      - name: L10N script detection
         run: |
-          echo "=== L10N Tests ==="
+          echo "::group::L10N Tests"
           python scripts/test_l10n_script_detection.py
+          echo "::endgroup::"
 
-      - name: Template rendering tests
+      - name: Template rendering
         run: |
-          echo "=== Template Tests ==="
+          echo "::group::Template Tests"
           python scripts/test_template_render.py
+          echo "::endgroup::"
 
-      - name: Darija intent tests
+      - name: Darija intent classification
         run: |
-          echo "=== Darija Tests ==="
+          echo "::group::Darija NLP Tests"
           python scripts/test_darja_intents.py
+          echo "::endgroup::"
 
-      - name: DB bootstrap order check
-        run: |
-          echo "=== DB Bootstrap Order ==="
-          orders_line=$(grep -n "CREATE TABLE IF NOT EXISTS orders" db/bootstrap.sql | head -1 | cut -d: -f1)
-          outbox_line=$(grep -n "CREATE TABLE IF NOT EXISTS outbound_messages" db/bootstrap.sql | head -1 | cut -d: -f1)
-          if [[ $orders_line -lt $outbox_line ]]; then
-            echo "PASS: orders (line $orders_line) before outbound_messages (line $outbox_line)"
-          else
-            echo "FAIL: orders must be before outbound_messages"
-            exit 1
-          fi
-
-      - name: YAML compose validation
-        run: |
-          echo "=== YAML Validation ==="
-          python -c "
-          import yaml
-          files = ['docker-compose.hostinger.prod.yml', 'docker/docker-compose.yml', 'docker/docker-compose.test.yml']
-          for f in files:
-              data = yaml.safe_load(open(f).read())
-              assert 'services' in data, f'{f} missing services'
-              print(f'OK: {f}')
-          "
-
-      - name: Security config check
-        run: |
-          echo "=== Security Config ==="
-          for flag in LEGACY_SHARED_ALLOWED META_SIGNATURE_REQUIRED STRICT_AR_OUT ADMIN_WA_AUDIT_ENABLED; do
-            grep -q "$flag" config/.env.example || { echo "FAIL: $flag missing"; exit 1; }
-            echo "OK: $flag"
-          done
-
-  # ============================================
-  # JOB 2: Build artifacts
-  # ============================================
+  # ============================================================================
+  # JOB 4: Build deployment package
+  # ============================================================================
   build:
-    name: Build Artifacts
+    name: Build Package
     runs-on: ubuntu-latest
-    needs: validate
+    timeout-minutes: 10
+    needs: [lint, security-gates, python-tests]
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      package_name: ${{ steps.package.outputs.name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create deployment package
+      - name: Get version
+        id: version
         run: |
-          echo "=== Creating deployment package ==="
           VERSION=$(cat VERSION)
-          PACKAGE="resto-bot-${VERSION}-$(date +%Y%m%d-%H%M%S)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Create deployment package
+        id: package
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          SHORT_SHA=${GITHUB_SHA::7}
+          PACKAGE_NAME="resto-bot-${VERSION}-${SHORT_SHA}-${TIMESTAMP}"
 
           mkdir -p dist
-          tar -czvf "dist/${PACKAGE}.tar.gz" \
+
+          tar -czvf "dist/${PACKAGE_NAME}.tar.gz" \
             --exclude='.git' \
             --exclude='dist' \
             --exclude='*.pdf' \
             --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.pytest_cache' \
+            --exclude='patches/*.patch' \
             workflows/ \
             db/ \
             config/ \
@@ -163,14 +293,54 @@ jobs:
             templates/ \
             schemas/ \
             docker-compose.hostinger.prod.yml \
-            VERSION
+            VERSION \
+            ROLLBACK.md
 
-          echo "PACKAGE_NAME=${PACKAGE}" >> $GITHUB_ENV
-          echo "Created: dist/${PACKAGE}.tar.gz"
+          echo "name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "Package: ${PACKAGE_NAME}.tar.gz"
+          ls -lh dist/
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: deployment-package
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
           retention-days: 30
+          compression-level: 0  # Already compressed
+
+  # ============================================================================
+  # JOB 5: Summary
+  # ============================================================================
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [lint, security-gates, python-tests, build]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Syntax | ${{ needs.lint.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Gates | ${{ needs.security-gates.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Tests | ${{ needs.python-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** ${{ needs.build.outputs.package_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any job failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1

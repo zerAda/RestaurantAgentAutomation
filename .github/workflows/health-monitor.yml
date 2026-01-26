@@ -1,0 +1,85 @@
+# =============================================================================
+# Health Monitor - Resto Bot (SSH-based)
+# =============================================================================
+
+name: Health Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # Every 15 minutes
+  workflow_dispatch:
+
+env:
+  VPS_HOST: 72.60.190.192
+  VPS_USER: root
+  PROJECT_DIR: /docker/n8n
+  HEALTH_URL: https://n8n.srv1258231.hstgr.cloud/healthz
+
+jobs:
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check n8n health
+        id: n8n
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.HEALTH_URL }}" --connect-timeout 10 || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "status=healthy" >> $GITHUB_OUTPUT
+          else
+            echo "status=unhealthy" >> $GITHUB_OUTPUT
+            echo "::warning::n8n returned HTTP $HTTP_CODE"
+          fi
+
+      - name: Setup SSH
+        if: steps.n8n.outputs.status == 'unhealthy'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Check services on VPS
+        if: steps.n8n.outputs.status == 'unhealthy'
+        id: services
+        run: |
+          STATUS=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            cd /docker/n8n
+            echo "=== Docker Status ==="
+            docker compose ps --format "table {{.Name}}\t{{.Status}}"
+            echo ""
+            echo "=== Disk Usage ==="
+            df -h / | tail -1
+            echo ""
+            echo "=== Memory ==="
+            free -h | head -2
+          ENDSSH
+          )
+          echo "$STATUS"
+
+      - name: Alert on failure
+        if: steps.n8n.outputs.status == 'unhealthy'
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$ALERT_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "Health Check Failed - n8n.srv1258231.hstgr.cloud",
+                "attachments": [{
+                  "color": "danger",
+                  "fields": [
+                    {"title": "URL", "value": "${{ env.HEALTH_URL }}", "short": true},
+                    {"title": "Time", "value": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "short": true}
+                  ]
+                }]
+              }' || echo "Alert failed"
+          fi
+          exit 1
+
+      - name: Log success
+        if: steps.n8n.outputs.status == 'healthy'
+        run: echo "Health check passed at $(date -u)"

@@ -1,0 +1,49 @@
+# =============================================================================
+# Dependabot Configuration - Resto Bot
+# =============================================================================
+# Automated dependency updates for:
+# - GitHub Actions workflows
+# - Docker images
+# =============================================================================
+
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"
+    reviewers:
+      - "ralphé"  # Update with your GitHub username
+
+  # Docker images in compose files
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+    ignore:
+      # Ignore major version updates for stability
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "redis"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "n8n"
+        update-types: ["version-update:semver-major"]

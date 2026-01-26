@@ -1,0 +1,132 @@
+# =============================================================================
+# Scheduled Backup - Resto Bot (SSH-based)
+# =============================================================================
+
+name: Scheduled Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * *'      # Daily at 3:00 AM UTC
+    - cron: '0 4 * * 0'      # Weekly full on Sundays
+  workflow_dispatch:
+    inputs:
+      backup_type:
+        description: 'Backup type'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - full
+
+env:
+  VPS_HOST: 72.60.190.192
+  VPS_USER: root
+  PROJECT_DIR: /docker/n8n
+  BACKUP_DIR: /local-files/backups/resto-bot
+  DAILY_RETENTION: 7
+  WEEKLY_RETENTION: 4
+
+jobs:
+  backup:
+    name: Create Backup
+    runs-on: ubuntu-latest
+
+    outputs:
+      backup_name: ${{ steps.backup.outputs.name }}
+      backup_type: ${{ steps.type.outputs.type }}
+      backup_size: ${{ steps.verify.outputs.size }}
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Determine backup type
+        id: type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TYPE="${{ github.event.inputs.backup_type }}"
+          elif [ "${{ github.event.schedule }}" = "0 4 * * 0" ]; then
+            TYPE="full"
+          else
+            TYPE="daily"
+          fi
+          echo "type=$TYPE" >> $GITHUB_OUTPUT
+
+      - name: Create backup
+        id: backup
+        run: |
+          BACKUP_TYPE="${{ steps.type.outputs.type }}"
+          BACKUP_NAME="${BACKUP_TYPE}-$(date +%Y%m%d-%H%M%S)"
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            BACKUP_DIR="${{ env.BACKUP_DIR }}"
+            PROJECT_DIR="${{ env.PROJECT_DIR }}"
+            BACKUP_NAME="${BACKUP_NAME}"
+
+            mkdir -p "\$BACKUP_DIR"
+            cd "\$PROJECT_DIR"
+
+            # Database backup
+            echo "Backing up database..."
+            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl | gzip > "\$BACKUP_DIR/\${BACKUP_NAME}-db.sql.gz"
+
+            # Config backup
+            if [ -f ".env" ]; then
+              tar -czvf "\$BACKUP_DIR/\${BACKUP_NAME}-config.tar.gz" .env secrets/ 2>/dev/null || true
+            fi
+
+            # Version info
+            echo "$(cat /local-files/ralphe/n8n-project/VERSION 2>/dev/null || echo 'unknown')" > "\$BACKUP_DIR/\${BACKUP_NAME}-version.txt"
+            date -u >> "\$BACKUP_DIR/\${BACKUP_NAME}-version.txt"
+
+            echo "Backup created: \$BACKUP_NAME"
+            ls -lh "\$BACKUP_DIR/\${BACKUP_NAME}"*
+          ENDSSH
+
+          echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Verify backup
+        id: verify
+        run: |
+          BACKUP_NAME="${{ steps.backup.outputs.name }}"
+
+          SIZE=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "du -sh ${{ env.BACKUP_DIR }}/${BACKUP_NAME}* | tail -1 | cut -f1")
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
+
+          # Verify integrity
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "gunzip -t ${{ env.BACKUP_DIR }}/${BACKUP_NAME}-db.sql.gz" || { echo "::error::Backup corrupted"; exit 1; }
+          echo "Backup verified: $SIZE"
+
+      - name: Rotate backups
+        run: |
+          BACKUP_TYPE="${{ steps.type.outputs.type }}"
+
+          if [ "$BACKUP_TYPE" = "daily" ]; then
+            RETENTION=${{ env.DAILY_RETENTION }}
+          else
+            RETENTION=${{ env.WEEKLY_RETENTION }}
+          fi
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            cd ${{ env.BACKUP_DIR }}
+            ls -t ${BACKUP_TYPE}-*-db.sql.gz 2>/dev/null | tail -n +$((RETENTION+1)) | xargs -r rm -v
+            ls -t ${BACKUP_TYPE}-*-config.tar.gz 2>/dev/null | tail -n +$((RETENTION+1)) | xargs -r rm -v
+            echo "Rotation complete"
+            du -sh ${{ env.BACKUP_DIR }}
+          ENDSSH
+
+      - name: Summary
+        run: |
+          echo "## Backup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | ${{ steps.type.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Name** | ${{ steps.backup.outputs.name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Size** | ${{ steps.verify.outputs.size }} |" >> $GITHUB_STEP_SUMMARY

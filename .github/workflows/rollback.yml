@@ -1,110 +1,258 @@
+# =============================================================================
+# Rollback Workflow - Resto Bot (SSH-based)
+# =============================================================================
+# Manual rollback with database and configuration restore
+# =============================================================================
+
 name: Rollback Deployment
 
 on:
   workflow_dispatch:
     inputs:
       backup_name:
-        description: 'Backup file name (leave empty for latest)'
+        description: 'Backup name (leave empty for latest)'
         required: false
         default: ''
+      rollback_type:
+        description: 'Type of rollback'
+        required: true
+        default: 'config'
+        type: choice
+        options:
+          - config        # Only .env and secrets
+          - full          # Config + database
       confirm:
         description: 'Type ROLLBACK to confirm'
         required: true
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        default: 'Deployment issue'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 env:
-  PROJECT_DIR: /opt/resto-bot
-  BACKUP_DIR: /opt/resto-bot-backups
+  VPS_HOST: 72.60.190.192
+  VPS_USER: root
+  PROJECT_DIR: /docker/n8n
+  BACKUP_DIR: /local-files/backups/resto-bot
+  HEALTH_URL: https://n8n.srv1258231.hstgr.cloud/healthz
+
+permissions:
+  contents: read
 
 jobs:
-  rollback:
-    name: Rollback to Previous Version
-    runs-on: self-hosted
+  validate:
+    name: Validate Request
+    runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm == 'ROLLBACK' }}
 
+    outputs:
+      backup_name: ${{ steps.select.outputs.backup_name }}
+      rollback_type: ${{ steps.select.outputs.rollback_type }}
+
     steps:
-      - name: Validate confirmation
+      - name: Setup SSH
         run: |
-          if [[ "${{ github.event.inputs.confirm }}" != "ROLLBACK" ]]; then
-            echo "ERROR: Confirmation not provided. Type 'ROLLBACK' to confirm."
-            exit 1
-          fi
-          echo "Rollback confirmed by: ${{ github.actor }}"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: List available backups
         run: |
           echo "=== Available Backups ==="
-          ls -lah "${{ env.BACKUP_DIR }}"/*.tar.gz 2>/dev/null || echo "No backups found"
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
 
       - name: Select backup
-        id: backup
+        id: select
         run: |
-          cd "${{ env.BACKUP_DIR }}"
+          ROLLBACK_TYPE="${{ github.event.inputs.rollback_type }}"
+          echo "rollback_type=$ROLLBACK_TYPE" >> $GITHUB_OUTPUT
 
-          if [[ -n "${{ github.event.inputs.backup_name }}" ]]; then
+          if [ -n "${{ github.event.inputs.backup_name }}" ]; then
             BACKUP="${{ github.event.inputs.backup_name }}"
           else
-            BACKUP=$(ls -t *.tar.gz 2>/dev/null | head -n1)
+            BACKUP=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -t ${{ env.BACKUP_DIR }}/deploy-*-config.tar.gz 2>/dev/null | head -1 | xargs -r basename | sed 's/-config.tar.gz//'")
           fi
 
-          if [[ -z "$BACKUP" || ! -f "$BACKUP" ]]; then
-            echo "ERROR: No backup found"
+          if [ -z "$BACKUP" ]; then
+            echo "::error::No backup found"
             exit 1
           fi
 
-          echo "Selected backup: $BACKUP"
-          echo "backup_file=$BACKUP" >> $GITHUB_OUTPUT
+          echo "backup_name=$BACKUP" >> $GITHUB_OUTPUT
+          echo "Selected: $BACKUP"
 
-      - name: Stop current stack
+  pre-rollback-backup:
+    name: Pre-rollback Backup
+    runs-on: ubuntu-latest
+    needs: validate
+
+    outputs:
+      pre_backup: ${{ steps.backup.outputs.name }}
+
+    steps:
+      - name: Setup SSH
         run: |
-          echo "=== Stopping Current Stack ==="
-          cd "${{ env.PROJECT_DIR }}"
-          docker compose -f docker-compose.hostinger.prod.yml down || true
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Restore backup
+      - name: Create safety backup
+        id: backup
         run: |
-          echo "=== Restoring Backup ==="
-          cd "${{ env.PROJECT_DIR }}"
+          PRE_BACKUP="pre-rollback-$(date +%Y%m%d-%H%M%S)"
 
-          # Restore configuration
-          tar -xzvf "${{ env.BACKUP_DIR }}/${{ steps.backup.outputs.backup_file }}" \
-            -C "${{ env.PROJECT_DIR }}/" \
-            --overwrite
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            cd ${{ env.PROJECT_DIR }}
 
-          echo "Backup restored"
+            # Config backup
+            tar -czvf "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-config.tar.gz" .env secrets/ 2>/dev/null || true
 
-      - name: Restart stack
+            # DB backup
+            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl | gzip > "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-db.sql.gz"
+
+            echo "Pre-rollback backup: ${PRE_BACKUP}"
+          ENDSSH
+
+          echo "name=$PRE_BACKUP" >> $GITHUB_OUTPUT
+
+  rollback:
+    name: Execute Rollback
+    runs-on: ubuntu-latest
+    needs: [validate, pre-rollback-backup]
+
+    steps:
+      - name: Setup SSH
         run: |
-          echo "=== Restarting Stack ==="
-          cd "${{ env.PROJECT_DIR }}"
-          docker compose -f docker-compose.hostinger.prod.yml up -d
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-          echo "Waiting for services..."
-          sleep 30
+      - name: Stop services
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30" || true
 
-          docker compose -f docker-compose.hostinger.prod.yml ps
+      - name: Restore database (full only)
+        if: needs.validate.outputs.rollback_type == 'full'
+        run: |
+          BACKUP="${{ needs.validate.outputs.backup_name }}"
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            cd ${{ env.PROJECT_DIR }}
+
+            # Start postgres only
+            docker compose up -d postgres
+            sleep 15
+
+            # Wait for postgres
+            for i in {1..30}; do
+              docker compose exec -T postgres pg_isready -U n8n && break
+              sleep 2
+            done
+
+            # Restore database
+            echo "Restoring database..."
+            docker compose exec -T postgres psql -U n8n -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'n8n' AND pid <> pg_backend_pid();" postgres || true
+            docker compose exec -T postgres dropdb -U n8n --if-exists n8n || true
+            docker compose exec -T postgres createdb -U n8n n8n
+
+            gunzip -c "${{ env.BACKUP_DIR }}/${BACKUP}-db.sql.gz" | docker compose exec -T postgres psql -U n8n -d n8n
+
+            echo "Database restored"
+          ENDSSH
+
+      - name: Restore configuration
+        run: |
+          BACKUP="${{ needs.validate.outputs.backup_name }}"
+
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            cd ${{ env.PROJECT_DIR }}
+            tar -xzvf "${{ env.BACKUP_DIR }}/${BACKUP}-config.tar.gz" --overwrite
+            chmod 600 .env 2>/dev/null || true
+            chmod 700 secrets 2>/dev/null || true
+            echo "Configuration restored"
+          ENDSSH
+
+      - name: Restart services
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose up -d"
+          sleep 20
 
       - name: Health check
+        id: health
         run: |
-          echo "=== Health Check ==="
-          MAX_RETRIES=5
-          RETRY=0
-
-          while [[ $RETRY -lt $MAX_RETRIES ]]; do
-            if curl -sf http://localhost:5678/healthz >/dev/null 2>&1; then
-              echo "Services healthy after rollback"
-              break
+          for i in {1..12}; do
+            if curl -sf "${{ env.HEALTH_URL }}" > /dev/null; then
+              echo "status=healthy" >> $GITHUB_OUTPUT
+              echo "Services healthy"
+              exit 0
             fi
-            echo "Waiting... (attempt $((RETRY+1))/$MAX_RETRIES)"
+            echo "Waiting... ($i/12)"
             sleep 10
-            ((RETRY++))
           done
 
-      - name: Rollback summary
+          echo "status=unhealthy" >> $GITHUB_OUTPUT
+          echo "::error::Health check failed"
+          exit 1
+
+  post-rollback:
+    name: Post-rollback
+    runs-on: ubuntu-latest
+    needs: [validate, pre-rollback-backup, rollback]
+    if: always()
+
+    steps:
+      - name: Setup SSH
         run: |
-          echo "=========================================="
-          echo "ROLLBACK COMPLETE"
-          echo "=========================================="
-          echo "Backup restored: ${{ steps.backup.outputs.backup_file }}"
-          echo "Time: $(date)"
-          echo "Triggered by: ${{ github.actor }}"
-          echo "=========================================="
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Record rollback
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            mkdir -p /var/log/resto-bot
+            cat >> /var/log/resto-bot/rollbacks.log << EOF
+
+          ================================================================================
+          ROLLBACK: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ================================================================================
+          Type: ${{ needs.validate.outputs.rollback_type }}
+          Backup: ${{ needs.validate.outputs.backup_name }}
+          Reason: ${{ github.event.inputs.reason }}
+          Actor: ${{ github.actor }}
+          Status: ${{ needs.rollback.result }}
+          Pre-backup: ${{ needs.pre-rollback-backup.outputs.pre_backup }}
+          ================================================================================
+          EOF
+          ENDSSH
+
+      - name: Summary
+        run: |
+          echo "## Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ needs.rollback.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | ${{ needs.validate.outputs.rollback_type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Backup** | ${{ needs.validate.outputs.backup_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Reason** | ${{ github.event.inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Actor** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+
+  rejected:
+    name: Rejected
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm != 'ROLLBACK' }}
+
+    steps:
+      - name: Reject
+        run: |
+          echo "::error::Type 'ROLLBACK' to confirm"
+          exit 1

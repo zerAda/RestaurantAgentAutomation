@@ -1,0 +1,335 @@
+# =============================================================================
+# Security Scanning Pipeline - Resto Bot
+# =============================================================================
+# Comprehensive security scanning:
+# - Secret detection (Gitleaks)
+# - Container image scanning (Trivy)
+# - Dependency vulnerability scanning
+# - SAST for configuration files
+# - SBOM generation
+# =============================================================================
+
+name: Security Scan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run weekly on Sundays at 2:00 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  # ============================================================================
+  # JOB 1: Secret Detection
+  # ============================================================================
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for scanning
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
+      - name: Custom secret patterns
+        run: |
+          echo "::group::Custom Secret Scan"
+
+          # Define patterns to detect
+          declare -A PATTERNS=(
+            ["AWS Access Key"]="AKIA[0-9A-Z]{16}"
+            ["AWS Secret Key"]="[0-9a-zA-Z/+]{40}"
+            ["Generic API Key"]="[aA][pP][iI]_?[kK][eE][yY].*['\"][0-9a-zA-Z]{32,}['\"]"
+            ["JWT Token"]="eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]*"
+            ["Private Key"]="-----BEGIN.*PRIVATE KEY-----"
+            ["PostgreSQL URI"]="postgres(ql)?://[^:]+:[^@]+@"
+            ["Redis URI"]="redis://[^:]*:[^@]+@"
+          )
+
+          FOUND=0
+          for name in "${!PATTERNS[@]}"; do
+            if grep -rIE "${PATTERNS[$name]}" \
+              --exclude-dir=.git \
+              --exclude-dir=node_modules \
+              --exclude="*.md" \
+              --exclude="*.example" \
+              --exclude="security-scan.yml" \
+              . 2>/dev/null; then
+              echo "::error::Potential $name found!"
+              FOUND=1
+            fi
+          done
+
+          if [[ $FOUND -eq 1 ]]; then
+            echo "::error::Secrets detected in codebase"
+            exit 1
+          fi
+
+          echo "No secrets found"
+          echo "::endgroup::"
+
+  # ============================================================================
+  # JOB 2: Container Image Scanning
+  # ============================================================================
+  container-scan:
+    name: Container Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: n8n
+            ref: docker.n8n.io/n8nio/n8n:latest
+          - name: postgres
+            ref: postgres:15
+          - name: redis
+            ref: redis:7-alpine
+          - name: nginx
+            ref: nginx:1.27-alpine
+          - name: traefik
+            ref: traefik:v3.0
+
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image.ref }}
+          format: 'table'
+          exit-code: '0'  # Don't fail on vulnerabilities (informational)
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-${{ matrix.image.name }}.txt'
+
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-${{ matrix.image.name }}
+          path: trivy-${{ matrix.image.name }}.txt
+          retention-days: 30
+
+  # ============================================================================
+  # JOB 3: Configuration Security (SAST)
+  # ============================================================================
+  config-scan:
+    name: Configuration Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan Docker Compose files
+        run: |
+          echo "::group::Docker Compose Security Check"
+
+          for compose_file in docker-compose*.yml docker/docker-compose*.yml; do
+            [[ -f "$compose_file" ]] || continue
+            echo "Scanning: $compose_file"
+
+            # Check for privileged containers
+            if grep -q "privileged:\s*true" "$compose_file"; then
+              echo "::warning file=$compose_file::Privileged container detected"
+            fi
+
+            # Check for host network mode
+            if grep -q "network_mode:\s*host" "$compose_file"; then
+              echo "::warning file=$compose_file::Host network mode detected"
+            fi
+
+            # Check for exposed sensitive ports
+            if grep -E "ports:.*5432|ports:.*6379" "$compose_file" | grep -v "#"; then
+              echo "::warning file=$compose_file::Database ports may be exposed"
+            fi
+
+            # Check for hardcoded passwords (not using secrets)
+            if grep -E "PASSWORD.*=.*[^$\{]" "$compose_file" | grep -v "CHANGE_ME" | grep -v "_FILE"; then
+              echo "::warning file=$compose_file::Hardcoded password detected"
+            fi
+
+            echo "OK: $compose_file"
+          done
+          echo "::endgroup::"
+
+      - name: Scan Nginx configuration
+        run: |
+          echo "::group::Nginx Security Check"
+
+          for nginx_conf in infra/gateway/*.conf; do
+            [[ -f "$nginx_conf" ]] || continue
+            echo "Scanning: $nginx_conf"
+
+            # Check for server_tokens
+            if ! grep -q "server_tokens\s*off" "$nginx_conf"; then
+              echo "::warning file=$nginx_conf::server_tokens not disabled"
+            fi
+
+            # Check for security headers
+            HEADERS=("X-Frame-Options" "X-Content-Type-Options" "X-XSS-Protection")
+            for header in "${HEADERS[@]}"; do
+              if ! grep -qi "$header" "$nginx_conf"; then
+                echo "::notice file=$nginx_conf::Missing security header: $header"
+              fi
+            done
+
+            echo "OK: $nginx_conf"
+          done
+          echo "::endgroup::"
+
+      - name: Scan environment template
+        run: |
+          echo "::group::Environment Security Check"
+
+          ENV_FILE="config/.env.example"
+
+          # Required security settings
+          REQUIRED_SECURE_DEFAULTS=(
+            "ALLOW_QUERY_TOKEN=false"
+            "LEGACY_SHARED_ALLOWED=false"
+            "META_SIGNATURE_REQUIRED"
+          )
+
+          for setting in "${REQUIRED_SECURE_DEFAULTS[@]}"; do
+            key="${setting%%=*}"
+            if ! grep -q "$key" "$ENV_FILE"; then
+              echo "::error file=$ENV_FILE::Missing security setting: $key"
+              exit 1
+            fi
+          done
+
+          # Check for default credentials
+          if grep -E "^[^#]*=.*(admin|password|secret|123|test)" "$ENV_FILE" | grep -v "CHANGE_ME" | grep -v "#"; then
+            echo "::warning file=$ENV_FILE::Potential weak default credentials"
+          fi
+
+          echo "Environment template validated"
+          echo "::endgroup::"
+
+  # ============================================================================
+  # JOB 4: Dependency Scanning
+  # ============================================================================
+  dependency-scan:
+    name: Dependency Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install safety
+        run: pip install safety pip-audit
+
+      - name: Scan Python dependencies
+        run: |
+          echo "::group::Python Dependency Scan"
+
+          # Create requirements from scripts
+          echo "jsonschema" > /tmp/requirements.txt
+          echo "pyyaml" >> /tmp/requirements.txt
+
+          # Run pip-audit
+          pip-audit -r /tmp/requirements.txt --desc || echo "::warning::Some vulnerabilities found"
+
+          echo "::endgroup::"
+
+      - name: Check n8n workflow dependencies
+        run: |
+          echo "::group::n8n Workflow Security"
+
+          # Check for dangerous node types
+          DANGEROUS_NODES=("Execute Command" "SSH" "FTP")
+
+          for wf in workflows/*.json; do
+            for node in "${DANGEROUS_NODES[@]}"; do
+              if jq -e ".nodes[] | select(.type | contains(\"$node\"))" "$wf" >/dev/null 2>&1; then
+                echo "::warning file=$wf::Contains potentially dangerous node: $node"
+              fi
+            done
+          done
+
+          echo "::endgroup::"
+
+  # ============================================================================
+  # JOB 5: SBOM Generation
+  # ============================================================================
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+          retention-days: 90
+
+  # ============================================================================
+  # JOB 6: Security Summary
+  # ============================================================================
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [secret-scan, container-scan, config-scan, dependency-scan]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Detection | ${{ needs.secret-scan.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Scan | ${{ needs.container-scan.result == 'success' && '✅ Pass' || '⚠️ Review' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config Security | ${{ needs.config-scan.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Scan | ${{ needs.dependency-scan.result == 'success' && '✅ Pass' || '⚠️ Review' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Date:** $(date -u +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail on critical issues
+        if: needs.secret-scan.result == 'failure' || needs.config-scan.result == 'failure'
+        run: |
+          echo "::error::Critical security issues detected"
+          exit 1
