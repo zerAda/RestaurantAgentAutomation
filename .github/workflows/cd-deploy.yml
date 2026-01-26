@@ -118,7 +118,7 @@ jobs:
         run: |
           BACKUP_NAME="${{ needs.prepare.outputs.deploy_id }}"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
             set -e
             BACKUP_NAME="$1"
             BACKUP_DIR="${{ env.BACKUP_DIR }}"
@@ -201,7 +201,7 @@ jobs:
         run: |
           echo "::group::Database Migrations"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
             set -e
             cd ${{ env.PROJECT_DIR }}
 
@@ -225,7 +225,7 @@ jobs:
         run: |
           echo "::group::Deploy Workflows"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
             set -e
             cd ${{ env.PROJECT_DIR }}
 
@@ -248,7 +248,7 @@ jobs:
         run: |
           echo "::group::Restart Services"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
             cd ${{ env.PROJECT_DIR }}
 
             # Only restart if compose file changed
@@ -304,7 +304,7 @@ jobs:
             echo "::error::Health check failed"
 
             # Show logs
-            ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose logs --tail=30"
+            ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose logs --tail=30"
             exit 1
           fi
 
@@ -336,7 +336,7 @@ jobs:
           fi
 
           # Test 3: Database connectivity
-          DB_OK=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose exec -T postgres pg_isready -U n8n && echo OK" || echo "FAIL")
+          DB_OK=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose exec -T postgres pg_isready -U n8n && echo OK" || echo "FAIL")
           if echo "$DB_OK" | grep -q "OK"; then
             echo "Database connectivity: PASS"
             TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -351,7 +351,7 @@ jobs:
 
       - name: Record deployment
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             mkdir -p /var/log/resto-bot
             cat >> /var/log/resto-bot/deployments.log << EOF
 
@@ -392,7 +392,7 @@ jobs:
         run: |
           echo "::warning::Deployment failed - initiating automatic rollback"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             BACKUP="${{ needs.backup.outputs.backup_name }}"
             BACKUP_DIR="${{ env.BACKUP_DIR }}"
             PROJECT_DIR="${{ env.PROJECT_DIR }}"

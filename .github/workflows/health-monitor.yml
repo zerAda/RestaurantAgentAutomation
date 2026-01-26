@@ -45,7 +45,7 @@ jobs:
         if: steps.n8n.outputs.status == 'unhealthy'
         id: services
         run: |
-          STATUS=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+          STATUS=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
             cd /docker/n8n
             echo "=== Docker Status ==="
             docker compose ps --format "table {{.Name}}\t{{.Status}}"

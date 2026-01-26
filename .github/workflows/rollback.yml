@@ -64,7 +64,7 @@ jobs:
       - name: List available backups
         run: |
           echo "=== Available Backups ==="
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
 
       - name: Select backup
         id: select
@@ -75,7 +75,7 @@ jobs:
           if [ -n "${{ github.event.inputs.backup_name }}" ]; then
             BACKUP="${{ github.event.inputs.backup_name }}"
           else
-            BACKUP=$(ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -t ${{ env.BACKUP_DIR }}/deploy-*-config.tar.gz 2>/dev/null | head -1 | xargs -r basename | sed 's/-config.tar.gz//'")
+            BACKUP=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -t ${{ env.BACKUP_DIR }}/deploy-*-config.tar.gz 2>/dev/null | head -1 | xargs -r basename | sed 's/-config.tar.gz//'")
           fi
 
           if [ -z "$BACKUP" ]; then
@@ -107,7 +107,7 @@ jobs:
         run: |
           PRE_BACKUP="pre-rollback-$(date +%Y%m%d-%H%M%S)"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             cd ${{ env.PROJECT_DIR }}
 
             # Config backup
@@ -136,14 +136,14 @@ jobs:
 
       - name: Stop services
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30" || true
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30" || true
 
       - name: Restore database (full only)
         if: needs.validate.outputs.rollback_type == 'full'
         run: |
           BACKUP="${{ needs.validate.outputs.backup_name }}"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             cd ${{ env.PROJECT_DIR }}
 
             # Start postgres only
@@ -171,7 +171,7 @@ jobs:
         run: |
           BACKUP="${{ needs.validate.outputs.backup_name }}"
 
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             cd ${{ env.PROJECT_DIR }}
             tar -xzvf "${{ env.BACKUP_DIR }}/${BACKUP}-config.tar.gz" --overwrite
             chmod 600 .env 2>/dev/null || true
@@ -181,7 +181,7 @@ jobs:
 
       - name: Restart services
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose up -d"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose up -d"
           sleep 20
 
       - name: Health check
@@ -217,7 +217,7 @@ jobs:
 
       - name: Record rollback
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             mkdir -p /var/log/resto-bot
             cat >> /var/log/resto-bot/rollbacks.log << EOF
 
