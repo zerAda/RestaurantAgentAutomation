@@ -1,8 +1,30 @@
-# DevSecOps Guide - Resto Bot
+# DevSecOps Guide - Resto Bot (v3.1)
 
 ## Overview
 
 This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot.
+
+## Quick Access - Production URLs
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **n8n Console** | https://n8n.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
+| **Adminer (DB)** | https://adminer.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
+| **API Gateway** | https://api.srv1258231.hstgr.cloud | Token-based |
+| **Health Check** | https://n8n.srv1258231.hstgr.cloud/healthz | admin / RestoAdmin2026! |
+
+### Adminer - Database Management
+
+**Web Access:**
+- URL: `https://adminer.srv1258231.hstgr.cloud`
+- BasicAuth: `admin` / `RestoAdmin2026!`
+
+**PostgreSQL Connection (inside Adminer):**
+- System: PostgreSQL
+- Server: `postgres`
+- Username: `n8n`
+- Password: (see `/docker/n8n/secrets/postgres_password`)
+- Database: `n8n`
 
 ## Pipeline Architecture
 
@@ -78,12 +100,43 @@ This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot
 **Features:**
 - Environment selection (staging/production)
 - Concurrency lock (one deploy at a time)
+- **First deploy vs Update detection**
+- **Database health verification**
+- **Migration tracking** (`_migrations` table)
 - Pre-deployment validation
 - Database backup before deploy
 - Health checks with retry
-- Smoke tests
+- **5 Smoke tests** (health, HTTPS, DB, Redis, API)
 - Auto-rollback on failure
+- **VPS cleanup** (Docker images, logs, old backups)
 - Notifications (Slack/webhook)
+
+**Deployment Flow:**
+```
+Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → Notify
+    │                   │         │            │           │
+    │                   │         │            │           └── Docker prune
+    │                   │         │            │               Log rotation
+    │                   │         │            │               Backup rotation
+    │                   │         │            │
+    │                   │         │            └── 5 tests:
+    │                   │         │                - Health endpoint
+    │                   │         │                - HTTPS redirect
+    │                   │         │                - PostgreSQL
+    │                   │         │                - Redis
+    │                   │         │                - API response
+    │                   │         │
+    │                   │         └── Check tables
+    │                   │             Verify migrations
+    │                   │             Track in _migrations
+    │                   │
+    │                   └── Detect: first deploy vs update
+    │                       Sync code, restart services
+    │
+    └── Check VPS connectivity
+        Verify disk space (>2GB)
+        Check Docker status
+```
 
 ### 4. Rollback (`rollback.yml`)
 

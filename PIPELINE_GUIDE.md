@@ -1,4 +1,4 @@
-# Guide Pipeline CI/CD - Resto Bot v3.2.4
+# Guide Pipeline CI/CD - Resto Bot v3.2.5
 
 ## Vue d'ensemble
 
@@ -120,30 +120,42 @@ Si vous voulez recevoir des notifications Slack/Discord:
 **Déclencheur:** Après CI réussi, ou manuellement
 
 **Ce qu'il fait:**
-1. **Backup** de la base de données et config avant déploiement
-2. **Sync** du code vers le VPS via rsync/SSH
-3. **Migrations** SQL automatiques
-4. **Health check** avec 15 tentatives
-5. **Smoke tests** (endpoint, HTTPS, DB)
-6. **Auto-rollback** si échec
-7. **Notification** du résultat
+1. **Preflight**: Vérifie VPS, espace disque, Docker
+2. **Détection**: Premier déploiement vs mise à jour
+3. **Backup** de la base de données et config avant déploiement
+4. **Sync** du code vers le VPS via rsync/SSH
+5. **DB Health**: Vérifie tables et migrations
+6. **Health check** avec 15 tentatives
+7. **Smoke tests** (5 tests: health, HTTPS, DB, Redis, API)
+8. **Cleanup VPS** (Docker images, logs, backups)
+9. **Auto-rollback** si échec
+10. **Notification** du résultat
 
 **Flux:**
 ```
-Prepare → Backup → Deploy → Health Check → Notify
-                      │           │
-                      │           ├── Success →
-                      │           └── Fail → Auto-rollback
-                      │
-                      └── Sync code
-                          Run migrations
-                          Restart services
+Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → Notify
+    │                   │         │            │           │
+    │                   │         │            │           └── Prune Docker
+    │                   │         │            │               Rotate logs
+    │                   │         │            │               Clean backups
+    │                   │         │            │
+    │                   │         │            └── 5 tests automatiques
+    │                   │         │
+    │                   │         └── Vérifie migrations
+    │                   │             Track dans _migrations
+    │                   │
+    │                   └── Détecte: first deploy vs update
+    │
+    └── Check VPS + disk (>2GB)
 ```
 
 **Utilisation manuelle:**
 1. Actions > CD - Deploy to VPS > Run workflow
 2. Choisir `production` ou `staging`
-3. Optionnel: Skip backup
+3. Options:
+   - Skip backup
+   - Force full deploy (traiter comme premier déploiement)
+   - Skip cleanup
 
 ---
 
@@ -323,11 +335,47 @@ ls -lh /local-files/backups/resto-bot/
 
 ## URLs importantes
 
-| Service | URL |
-|---------|-----|
-| n8n Console | https://n8n.srv1258231.hstgr.cloud |
-| Health Check | https://n8n.srv1258231.hstgr.cloud/healthz |
-| GitHub Actions | https://github.com/[votre-repo]/actions |
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **n8n Console** | https://n8n.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
+| **Adminer (DB)** | https://adminer.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
+| **API Gateway** | https://api.srv1258231.hstgr.cloud | Token API |
+| Health Check | https://n8n.srv1258231.hstgr.cloud/healthz | admin / RestoAdmin2026! |
+| GitHub Actions | https://github.com/[votre-repo]/actions | - |
+
+---
+
+## Adminer - Gestion Base de Données
+
+### Accès Web
+- **URL:** https://adminer.srv1258231.hstgr.cloud
+- **Username:** `admin`
+- **Password:** `RestoAdmin2026!`
+
+### Connexion PostgreSQL (dans Adminer)
+| Champ | Valeur |
+|-------|--------|
+| System | PostgreSQL |
+| Server | `postgres` |
+| Username | `n8n` |
+| Password | (voir `/docker/n8n/secrets/postgres_password`) |
+| Database | `n8n` |
+
+### Sécurité Adminer
+- BasicAuth obligatoire (admin/RestoAdmin2026!)
+- IP Allowlist configurable via `ADMIN_ALLOWED_IPS`
+- Accès HTTPS uniquement
+- Pas d'accès direct à la DB depuis l'extérieur
+
+### Changer le mot de passe
+```bash
+# Sur le VPS
+cd /docker/n8n
+ADMIN_PASS=$(openssl passwd -apr1 'NOUVEAU_MOT_DE_PASSE')
+echo "admin:${ADMIN_PASS}" > secrets/traefik_usersfile
+chmod 600 secrets/traefik_usersfile
+docker compose restart traefik
+```
 
 ---
 
