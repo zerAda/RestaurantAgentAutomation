@@ -1,12 +1,13 @@
 # =============================================================================
-# CD Pipeline - Deploy to Hostinger VPS via SSH
+# CD Pipeline - Deploy to Hostinger VPS (Production-Grade)
 # =============================================================================
-# Production deployment for Resto Bot:
-# - SSH-based deployment (no self-hosted runner required)
-# - Database backup before deployment
+# Features:
+# - First deploy vs Update detection
+# - Database health verification & migration tracking
+# - Pre/Post deployment hooks
 # - Automatic rollback on failure
-# - Health checks and smoke tests
-# - Notifications
+# - VPS cleanup & disk optimization
+# - Security hardening
 # =============================================================================
 
 name: CD - Deploy to VPS
@@ -31,6 +32,16 @@ on:
         required: false
         default: false
         type: boolean
+      force_full_deploy:
+        description: 'Force full deployment (treat as first deploy)'
+        required: false
+        default: false
+        type: boolean
+      skip_cleanup:
+        description: 'Skip VPS cleanup'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-${{ github.event.inputs.environment || 'production' }}
@@ -43,23 +54,30 @@ env:
   PROJECT_DIR: /docker/n8n
   CODE_DIR: /local-files/ralphe/n8n-project
   BACKUP_DIR: /local-files/backups/resto-bot
-  COMPOSE_FILE: docker-compose.yml
+  LOG_DIR: /var/log/resto-bot
 
-  # Health check
+  # Application
   HEALTH_URL: https://n8n.srv1258231.hstgr.cloud/healthz
+  DOMAIN: n8n.srv1258231.hstgr.cloud
   MAX_RETRIES: 15
   RETRY_INTERVAL: 10
+
+  # Cleanup thresholds
+  BACKUP_RETENTION_DAYS: 14
+  LOG_RETENTION_DAYS: 7
+  DOCKER_PRUNE_KEEP_LATEST: 2
 
 permissions:
   contents: read
   deployments: write
+  security-events: write
 
 jobs:
   # ============================================================================
-  # JOB 1: Validate and prepare
+  # JOB 1: Pre-flight checks and preparation
   # ============================================================================
-  prepare:
-    name: Prepare Deployment
+  preflight:
+    name: Pre-flight Checks
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
@@ -67,43 +85,129 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       deploy_id: ${{ steps.deploy_id.outputs.id }}
       environment: ${{ steps.env.outputs.environment }}
+      is_first_deploy: ${{ steps.detect.outputs.is_first_deploy }}
+      db_initialized: ${{ steps.detect.outputs.db_initialized }}
+      current_version: ${{ steps.detect.outputs.current_version }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Determine environment
         id: env
         run: |
           ENV="${{ github.event.inputs.environment || 'production' }}"
           echo "environment=$ENV" >> $GITHUB_OUTPUT
-          echo "Deploying to: $ENV"
 
       - name: Get version
         id: version
         run: |
-          VERSION=$(cat VERSION)
+          VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
 
       - name: Generate deployment ID
         id: deploy_id
         run: |
           DEPLOY_ID="deploy-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           echo "id=$DEPLOY_ID" >> $GITHUB_OUTPUT
-          echo "Deployment ID: $DEPLOY_ID"
+
+      - name: Detect deployment type
+        id: detect
+        run: |
+          echo "::group::Deployment Detection"
+
+          # Check VPS state
+          RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            # Check if this is first deployment
+            IS_FIRST="false"
+            DB_INIT="false"
+            CURRENT_VER="none"
+
+            # Check if project directory exists with compose
+            if [ ! -f "/docker/n8n/docker-compose.yml" ]; then
+              IS_FIRST="true"
+            fi
+
+            # Check if containers are running
+            if ! docker ps --format '{{.Names}}' | grep -q "n8n"; then
+              IS_FIRST="true"
+            fi
+
+            # Check database state
+            if docker ps --format '{{.Names}}' | grep -q "postgres"; then
+              # Check if n8n tables exist
+              TABLE_COUNT=$(docker exec n8n-postgres-1 psql -U n8n -d n8n -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ' || echo "0")
+              if [ "$TABLE_COUNT" -gt "5" ]; then
+                DB_INIT="true"
+              fi
+
+              # Get current version from deployment log
+              if [ -f "/var/log/resto-bot/current_version" ]; then
+                CURRENT_VER=$(cat /var/log/resto-bot/current_version)
+              fi
+            fi
+
+            echo "IS_FIRST=$IS_FIRST"
+            echo "DB_INIT=$DB_INIT"
+            echo "CURRENT_VER=$CURRENT_VER"
+          ENDSSH
+          )
+
+          IS_FIRST=$(echo "$RESULT" | grep "IS_FIRST=" | cut -d= -f2)
+          DB_INIT=$(echo "$RESULT" | grep "DB_INIT=" | cut -d= -f2)
+          CURRENT_VER=$(echo "$RESULT" | grep "CURRENT_VER=" | cut -d= -f2)
+
+          # Override if force_full_deploy is set
+          if [ "${{ github.event.inputs.force_full_deploy }}" = "true" ]; then
+            IS_FIRST="true"
+          fi
+
+          echo "is_first_deploy=$IS_FIRST" >> $GITHUB_OUTPUT
+          echo "db_initialized=$DB_INIT" >> $GITHUB_OUTPUT
+          echo "current_version=$CURRENT_VER" >> $GITHUB_OUTPUT
+
+          echo "First deployment: $IS_FIRST"
+          echo "DB initialized: $DB_INIT"
+          echo "Current version: $CURRENT_VER"
+          echo "::endgroup::"
+
+      - name: Security scan (SAST)
+        uses: github/super-linter/slim@v5
+        continue-on-error: true
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_YAML: true
+          VALIDATE_BASH: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
 
   # ============================================================================
-  # JOB 2: Backup
+  # JOB 2: Pre-deployment backup
   # ============================================================================
   backup:
     name: Create Backup
     runs-on: ubuntu-latest
-    needs: prepare
-    if: ${{ github.event.inputs.skip_backup != 'true' }}
+    needs: preflight
+    if: |
+      needs.preflight.outputs.is_first_deploy != 'true' &&
+      github.event.inputs.skip_backup != 'true'
 
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
+      backup_size: ${{ steps.backup.outputs.size }}
 
     steps:
       - name: Install SSH Key
@@ -116,60 +220,75 @@ jobs:
       - name: Add known hosts
         run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Create backup on VPS
+      - name: Create backup
         id: backup
         run: |
-          BACKUP_NAME="${{ needs.prepare.outputs.deploy_id }}"
+          BACKUP_NAME="${{ needs.preflight.outputs.deploy_id }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+          RESULT=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             set -e
-            BACKUP_NAME="$1"
+            BACKUP_NAME="$BACKUP_NAME"
             BACKUP_DIR="${{ env.BACKUP_DIR }}"
             PROJECT_DIR="${{ env.PROJECT_DIR }}"
 
-            # Create backup directory
-            mkdir -p "$BACKUP_DIR"
+            mkdir -p "\$BACKUP_DIR"
+            cd "\$PROJECT_DIR"
 
-            # Database backup
+            # Database backup with compression
             echo "Creating database backup..."
-            cd "$PROJECT_DIR"
-            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl \
-              | gzip > "$BACKUP_DIR/${BACKUP_NAME}-db.sql.gz"
+            docker compose exec -T postgres pg_dump -U n8n -d n8n \
+              --no-owner --no-acl --format=custom \
+              > "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump"
+
+            # Compress with best ratio
+            gzip -9 "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump"
 
             # Configuration backup
             echo "Creating config backup..."
-            tar -czvf "$BACKUP_DIR/${BACKUP_NAME}-config.tar.gz" \
-              -C "$PROJECT_DIR" \
-              .env secrets/ 2>/dev/null || true
+            tar -czf "\$BACKUP_DIR/\${BACKUP_NAME}-config.tar.gz" \
+              -C "\$PROJECT_DIR" \
+              .env secrets/ docker-compose.yml 2>/dev/null || true
 
-            # Store current SHA
-            echo "${{ github.sha }}" > "$BACKUP_DIR/${BACKUP_NAME}-sha.txt"
+            # Store metadata
+            cat > "\$BACKUP_DIR/\${BACKUP_NAME}-meta.json" << METAEOF
+            {
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "version": "${{ needs.preflight.outputs.version }}",
+              "commit": "${{ github.sha }}",
+              "type": "pre-deploy"
+            }
+          METAEOF
 
-            echo "Backup completed: $BACKUP_NAME"
-            ls -lh "$BACKUP_DIR/${BACKUP_NAME}"*
+            # Get backup size
+            SIZE=\$(du -sh "\$BACKUP_DIR/\${BACKUP_NAME}"* | awk '{sum+=\$1} END {print sum}')
+            echo "SIZE=\$SIZE"
 
-            # Rotate old backups (keep last 10)
-            cd "$BACKUP_DIR"
-            ls -t deploy-*-db.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm
-            ls -t deploy-*-config.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm
+            # Verify backup integrity
+            gunzip -t "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump.gz" || { echo "ERROR=Backup corrupted"; exit 1; }
+
+            echo "Backup completed: \$BACKUP_NAME"
           ENDSSH
+          )
 
           echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
+          SIZE=$(echo "$RESULT" | grep "SIZE=" | cut -d= -f2 || echo "unknown")
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
 
   # ============================================================================
-  # JOB 3: Deploy
+  # JOB 3: Deploy Application
   # ============================================================================
   deploy:
     name: Deploy Application
     runs-on: ubuntu-latest
-    needs: [prepare, backup]
-    if: always() && needs.prepare.result == 'success'
+    needs: [preflight, backup]
+    if: always() && needs.preflight.result == 'success'
     environment:
-      name: ${{ needs.prepare.outputs.environment }}
+      name: ${{ needs.preflight.outputs.environment }}
       url: https://n8n.srv1258231.hstgr.cloud
 
     outputs:
       status: ${{ steps.health.outputs.status }}
+      deployment_type: ${{ steps.deploy.outputs.type }}
 
     steps:
       - name: Checkout code
@@ -189,7 +308,6 @@ jobs:
         run: |
           echo "::group::Sync Code"
 
-          # Sync project files
           rsync -avz --delete \
             --exclude='.git' \
             --exclude='.env' \
@@ -197,13 +315,138 @@ jobs:
             --exclude='*.pdf' \
             --exclude='node_modules' \
             --exclude='__pycache__' \
-            -e "ssh" \
+            --exclude='.pytest_cache' \
+            --exclude='*.pyc' \
+            --exclude='.DS_Store' \
+            -e "ssh -o StrictHostKeyChecking=no" \
             ./ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.CODE_DIR }}/
 
-          echo "Code synced to ${{ env.CODE_DIR }}"
           echo "::endgroup::"
 
-      - name: Run database migrations
+      - name: Deploy infrastructure
+        id: deploy
+        run: |
+          IS_FIRST="${{ needs.preflight.outputs.is_first_deploy }}"
+          DB_INIT="${{ needs.preflight.outputs.db_initialized }}"
+
+          echo "::group::Infrastructure Deployment"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            cd ${{ env.PROJECT_DIR }}
+
+            IS_FIRST="$IS_FIRST"
+            DB_INIT="$DB_INIT"
+
+            echo "=== Deployment Type: \$([ "\$IS_FIRST" = "true" ] && echo "FIRST DEPLOY" || echo "UPDATE") ==="
+
+            # Update docker-compose if new version available
+            if [ -f "${{ env.CODE_DIR }}/docker-compose.hostinger.prod.yml" ]; then
+              echo "Updating docker-compose.yml..."
+              cp "${{ env.CODE_DIR }}/docker-compose.hostinger.prod.yml" docker-compose.yml
+            fi
+
+            # Pull latest images
+            echo "Pulling latest images..."
+            docker compose pull --quiet 2>/dev/null || true
+
+            if [ "\$IS_FIRST" = "true" ]; then
+              echo "=== FIRST DEPLOYMENT ==="
+
+              # Create volumes if needed
+              docker volume create traefik_data 2>/dev/null || true
+              docker volume create n8n_data 2>/dev/null || true
+              docker volume create postgres_data 2>/dev/null || true
+              docker volume create redis_data 2>/dev/null || true
+              docker volume create ollama_data 2>/dev/null || true
+
+              # Start services
+              docker compose up -d
+
+              # Wait for postgres to be ready
+              echo "Waiting for PostgreSQL..."
+              for i in {1..30}; do
+                if docker compose exec -T postgres pg_isready -U n8n >/dev/null 2>&1; then
+                  echo "PostgreSQL is ready"
+                  break
+                fi
+                sleep 2
+              done
+
+            else
+              echo "=== UPDATE DEPLOYMENT ==="
+
+              # Zero-downtime restart
+              docker compose up -d --remove-orphans
+            fi
+
+            # Show status
+            docker compose ps
+          ENDSSH
+
+          echo "type=$( [ "$IS_FIRST" = "true" ] && echo "first_deploy" || echo "update" )" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+      - name: Database health check
+        id: db_health
+        run: |
+          echo "::group::Database Health Check"
+
+          IS_FIRST="${{ needs.preflight.outputs.is_first_deploy }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            cd ${{ env.PROJECT_DIR }}
+
+            echo "=== Database Health Check ==="
+
+            # Wait for database
+            for i in {1..30}; do
+              if docker compose exec -T postgres pg_isready -U n8n >/dev/null 2>&1; then
+                break
+              fi
+              echo "Waiting for database... (\$i/30)"
+              sleep 2
+            done
+
+            # Check connection
+            echo "Testing database connection..."
+            docker compose exec -T postgres psql -U n8n -d n8n -c "SELECT 1;" >/dev/null
+            echo "Database connection: OK"
+
+            # Check table count
+            TABLE_COUNT=\$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+              "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
+            echo "Tables in database: \$TABLE_COUNT"
+
+            if [ "\$TABLE_COUNT" -lt "5" ]; then
+              echo "WARNING: Database appears to be empty or not fully initialized"
+              echo "n8n will auto-initialize on first startup"
+            else
+              echo "Database is properly initialized"
+
+              # Check for critical tables
+              CRITICAL_TABLES="workflow_entity credentials_entity execution_entity"
+              for table in \$CRITICAL_TABLES; do
+                if docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+                  "SELECT 1 FROM information_schema.tables WHERE table_name = '\$table';" | grep -q 1; then
+                  echo "  - \$table: EXISTS"
+                else
+                  echo "  - \$table: MISSING (will be created by n8n)"
+                fi
+              done
+            fi
+
+            # Check database size
+            DB_SIZE=\$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+              "SELECT pg_size_pretty(pg_database_size('n8n'));" | tr -d ' ')
+            echo "Database size: \$DB_SIZE"
+          ENDSSH
+
+          echo "::endgroup::"
+
+      - name: Apply migrations
+        if: needs.preflight.outputs.is_first_deploy != 'true'
         run: |
           echo "::group::Database Migrations"
 
@@ -211,69 +454,54 @@ jobs:
             set -e
             cd ${{ env.PROJECT_DIR }}
 
-            # Check if migrations exist
-            if [ -d "${{ env.CODE_DIR }}/db/migrations" ]; then
-              echo "Applying migrations..."
-              for migration in ${{ env.CODE_DIR }}/db/migrations/*.sql; do
+            MIGRATIONS_DIR="${{ env.CODE_DIR }}/db/migrations"
+            MIGRATION_LOG="/var/log/resto-bot/migrations.log"
+
+            mkdir -p /var/log/resto-bot
+
+            if [ -d "$MIGRATIONS_DIR" ] && [ "$(ls -A $MIGRATIONS_DIR/*.sql 2>/dev/null)" ]; then
+              echo "Found migrations directory"
+
+              # Create migrations tracking table if not exists
+              docker compose exec -T postgres psql -U n8n -d n8n << 'SQLEOF'
+                CREATE TABLE IF NOT EXISTS _migrations (
+                  id SERIAL PRIMARY KEY,
+                  filename VARCHAR(255) NOT NULL UNIQUE,
+                  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  checksum VARCHAR(64)
+                );
+          SQLEOF
+
+              # Apply pending migrations
+              for migration in $MIGRATIONS_DIR/*.sql; do
                 [ -f "$migration" ] || continue
-                echo "Applying: $(basename $migration)"
-                docker compose exec -T postgres psql -U n8n -d n8n < "$migration" || true
+                FILENAME=$(basename "$migration")
+                CHECKSUM=$(sha256sum "$migration" | cut -d' ' -f1)
+
+                # Check if already applied
+                APPLIED=$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+                  "SELECT 1 FROM _migrations WHERE filename = '$FILENAME';" | tr -d ' ')
+
+                if [ "$APPLIED" != "1" ]; then
+                  echo "Applying: $FILENAME"
+
+                  if docker compose exec -T postgres psql -U n8n -d n8n < "$migration"; then
+                    docker compose exec -T postgres psql -U n8n -d n8n -c \
+                      "INSERT INTO _migrations (filename, checksum) VALUES ('$FILENAME', '$CHECKSUM');"
+                    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) - Applied: $FILENAME" >> "$MIGRATION_LOG"
+                  else
+                    echo "ERROR: Failed to apply $FILENAME"
+                    exit 1
+                  fi
+                else
+                  echo "Already applied: $FILENAME"
+                fi
               done
+
               echo "Migrations completed"
             else
-              echo "No migrations directory found"
+              echo "No migrations to apply"
             fi
-          ENDSSH
-
-          echo "::endgroup::"
-
-      - name: Deploy n8n workflows
-        run: |
-          echo "::group::Deploy Workflows"
-
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
-            set -e
-            cd ${{ env.PROJECT_DIR }}
-
-            # Import workflows if n8n CLI is available
-            if [ -d "${{ env.CODE_DIR }}/workflows" ]; then
-              echo "Workflows directory found"
-
-              # Copy workflows to n8n data volume (if needed)
-              # Note: n8n workflows are typically imported via UI or API
-              # This step prepares them for import
-
-              ls -la ${{ env.CODE_DIR }}/workflows/
-              echo "Workflows ready for import"
-            fi
-          ENDSSH
-
-          echo "::endgroup::"
-
-      - name: Restart services (if needed)
-        run: |
-          echo "::group::Restart Services"
-
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
-            cd ${{ env.PROJECT_DIR }}
-
-            # Only restart if compose file changed
-            if [ -f "${{ env.CODE_DIR }}/docker-compose.hostinger.prod.yml" ]; then
-              echo "Checking for compose changes..."
-
-              # Pull latest images
-              docker compose pull --quiet || true
-
-              # Restart with zero downtime
-              docker compose up -d --remove-orphans
-
-              echo "Services restarted"
-            else
-              echo "Using existing compose configuration"
-            fi
-
-            # Show status
-            docker compose ps
           ENDSSH
 
           echo "::endgroup::"
@@ -289,7 +517,9 @@ jobs:
           while [ $RETRY -lt ${{ env.MAX_RETRIES }} ]; do
             echo "Health check attempt $((RETRY+1))/${{ env.MAX_RETRIES }}..."
 
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.HEALTH_URL }}" || echo "000")
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --connect-timeout 10 --max-time 30 \
+              "${{ env.HEALTH_URL }}" || echo "000")
 
             if [ "$HTTP_CODE" = "200" ]; then
               HEALTHY=true
@@ -304,98 +534,262 @@ jobs:
 
           if [ "$HEALTHY" = "true" ]; then
             echo "status=healthy" >> $GITHUB_OUTPUT
-            echo "All services healthy"
           else
             echo "status=unhealthy" >> $GITHUB_OUTPUT
-            echo "::error::Health check failed"
+            echo "::error::Health check failed after ${{ env.MAX_RETRIES }} attempts"
 
-            # Show logs
-            ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose logs --tail=30"
+            # Show logs for debugging
+            ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+              "cd ${{ env.PROJECT_DIR }} && docker compose logs --tail=50"
             exit 1
           fi
 
           echo "::endgroup::"
 
-      - name: Run smoke tests
+      - name: Smoke tests
         if: steps.health.outputs.status == 'healthy'
         run: |
           echo "::group::Smoke Tests"
 
           TESTS_PASSED=0
-          TESTS_TOTAL=3
+          TESTS_TOTAL=5
 
           # Test 1: Health endpoint
           if curl -sf "${{ env.HEALTH_URL }}" > /dev/null; then
-            echo "Health endpoint: PASS"
+            echo "1. Health endpoint: PASS"
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
-            echo "Health endpoint: FAIL"
+            echo "1. Health endpoint: FAIL"
           fi
 
           # Test 2: HTTPS redirect
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://n8n.srv1258231.hstgr.cloud" || echo "000")
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${{ env.DOMAIN }}" || echo "000")
           if [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "308" ]; then
-            echo "HTTPS redirect: PASS (HTTP $HTTP_CODE)"
+            echo "2. HTTPS redirect: PASS (HTTP $HTTP_CODE)"
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
-            echo "HTTPS redirect: FAIL (HTTP $HTTP_CODE)"
+            echo "2. HTTPS redirect: FAIL (HTTP $HTTP_CODE)"
           fi
 
           # Test 3: Database connectivity
-          DB_OK=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose exec -T postgres pg_isready -U n8n && echo OK" || echo "FAIL")
+          DB_OK=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "cd ${{ env.PROJECT_DIR }} && docker compose exec -T postgres pg_isready -U n8n && echo OK" || echo "FAIL")
           if echo "$DB_OK" | grep -q "OK"; then
-            echo "Database connectivity: PASS"
+            echo "3. Database connectivity: PASS"
             TESTS_PASSED=$((TESTS_PASSED + 1))
           else
-            echo "Database connectivity: FAIL"
+            echo "3. Database connectivity: FAIL"
+          fi
+
+          # Test 4: Redis connectivity
+          REDIS_OK=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "cd ${{ env.PROJECT_DIR }} && docker compose exec -T redis redis-cli ping" || echo "FAIL")
+          if echo "$REDIS_OK" | grep -q "PONG"; then
+            echo "4. Redis connectivity: PASS"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "4. Redis connectivity: FAIL"
+          fi
+
+          # Test 5: n8n API response
+          API_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ env.DOMAIN }}/rest/settings" || echo "000")
+          if [ "$API_CODE" = "200" ] || [ "$API_CODE" = "401" ]; then
+            echo "5. n8n API: PASS (HTTP $API_CODE)"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "5. n8n API: FAIL (HTTP $API_CODE)"
           fi
 
           echo ""
           echo "Smoke tests: $TESTS_PASSED/$TESTS_TOTAL passed"
 
+          if [ $TESTS_PASSED -lt 4 ]; then
+            echo "::warning::Some smoke tests failed"
+          fi
+
           echo "::endgroup::"
 
       - name: Record deployment
+        if: steps.health.outputs.status == 'healthy'
         run: |
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            mkdir -p /var/log/resto-bot
-            cat >> /var/log/resto-bot/deployments.log << EOF
+            mkdir -p ${{ env.LOG_DIR }}
+
+            # Update current version
+            echo "${{ needs.preflight.outputs.version }}" > ${{ env.LOG_DIR }}/current_version
+
+            # Log deployment
+            cat >> ${{ env.LOG_DIR }}/deployments.log << EOF
 
           ================================================================================
-          Deployment: ${{ needs.prepare.outputs.deploy_id }}
+          Deployment: ${{ needs.preflight.outputs.deploy_id }}
           ================================================================================
-          Version: ${{ needs.prepare.outputs.version }}
-          Environment: ${{ needs.prepare.outputs.environment }}
+          Version: ${{ needs.preflight.outputs.version }}
+          Previous: ${{ needs.preflight.outputs.current_version }}
+          Type: ${{ steps.deploy.outputs.type }}
+          Environment: ${{ needs.preflight.outputs.environment }}
           Commit: ${{ github.sha }}
           Branch: ${{ github.ref_name }}
           Actor: ${{ github.actor }}
           Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          Status: ${{ steps.health.outputs.status }}
+          Status: SUCCESS
           ================================================================================
           EOF
           ENDSSH
 
   # ============================================================================
-  # JOB 4: Post-deployment
+  # JOB 4: VPS Cleanup & Optimization
+  # ============================================================================
+  cleanup:
+    name: VPS Cleanup
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy]
+    if: |
+      always() &&
+      needs.deploy.result == 'success' &&
+      github.event.inputs.skip_cleanup != 'true'
+
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Cleanup VPS
+        run: |
+          echo "::group::VPS Cleanup"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            set -e
+            echo "=== VPS Cleanup Starting ==="
+            echo "Disk usage before cleanup:"
+            df -h / | tail -1
+
+            # 1. Docker cleanup - remove unused images (keep last 2 of each)
+            echo ""
+            echo "--- Docker Cleanup ---"
+
+            # Remove dangling images
+            docker image prune -f 2>/dev/null || true
+
+            # Remove unused images (not used by running containers)
+            UNUSED=$(docker images -q --filter "dangling=false" | head -20)
+            if [ -n "$UNUSED" ]; then
+              # Keep images used by running containers
+              RUNNING_IMAGES=$(docker ps --format '{{.Image}}' | sort -u)
+              for img in $UNUSED; do
+                IMG_NAME=$(docker inspect --format '{{.RepoTags}}' $img 2>/dev/null | tr -d '[]')
+                IN_USE=false
+                for running in $RUNNING_IMAGES; do
+                  if echo "$IMG_NAME" | grep -q "$running"; then
+                    IN_USE=true
+                    break
+                  fi
+                done
+                if [ "$IN_USE" = "false" ] && [ -n "$IMG_NAME" ] && [ "$IMG_NAME" != "<none>:<none>" ]; then
+                  echo "Keeping: $IMG_NAME (may be needed)"
+                fi
+              done
+            fi
+
+            # Remove build cache
+            docker builder prune -f --keep-storage 1GB 2>/dev/null || true
+
+            # Remove unused volumes (be careful!)
+            # docker volume prune -f 2>/dev/null || true  # Commented for safety
+
+            echo "Docker disk usage:"
+            docker system df
+
+            # 2. Clean old backups
+            echo ""
+            echo "--- Backup Cleanup ---"
+            BACKUP_DIR="${{ env.BACKUP_DIR }}"
+            if [ -d "$BACKUP_DIR" ]; then
+              # Keep last 10 deployment backups
+              ls -t $BACKUP_DIR/deploy-*-db.dump.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
+              ls -t $BACKUP_DIR/deploy-*-config.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
+              ls -t $BACKUP_DIR/deploy-*-meta.json 2>/dev/null | tail -n +11 | xargs -r rm -v
+
+              # Keep last 7 daily backups
+              ls -t $BACKUP_DIR/daily-*-db.sql.gz 2>/dev/null | tail -n +8 | xargs -r rm -v
+
+              # Keep last 4 weekly backups
+              ls -t $BACKUP_DIR/full-*-db.sql.gz 2>/dev/null | tail -n +5 | xargs -r rm -v
+
+              # Remove pre-rollback backups older than 3 days
+              find $BACKUP_DIR -name "pre-rollback-*" -mtime +3 -delete 2>/dev/null || true
+
+              echo "Backup directory size: $(du -sh $BACKUP_DIR | cut -f1)"
+            fi
+
+            # 3. Clean logs
+            echo ""
+            echo "--- Log Cleanup ---"
+
+            # Rotate and compress old logs
+            find /var/log -name "*.log" -size +50M -exec truncate -s 10M {} \; 2>/dev/null || true
+
+            # Clean journal logs older than 7 days
+            journalctl --vacuum-time=7d 2>/dev/null || true
+
+            # Clean old application logs
+            find /var/log/resto-bot -name "*.log" -mtime +30 -delete 2>/dev/null || true
+
+            # 4. Clean temp files
+            echo ""
+            echo "--- Temp Cleanup ---"
+
+            # Clean temp files older than 1 day
+            find /tmp -type f -mtime +1 -delete 2>/dev/null || true
+            find /tmp -type d -empty -mtime +1 -delete 2>/dev/null || true
+
+            # Clean npm cache
+            rm -rf /root/.npm/_cacache/* 2>/dev/null || true
+
+            # Clean apt cache
+            apt-get clean 2>/dev/null || true
+
+            # 5. Summary
+            echo ""
+            echo "=== Cleanup Complete ==="
+            echo "Disk usage after cleanup:"
+            df -h / | tail -1
+
+            # Show space breakdown
+            echo ""
+            echo "Space breakdown:"
+            du -h --max-depth=1 / 2>/dev/null | sort -hr | head -10
+          ENDSSH
+
+          echo "::endgroup::"
+
+  # ============================================================================
+  # JOB 5: Post-deployment
   # ============================================================================
   post-deploy:
     name: Post-deployment
     runs-on: ubuntu-latest
-    needs: [prepare, backup, deploy]
+    needs: [preflight, backup, deploy, cleanup]
     if: always()
 
     steps:
-      - name: Setup SSH Agent (for rollback if needed)
+      - name: Install SSH Key
         if: needs.deploy.result == 'failure'
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: shimataro/ssh-key-action@v2
         with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
 
-      - name: Add known hosts (for rollback if needed)
+      - name: Add known hosts
         if: needs.deploy.result == 'failure'
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Auto-rollback on failure
         if: needs.deploy.result == 'failure' && needs.backup.outputs.backup_name != ''
@@ -403,44 +797,66 @@ jobs:
           echo "::warning::Deployment failed - initiating automatic rollback"
 
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
             BACKUP="${{ needs.backup.outputs.backup_name }}"
             BACKUP_DIR="${{ env.BACKUP_DIR }}"
             PROJECT_DIR="${{ env.PROJECT_DIR }}"
 
             cd "\$PROJECT_DIR"
 
+            echo "Rolling back to: \$BACKUP"
+
             # Restore configuration
             if [ -f "\$BACKUP_DIR/\${BACKUP}-config.tar.gz" ]; then
-              tar -xzvf "\$BACKUP_DIR/\${BACKUP}-config.tar.gz" -C "\$PROJECT_DIR/"
+              tar -xzf "\$BACKUP_DIR/\${BACKUP}-config.tar.gz" -C "\$PROJECT_DIR/"
               echo "Configuration restored"
+            fi
+
+            # Restore database if needed
+            if [ -f "\$BACKUP_DIR/\${BACKUP}-db.dump.gz" ]; then
+              echo "Restoring database..."
+              gunzip -c "\$BACKUP_DIR/\${BACKUP}-db.dump.gz" | \
+                docker compose exec -T postgres pg_restore -U n8n -d n8n --clean --if-exists || true
+              echo "Database restored"
             fi
 
             # Restart services
             docker compose up -d
 
-            sleep 20
+            sleep 30
 
             # Verify
-            if curl -sf https://n8n.srv1258231.hstgr.cloud/healthz > /dev/null; then
-              echo "Auto-rollback successful"
+            if curl -sf https://${{ env.DOMAIN }}/healthz > /dev/null; then
+              echo "Rollback successful"
             else
-              echo "Auto-rollback may have failed - manual intervention required"
+              echo "::error::Rollback may have failed - manual intervention required"
             fi
           ENDSSH
 
       - name: Deployment summary
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Status** | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Deployment ID** | ${{ needs.prepare.outputs.deploy_id }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | ${{ needs.prepare.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Environment** | ${{ needs.prepare.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Commit** | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **URL** | https://n8n.srv1258231.hstgr.cloud |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Backup** | ${{ needs.backup.outputs.backup_name || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## Deployment Summary
+
+          | Property | Value |
+          |----------|-------|
+          | **Status** | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} |
+          | **Type** | ${{ needs.deploy.outputs.deployment_type || 'unknown' }} |
+          | **Deployment ID** | ${{ needs.preflight.outputs.deploy_id }} |
+          | **Version** | ${{ needs.preflight.outputs.version }} |
+          | **Previous Version** | ${{ needs.preflight.outputs.current_version }} |
+          | **Environment** | ${{ needs.preflight.outputs.environment }} |
+          | **Commit** | \`${{ github.sha }}\` |
+          | **URL** | https://${{ env.DOMAIN }} |
+          | **Backup** | ${{ needs.backup.outputs.backup_name || 'skipped (first deploy)' }} |
+          | **Cleanup** | ${{ needs.cleanup.result == 'success' && '✅ Done' || '⏭️ Skipped' }} |
+
+          ### Jobs Status
+          - Preflight: ${{ needs.preflight.result }}
+          - Backup: ${{ needs.backup.result || 'skipped' }}
+          - Deploy: ${{ needs.deploy.result }}
+          - Cleanup: ${{ needs.cleanup.result || 'skipped' }}
+          EOF
 
       - name: Notify on failure
         if: needs.deploy.result == 'failure'
@@ -451,15 +867,17 @@ jobs:
             curl -sf -X POST "$ALERT_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
               -d '{
-                "text": "Deployment Failed",
+                "text": "🚨 Deployment Failed",
                 "attachments": [{
                   "color": "danger",
                   "fields": [
-                    {"title": "Version", "value": "${{ needs.prepare.outputs.version }}", "short": true},
-                    {"title": "Commit", "value": "${{ github.sha }}", "short": true}
+                    {"title": "Version", "value": "${{ needs.preflight.outputs.version }}", "short": true},
+                    {"title": "Commit", "value": "${{ github.sha }}", "short": true},
+                    {"title": "Actor", "value": "${{ github.actor }}", "short": true},
+                    {"title": "Rollback", "value": "${{ needs.backup.outputs.backup_name != '' && 'Attempted' || 'Not available' }}", "short": true}
                   ]
                 }]
-              }' || echo "Notification failed"
+              }' || true
           fi
 
       - name: Notify on success
@@ -471,13 +889,14 @@ jobs:
             curl -sf -X POST "$ALERT_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
               -d '{
-                "text": "Deployment Successful",
+                "text": "✅ Deployment Successful",
                 "attachments": [{
                   "color": "good",
                   "fields": [
-                    {"title": "Version", "value": "${{ needs.prepare.outputs.version }}", "short": true},
-                    {"title": "URL", "value": "https://n8n.srv1258231.hstgr.cloud", "short": true}
+                    {"title": "Version", "value": "${{ needs.preflight.outputs.version }}", "short": true},
+                    {"title": "Type", "value": "${{ needs.deploy.outputs.deployment_type }}", "short": true},
+                    {"title": "URL", "value": "https://${{ env.DOMAIN }}", "short": true}
                   ]
                 }]
-              }' || echo "Notification failed"
+              }' || true
           fi

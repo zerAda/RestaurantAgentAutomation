@@ -34,22 +34,47 @@ services:
       options: { max-size: "10m", max-file: "5" }
 
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: n8n
       POSTGRES_USER: n8n
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       TZ: ${TZ:-Europe/Paris}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
       - ./db/bootstrap.sql:/docker-entrypoint-initdb.d/00_bootstrap.sql:ro
+    # Performance tuning
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "log_statement=none"
+      - "-c"
+      - "log_min_duration_statement=1000"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U n8n -d n8n || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
     networks: [internal]
     logging:
       options: { max-size: "10m", max-file: "5" }
@@ -57,7 +82,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -68,6 +93,39 @@ services:
     networks: [internal]
     logging:
       options: { max-size: "10m", max-file: "5" }
+
+  # ===========================================================================
+  # Adminer - Database Management UI
+  # ===========================================================================
+  adminer:
+    image: adminer:4-standalone
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: nette
+    expose: ["8080"]
+    networks: [proxy, internal]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      # Route
+      - "traefik.http.routers.adminer.rule=Host(`adminer.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.adminer.entrypoints=websecure"
+      - "traefik.http.routers.adminer.tls=true"
+      - "traefik.http.routers.adminer.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+      # Security: IP Allowlist + Basic Auth
+      - "traefik.http.routers.adminer.middlewares=adminer-chain@docker"
+      - "traefik.http.middlewares.adminer-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
+      - "traefik.http.middlewares.adminer-auth.basicauth.usersfile=/run/secrets/traefik_usersfile"
+      - "traefik.http.middlewares.adminer-headers.headers.browserXSSFilter=true"
+      - "traefik.http.middlewares.adminer-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.adminer-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.adminer-chain.chain.middlewares=adminer-allowlist,adminer-auth,adminer-headers"
+    logging:
+      options: { max-size: "5m", max-file: "3" }
 
   gateway:
     image: nginx:1.27-alpine
