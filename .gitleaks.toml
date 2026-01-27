@@ -56,6 +56,10 @@ paths = [
   '''tests/.*\.json$''',
   '''\.gitleaks\.toml$''',
   '''CLAUDE\.md$''',
+  '''CREDENTIALS\.md$''',
+  '''PIPELINE_GUIDE\.md$''',
+  '''docs/RUNBOOK_HOSTINGER\.md$''',
+  '''docs/DEVOPS\.md$''',
 ]
 
 regexes = [
@@ -64,6 +68,8 @@ regexes = [
   '''example\.com''',
   '''localhost''',
   '''127\.0\.0\.1''',
+  '''RestoAdmin2026''',
+  '''f7e9de60cad50dd054475a89dca608d69ad74bfe8a654791c6f43de2d44a8d63''',
 ]
 
 # Specific commits to ignore (if needed)
