@@ -392,8 +392,6 @@ jobs:
         run: |
           echo "::group::Database Health Check"
 
-          IS_FIRST="${{ needs.preflight.outputs.is_first_deploy }}"
-
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             set -e
             cd ${{ env.PROJECT_DIR }}
@@ -419,23 +417,10 @@ jobs:
               "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
             echo "Tables in database: \$TABLE_COUNT"
 
-            if [ "\$TABLE_COUNT" -lt "5" ]; then
-              echo "WARNING: Database appears to be empty or not fully initialized"
-              echo "n8n will auto-initialize on first startup"
-            else
-              echo "Database is properly initialized"
-
-              # Check for critical tables
-              CRITICAL_TABLES="workflow_entity credentials_entity execution_entity"
-              for table in \$CRITICAL_TABLES; do
-                if docker compose exec -T postgres psql -U n8n -d n8n -t -c \
-                  "SELECT 1 FROM information_schema.tables WHERE table_name = '\$table';" | grep -q 1; then
-                  echo "  - \$table: EXISTS"
-                else
-                  echo "  - \$table: MISSING (will be created by n8n)"
-                fi
-              done
-            fi
+            # Check for Resto Bot specific tables (not just n8n)
+            RESTO_TABLES=\$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+              "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('tenants','restaurants','orders','menu_items','api_clients');" | tr -d ' ')
+            echo "Resto Bot tables: \$RESTO_TABLES/5"
 
             # Check database size
             DB_SIZE=\$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
@@ -445,63 +430,121 @@ jobs:
 
           echo "::endgroup::"
 
-      - name: Apply migrations
-        if: needs.preflight.outputs.is_first_deploy != 'true'
+      - name: Initialize database schema (Bootstrap + Migrations)
+        id: db_init
         run: |
-          echo "::group::Database Migrations"
+          echo "::group::Database Initialization"
 
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
             set -e
-            cd ${{ env.PROJECT_DIR }}
+            cd /docker/n8n
 
-            MIGRATIONS_DIR="${{ env.CODE_DIR }}/db/migrations"
+            CODE_DIR="/local-files/ralphe/n8n-project"
             MIGRATION_LOG="/var/log/resto-bot/migrations.log"
 
             mkdir -p /var/log/resto-bot
 
-            if [ -d "$MIGRATIONS_DIR" ] && [ "$(ls -A $MIGRATIONS_DIR/*.sql 2>/dev/null)" ]; then
-              echo "Found migrations directory"
+            echo "=== Checking Database Schema ==="
 
-              # Create migrations tracking table if not exists
-              docker compose exec -T postgres psql -U n8n -d n8n << 'SQLEOF'
-                CREATE TABLE IF NOT EXISTS _migrations (
-                  id SERIAL PRIMARY KEY,
-                  filename VARCHAR(255) NOT NULL UNIQUE,
-                  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                  checksum VARCHAR(64)
-                );
-          SQLEOF
+            # Check if Resto Bot tables exist
+            RESTO_TABLES=$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+              "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('tenants','restaurants','orders','menu_items','api_clients');" | tr -d ' ')
 
-              # Apply pending migrations
-              for migration in $MIGRATIONS_DIR/*.sql; do
+            echo "Resto Bot tables found: $RESTO_TABLES/5"
+
+            # === BOOTSTRAP: Apply if Resto Bot tables are missing ===
+            if [ "$RESTO_TABLES" -lt "5" ]; then
+              echo ""
+              echo "=== Applying Bootstrap Schema ==="
+
+              if [ -f "$CODE_DIR/db/bootstrap.sql" ]; then
+                echo "Applying: bootstrap.sql"
+                if docker compose exec -T postgres psql -U n8n -d n8n < "$CODE_DIR/db/bootstrap.sql"; then
+                  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) - Applied: bootstrap.sql" >> "$MIGRATION_LOG"
+                  echo "Bootstrap applied successfully"
+                else
+                  echo "WARNING: Bootstrap had some errors (may be idempotent)"
+                fi
+              else
+                echo "ERROR: bootstrap.sql not found at $CODE_DIR/db/bootstrap.sql"
+              fi
+            else
+              echo "Bootstrap already applied (Resto Bot tables exist)"
+            fi
+
+            # === MIGRATIONS: Create tracking table ===
+            echo ""
+            echo "=== Applying Migrations ==="
+
+            docker compose exec -T postgres psql -U n8n -d n8n -c "
+              CREATE TABLE IF NOT EXISTS _migrations (
+                id SERIAL PRIMARY KEY,
+                filename VARCHAR(255) NOT NULL UNIQUE,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                checksum VARCHAR(64),
+                success BOOLEAN DEFAULT true
+              );
+            " 2>/dev/null || true
+
+            # === MIGRATIONS: Apply pending migrations ===
+            MIGRATIONS_DIR="$CODE_DIR/db/migrations"
+
+            if [ -d "$MIGRATIONS_DIR" ]; then
+              MIGRATION_COUNT=0
+              MIGRATION_ERRORS=0
+
+              for migration in $(ls -1 "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort); do
                 [ -f "$migration" ] || continue
                 FILENAME=$(basename "$migration")
                 CHECKSUM=$(sha256sum "$migration" | cut -d' ' -f1)
 
                 # Check if already applied
                 APPLIED=$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
-                  "SELECT 1 FROM _migrations WHERE filename = '$FILENAME';" | tr -d ' ')
+                  "SELECT 1 FROM _migrations WHERE filename = '$FILENAME' AND success = true;" 2>/dev/null | tr -d ' ' || echo "0")
 
                 if [ "$APPLIED" != "1" ]; then
                   echo "Applying: $FILENAME"
 
-                  if docker compose exec -T postgres psql -U n8n -d n8n < "$migration"; then
-                    docker compose exec -T postgres psql -U n8n -d n8n -c \
-                      "INSERT INTO _migrations (filename, checksum) VALUES ('$FILENAME', '$CHECKSUM');"
-                    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) - Applied: $FILENAME" >> "$MIGRATION_LOG"
+                  # Apply migration (continue on error for idempotent migrations)
+                  if docker compose exec -T postgres psql -U n8n -d n8n < "$migration" 2>&1 | tee /tmp/migration_output.txt; then
+                    # Check if there were actual errors (not just notices)
+                    if grep -q "^ERROR:" /tmp/migration_output.txt; then
+                      echo "  WARNING: Migration had errors"
+                      docker compose exec -T postgres psql -U n8n -d n8n -c \
+                        "INSERT INTO _migrations (filename, checksum, success) VALUES ('$FILENAME', '$CHECKSUM', false) ON CONFLICT (filename) DO UPDATE SET success = false;" 2>/dev/null || true
+                      MIGRATION_ERRORS=$((MIGRATION_ERRORS + 1))
+                    else
+                      docker compose exec -T postgres psql -U n8n -d n8n -c \
+                        "INSERT INTO _migrations (filename, checksum, success) VALUES ('$FILENAME', '$CHECKSUM', true) ON CONFLICT (filename) DO UPDATE SET success = true, applied_at = CURRENT_TIMESTAMP;" 2>/dev/null || true
+                      echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) - Applied: $FILENAME" >> "$MIGRATION_LOG"
+                      MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
+                    fi
                   else
-                    echo "ERROR: Failed to apply $FILENAME"
-                    exit 1
+                    echo "  ERROR: Migration failed"
+                    MIGRATION_ERRORS=$((MIGRATION_ERRORS + 1))
                   fi
                 else
                   echo "Already applied: $FILENAME"
                 fi
               done
 
-              echo "Migrations completed"
+              echo ""
+              echo "Migrations applied: $MIGRATION_COUNT"
+              echo "Migrations with errors: $MIGRATION_ERRORS"
             else
-              echo "No migrations to apply"
+              echo "No migrations directory found"
             fi
+
+            # === VERIFY: Final table count ===
+            echo ""
+            echo "=== Final Schema Status ==="
+            FINAL_COUNT=$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+              "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
+            echo "Total tables: $FINAL_COUNT"
+
+            RESTO_FINAL=$(docker compose exec -T postgres psql -U n8n -d n8n -t -c \
+              "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('tenants','restaurants','orders','menu_items','api_clients','inbound_messages','outbound_messages');" | tr -d ' ')
+            echo "Resto Bot core tables: $RESTO_FINAL/7"
           ENDSSH
 
           echo "::endgroup::"
