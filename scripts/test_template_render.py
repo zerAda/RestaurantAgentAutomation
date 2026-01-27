@@ -22,7 +22,7 @@ def main():
             out = render(row.get('content',''), row.get('vars',{}), allowed=row.get('allowed'))
             exp = row.get('expected','')
             assert out == exp, f"{row.get('label','case')}: '{out}' != '{exp}'"
-        print(f"✅ Template render tests OK ({len(cases)} cases)")
+        print(f"OK: Template render tests OK ({len(cases)} cases)")
         return 0
 
     # Fallback small suite
@@ -38,12 +38,12 @@ def main():
     out=render(c, {}, allowed=["name"])
     assert out=="X  Y".strip(), out
 
-    print("✅ Template render unit tests OK")
+    print("OK: Template render unit tests OK")
     return 0
 
 if __name__=='__main__':
     try:
         raise SystemExit(main())
     except AssertionError as e:
-        print("❌ Template render unit tests FAILED:", e)
+        print("FAIL: Template render unit tests FAILED:", e)
         raise SystemExit(1)

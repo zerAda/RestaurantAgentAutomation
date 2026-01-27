@@ -75,11 +75,11 @@ def main():
         if got != exp:
             errors.append(f"[{i}] '{txt}' => '{got}' (expected '{exp}')")
     if errors:
-        print("❌ Darija intent tests FAILED")
+        print("FAIL: Darija intent tests FAILED")
         for e in errors:
             print(" -", e)
         sys.exit(1)
-    print(f"✅ Darija intent tests OK ({len(data)} phrases)")
+    print(f"OK: Darija intent tests OK ({len(data)} phrases)")
     return 0
 
 if __name__ == '__main__':

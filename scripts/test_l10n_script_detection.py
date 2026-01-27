@@ -36,12 +36,12 @@ def main() -> int:
             errors.append(f"'{txt}' => {got} (expected {exp})")
 
     if errors:
-        print("❌ L10N script detection tests FAILED")
+        print("FAIL: L10N script detection tests FAILED")
         for e in errors:
             print(" -", e)
         return 1
 
-    print(f"✅ L10N script detection tests OK ({len(cases)} cases)")
+    print(f"OK: L10N script detection tests OK ({len(cases)} cases)")
     return 0
 
 

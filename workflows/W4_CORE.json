@@ -524,25 +524,7 @@
         "operation": "executeQuery",
         "query": "SELECT * FROM public.delivery_quote($1::uuid,$2::text,$3::text,$4::int);",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "wilaya",
-              "value": "={{$json.state.delivery.wilaya}}"
-            },
-            {
-              "name": "commune",
-              "value": "={{$json.state.delivery.commune}}"
-            },
-            {
-              "name": "total_cents",
-              "value": "={{$json.state.lastTotalCents || 0}}"
-            }
-          ]
+          "queryParams": "={{[$json.restaurantId, $json.state.delivery.wilaya, $json.state.delivery.commune, ($json.state.lastTotalCents || 0)]}}"
         }
       },
       "id": "DQ1_DELIVERY_QUOTE_DB",
@@ -579,13 +561,7 @@
         "operation": "executeQuery",
         "query": "SELECT s.slot_id, to_char(s.start_time,'HH24:MI') AS start_time, to_char(s.end_time,'HH24:MI') AS end_time, s.capacity,\n       GREATEST(s.capacity - COALESCE(r.cnt,0),0) AS remaining\nFROM public.delivery_time_slots s\nLEFT JOIN (SELECT slot_id, count(*) cnt FROM public.delivery_slot_reservations GROUP BY slot_id) r ON r.slot_id=s.slot_id\nWHERE s.restaurant_id=$1::uuid\n  AND s.day_of_week = EXTRACT(DOW FROM (now() at time zone 'Europe/Paris'))::int\n  AND s.is_active=true\nORDER BY s.start_time ASC\nLIMIT 6;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            }
-          ]
+          "queryParams": "={{[$json.restaurantId]}}"
         }
       },
       "id": "DQ3_LIST_SLOTS_DB",
@@ -632,17 +608,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO public.address_clarification_requests (order_id, conversation_key, missing_fields, attempts, status)\nVALUES (NULL, $1::text, to_jsonb(string_to_array($2::text,',')), 1, 'PENDING')\nON CONFLICT DO NOTHING;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "conversation_key",
-              "value": "={{$json.conversationKey}}"
-            },
-            {
-              "name": "missing_fields",
-              "value": "={{($json.missing_fields || []).join(',')}}"
-            }
-          ]
+          "queryParams": "={{[$json.conversationKey, ($json.missing_fields || []).join(',')]}}"
         }
       },
       "id": "CA1_UPSERT_CLARIFY",
@@ -659,29 +625,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO public.security_events (tenant_id, restaurant_id, conversation_key, user_id, event_type, details) VALUES ($1::uuid,$2::uuid,$3::text,$4::text,'ADDRESS_AMBIGUOUS', jsonb_build_object('missing_fields',$5::jsonb));",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "tenant_id",
-              "value": "={{$json.tenantId}}"
-            },
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "conversation_key",
-              "value": "={{$json.conversationKey}}"
-            },
-            {
-              "name": "user_id",
-              "value": "={{$json.userId}}"
-            },
-            {
-              "name": "missing_fields",
-              "value": "={{JSON.stringify($json.missing_fields || [])}}"
-            }
-          ]
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.conversationKey, $json.userId, JSON.stringify($json.missing_fields || [])]}}"
         }
       },
       "id": "CA2_SECURITY_EVENT",
@@ -698,41 +642,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO public.security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES ($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::text,$8::jsonb)\nRETURNING id;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "tenant_id",
-              "value": "={{$json.tenantId}}"
-            },
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "conversation_key",
-              "value": "={{$json.conversationKey}}"
-            },
-            {
-              "name": "channel",
-              "value": "={{$json.channel || 'whatsapp'}}"
-            },
-            {
-              "name": "user_id",
-              "value": "={{$json.userId}}"
-            },
-            {
-              "name": "event_type",
-              "value": "={{($items('DQ1 - Delivery Quote (DB)')[0].json.reason === 'OK') ? 'DELIVERY_QUOTE_OK' : ($items('DQ1 - Delivery Quote (DB)')[0].json.reason || 'DELIVERY_ZONE_NOT_FOUND')}}"
-            },
-            {
-              "name": "severity",
-              "value": "={{($items('DQ1 - Delivery Quote (DB)')[0].json.reason === 'OK') ? 'LOW' : 'MEDIUM'}}"
-            },
-            {
-              "name": "payload_json",
-              "value": "={{JSON.stringify({wilaya: $json.state?.delivery?.wilaya, commune: $json.state?.delivery?.commune, total_cents: $json.state?.lastTotalCents || 0, reason: $items('DQ1 - Delivery Quote (DB)')[0].json.reason})}}"
-            }
-          ]
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.conversationKey, ($json.channel || 'whatsapp'), $json.userId, (($items('DQ1 - Delivery Quote (DB)')[0].json.reason === 'OK') ? 'DELIVERY_QUOTE_OK' : ($items('DQ1 - Delivery Quote (DB)')[0].json.reason || 'DELIVERY_ZONE_NOT_FOUND')), (($items('DQ1 - Delivery Quote (DB)')[0].json.reason === 'OK') ? 'LOW' : 'MEDIUM'), JSON.stringify({wilaya: $json.state?.delivery?.wilaya, commune: $json.state?.delivery?.commune, total_cents: $json.state?.lastTotalCents || 0, reason: $items('DQ1 - Delivery Quote (DB)')[0].json.reason})]}}"
         }
       },
       "id": "DQ1B_LOG_DELIVERY_EVENT",

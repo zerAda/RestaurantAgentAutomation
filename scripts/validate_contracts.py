@@ -26,11 +26,11 @@ def validate(schema_path, payload_path, should_pass: bool):
     errors = sorted(v.iter_errors(payload), key=lambda e: e.path)
     ok = len(errors) == 0
     if ok != should_pass:
-        print(f"❌ {os.path.basename(payload_path)} expected {'PASS' if should_pass else 'FAIL'} but got {'PASS' if ok else 'FAIL'}")
+        print(f"FAIL: {os.path.basename(payload_path)} expected {'PASS' if should_pass else 'FAIL'} but got {'PASS' if ok else 'FAIL'}")
         for e in errors[:10]:
             print("   -", "/".join(map(str, e.path)), e.message)
         return False
-    print(f"✅ {os.path.basename(payload_path)} {'PASS' if ok else 'FAIL'} as expected")
+    print(f"OK: {os.path.basename(payload_path)} {'PASS' if ok else 'FAIL'} as expected")
     return True
 
 def main():

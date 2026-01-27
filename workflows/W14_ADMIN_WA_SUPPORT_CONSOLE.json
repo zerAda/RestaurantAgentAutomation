@@ -678,13 +678,7 @@
         "operation": "executeQuery",
         "query": "SELECT zone_id, wilaya, commune, fee_base_cents, min_order_cents, eta_min, eta_max, is_active\nFROM public.delivery_zones\nWHERE restaurant_id = $1\nORDER BY lower(wilaya), lower(commune)\nLIMIT 50;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            }
-          ]
+          "queryParams": "={{[$json.restaurantId]}}"
         }
       },
       "id": "C1A_ZONE_LIST_DB",
@@ -714,41 +708,7 @@
         "operation": "executeQuery",
         "query": "WITH inp AS (\n  SELECT\n    $1::uuid AS restaurant_id,\n    NULLIF(trim($2::text),'') AS wilaya,\n    NULLIF(trim($3::text),'') AS commune,\n    GREATEST(COALESCE($4::int,0),0) AS fee_base_cents,\n    GREATEST(COALESCE($5::int,0),0) AS min_order_cents,\n    GREATEST(COALESCE($6::int,0),0) AS eta_min,\n    GREATEST(COALESCE($7::int,0),0) AS eta_max,\n    COALESCE($8::boolean,true) AS is_active\n), u AS (\n  UPDATE public.delivery_zones z\n  SET fee_base_cents=inp.fee_base_cents,\n      min_order_cents=inp.min_order_cents,\n      eta_min=inp.eta_min,\n      eta_max=GREATEST(inp.eta_max, inp.eta_min),\n      is_active=inp.is_active,\n      updated_at=now()\n  FROM inp\n  WHERE z.restaurant_id=inp.restaurant_id\n    AND lower(z.wilaya)=lower(inp.wilaya)\n    AND lower(z.commune)=lower(inp.commune)\n  RETURNING z.zone_id\n), i AS (\n  INSERT INTO public.delivery_zones(restaurant_id,wilaya,commune,fee_base_cents,min_order_cents,eta_min,eta_max,is_active)\n  SELECT inp.restaurant_id, inp.wilaya, inp.commune, inp.fee_base_cents, inp.min_order_cents, inp.eta_min, GREATEST(inp.eta_max, inp.eta_min), inp.is_active\n  FROM inp\n  WHERE inp.wilaya IS NOT NULL AND inp.commune IS NOT NULL\n    AND NOT EXISTS (SELECT 1 FROM u)\n  RETURNING zone_id\n)\nSELECT COALESCE((SELECT zone_id FROM u), (SELECT zone_id FROM i)) AS zone_id;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "wilaya",
-              "value": "={{$json.adminZoneWilaya}}"
-            },
-            {
-              "name": "commune",
-              "value": "={{$json.adminZoneCommune}}"
-            },
-            {
-              "name": "fee_base_cents",
-              "value": "={{$json.adminZoneFeeCents}}"
-            },
-            {
-              "name": "min_order_cents",
-              "value": "={{$json.adminZoneMinCents}}"
-            },
-            {
-              "name": "eta_min",
-              "value": "={{$json.adminZoneEtaMin}}"
-            },
-            {
-              "name": "eta_max",
-              "value": "={{$json.adminZoneEtaMax}}"
-            },
-            {
-              "name": "is_active",
-              "value": "={{$json.adminZoneActive}}"
-            }
-          ]
+          "queryParams": "={{[$json.restaurantId, $json.adminZoneWilaya, $json.adminZoneCommune, $json.adminZoneFeeCents, $json.adminZoneMinCents, $json.adminZoneEtaMin, $json.adminZoneEtaMax, $json.adminZoneActive]}}"
         }
       },
       "id": "C2A_ZONE_UPSERT_DB",
@@ -765,41 +725,7 @@
         "operation": "executeQuery",
         "query": "SELECT insert_admin_wa_audit($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::text,$8::jsonb,NULL,true,NULL) AS audit_id;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "tenant_id",
-              "value": "={{$json.tenantId}}"
-            },
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "actor_phone",
-              "value": "={{$json.userId}}"
-            },
-            {
-              "name": "actor_role",
-              "value": "={{$json.rbac?.role || 'admin'}}"
-            },
-            {
-              "name": "action",
-              "value": "={{$items('C2a - Zone Upsert (DB)')[0].json.zone_id ? 'zone_update' : 'zone_create'}}"
-            },
-            {
-              "name": "target_type",
-              "value": "'zone'"
-            },
-            {
-              "name": "target_id",
-              "value": "={{String($items('C2a - Zone Upsert (DB)')[0].json.zone_id || '')}}"
-            },
-            {
-              "name": "metadata_json",
-              "value": "={{JSON.stringify({wilaya:$json.adminZoneWilaya, commune:$json.adminZoneCommune, fee:$json.adminZoneFeeCents, min:$json.adminZoneMinCents, etaMin:$json.adminZoneEtaMin, etaMax:$json.adminZoneEtaMax, active:$json.adminZoneActive})}}"
-            }
-          ]
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.userId, ($json.rbac?.role || 'admin'), ($items('C2a - Zone Upsert (DB)')[0].json.zone_id ? 'zone_update' : 'zone_create'), 'zone', String($items('C2a - Zone Upsert (DB)')[0].json.zone_id || ''), JSON.stringify({wilaya:$json.adminZoneWilaya, commune:$json.adminZoneCommune, fee:$json.adminZoneFeeCents, min:$json.adminZoneMinCents, etaMin:$json.adminZoneEtaMin, etaMax:$json.adminZoneEtaMax, active:$json.adminZoneActive})]}}"
         }
       },
       "id": "C2B_AUDIT_ZONE_UPSERT",
@@ -829,21 +755,7 @@
         "operation": "executeQuery",
         "query": "DELETE FROM public.delivery_zones\nWHERE restaurant_id=$1 AND lower(wilaya)=lower($2) AND lower(commune)=lower($3)\nRETURNING zone_id;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "wilaya",
-              "value": "={{$json.adminZoneWilaya}}"
-            },
-            {
-              "name": "commune",
-              "value": "={{$json.adminZoneCommune}}"
-            }
-          ]
+          "queryParams": "={{[$json.restaurantId, $json.adminZoneWilaya, $json.adminZoneCommune]}}"
         }
       },
       "id": "C3A_ZONE_DELETE_DB",
@@ -860,37 +772,7 @@
         "operation": "executeQuery",
         "query": "SELECT insert_admin_wa_audit($1::uuid,$2::uuid,$3::text,$4::text,'zone_delete','zone',$5::text,$6::text,$7::jsonb,NULL,true,NULL) AS audit_id;",
         "additionalFields": {
-          "mode": "single",
-          "values": [
-            {
-              "name": "tenant_id",
-              "value": "={{$json.tenantId}}"
-            },
-            {
-              "name": "restaurant_id",
-              "value": "={{$json.restaurantId}}"
-            },
-            {
-              "name": "actor_phone",
-              "value": "={{$json.userId}}"
-            },
-            {
-              "name": "actor_role",
-              "value": "={{$json.rbac?.role || 'admin'}}"
-            },
-            {
-              "name": "target_id",
-              "value": "={{String($items('C3a - Zone Delete (DB)')[0].json.zone_id || '')}}"
-            },
-            {
-              "name": "command_raw",
-              "value": "={{String($json.adminConsole?.raw || '').slice(0,200)}}"
-            },
-            {
-              "name": "metadata_json",
-              "value": "={{JSON.stringify({wilaya:$json.adminZoneWilaya, commune:$json.adminZoneCommune})}}"
-            }
-          ]
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.userId, ($json.rbac?.role || 'admin'), String($items('C3a - Zone Delete (DB)')[0].json.zone_id || ''), String($json.adminConsole?.raw || '').slice(0,200), JSON.stringify({wilaya:$json.adminZoneWilaya, commune:$json.adminZoneCommune})]}}"
         }
       },
       "id": "C3B_AUDIT_ZONE_DELETE",

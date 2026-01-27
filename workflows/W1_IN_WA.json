@@ -259,7 +259,7 @@
     },
     {
       "parameters": {
-        "workflowId": "={$env.CORE_WORKFLOW_ID}",
+        "workflowId": "={{$env.CORE_WORKFLOW_ID}}",
         "options": {
           "waitTillFinished": false
         }
