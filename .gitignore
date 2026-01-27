@@ -1,0 +1,63 @@
+# =============================================================================
+# .gitignore - Resto Bot
+# =============================================================================
+
+# Credentials & Secrets (NEVER COMMIT)
+CREDENTIALS.local
+CREDENTIALS.txt
+*.credentials
+secrets/
+.env
+.env.*
+!.env.example
+
+# SSH Keys
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+.pytest_cache/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Backups
+*.backup
+*.bak
+*.sql.gz
+
+# Temp files
+*.tmp
+*.temp
+.cache/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
