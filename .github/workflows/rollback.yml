@@ -54,17 +54,20 @@ jobs:
       rollback_type: ${{ steps.select.outputs.rollback_type }}
 
     steps:
-      - name: Setup SSH
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add known hosts
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: List available backups
         run: |
           echo "=== Available Backups ==="
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
 
       - name: Select backup
         id: select
@@ -75,7 +78,7 @@ jobs:
           if [ -n "${{ github.event.inputs.backup_name }}" ]; then
             BACKUP="${{ github.event.inputs.backup_name }}"
           else
-            BACKUP=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -t ${{ env.BACKUP_DIR }}/deploy-*-config.tar.gz 2>/dev/null | head -1 | xargs -r basename | sed 's/-config.tar.gz//'")
+            BACKUP=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -t ${{ env.BACKUP_DIR }}/deploy-*-config.tar.gz 2>/dev/null | head -1 | xargs -r basename | sed 's/-config.tar.gz//'")
           fi
 
           if [ -z "$BACKUP" ]; then
@@ -95,19 +98,22 @@ jobs:
       pre_backup: ${{ steps.backup.outputs.name }}
 
     steps:
-      - name: Setup SSH
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add known hosts
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Create safety backup
         id: backup
         run: |
           PRE_BACKUP="pre-rollback-$(date +%Y%m%d-%H%M%S)"
 
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             cd ${{ env.PROJECT_DIR }}
 
             # Config backup
@@ -127,23 +133,26 @@ jobs:
     needs: [validate, pre-rollback-backup]
 
     steps:
-      - name: Setup SSH
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add known hosts
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Stop services
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30" || true
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30" || true
 
       - name: Restore database (full only)
         if: needs.validate.outputs.rollback_type == 'full'
         run: |
           BACKUP="${{ needs.validate.outputs.backup_name }}"
 
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             cd ${{ env.PROJECT_DIR }}
 
             # Start postgres only
@@ -171,7 +180,7 @@ jobs:
         run: |
           BACKUP="${{ needs.validate.outputs.backup_name }}"
 
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             cd ${{ env.PROJECT_DIR }}
             tar -xzvf "${{ env.BACKUP_DIR }}/${BACKUP}-config.tar.gz" --overwrite
             chmod 600 .env 2>/dev/null || true
@@ -181,7 +190,7 @@ jobs:
 
       - name: Restart services
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose up -d"
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose up -d"
           sleep 20
 
       - name: Health check
@@ -208,16 +217,19 @@ jobs:
     if: always()
 
     steps:
-      - name: Setup SSH
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add known hosts
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Record rollback
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
             mkdir -p /var/log/resto-bot
             cat >> /var/log/resto-bot/rollbacks.log << EOF
 
