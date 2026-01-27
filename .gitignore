@@ -3,6 +3,7 @@
 # =============================================================================
 
 # Credentials & Secrets (NEVER COMMIT)
+CREDENTIALS.md
 CREDENTIALS.local
 CREDENTIALS.txt
 *.credentials
