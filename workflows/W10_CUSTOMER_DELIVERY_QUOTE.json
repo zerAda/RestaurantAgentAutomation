@@ -51,7 +51,13 @@
       "position": [
         -740,
         0
-      ]
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-resto-bot",
+          "name": "PostgreSQL Resto Bot"
+        }
+      }
     },
     {
       "parameters": {
@@ -106,7 +112,13 @@
       "position": [
         -40,
         120
-      ]
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-resto-bot",
+          "name": "PostgreSQL Resto Bot"
+        }
+      }
     },
     {
       "parameters": {
@@ -205,6 +217,12 @@
         "additionalFields": {
           "queryParams": "={{[$json.restaurantId, $json.req.wilaya, $json.req.commune, $json.req.totalCents]}}"
         }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-resto-bot",
+          "name": "PostgreSQL Resto Bot"
+        }
       }
     },
     {
@@ -218,7 +236,7 @@
       ],
       "parameters": {
         "language": "javascript",
-        "jsCode": "\nconst q = $json;\n\n// Postgres node outputs row fields at top-level\nconst reason = (q.reason || '').toString();\n\nlet ok = (q.zone_found === true || q.zone_found === 't' || q.zone_found === 'true') && (q.zone_active === true || q.zone_active === 't' || q.zone_active === 'true') && reason === '';\n\n// In our DB function, reason is always a code when not OK\nif (reason === '') ok = true;\n\nconst resp = {\n  ok: reason === '' ? true : false,\n  code: reason === '' ? 'OK' : reason,\n  zone: {\n    found: !!q.zone_found,\n    active: !!q.zone_active,\n    wilaya: $items('D2 - Parse Request')[0].json.req.wilaya,\n    commune: $items('D2 - Parse Request')[0].json.req.commune,\n  },\n  fee: {\n    base_cents: Number(q.fee_base_cents||0),\n    surcharge_cents: Number(q.surcharge_cents||0),\n    final_cents: Number(q.final_fee_cents||0),\n    free_threshold_cents: q.free_threshold_cents === null ? null : Number(q.free_threshold_cents||0),\n    min_order_cents: Number(q.min_order_cents||0)\n  },\n  eta: { min: Number(q.eta_min||0), max: Number(q.eta_max||0) }\n};\n\n// User-facing message\nconst fmt = (c) => (Number(c||0)/100).toFixed(2) + '€';\nlet message='';\nif (resp.ok) {\n  message = `✅ Livraison disponible (${resp.zone.wilaya} / ${resp.zone.commune})\nFrais: ${fmt(resp.fee.final_cents)}\nETA: ${resp.eta.min}-${resp.eta.max} min`;\n} else if (resp.code === 'DELIVERY_ZONE_NOT_FOUND') {\n  message = `❌ Zone de livraison introuvable pour *${resp.zone.wilaya} / ${resp.zone.commune}*.\nTu peux :\n- Vérifier la commune\n- Choisir *à emporter*`;\n} else if (resp.code === 'DELIVERY_ZONE_INACTIVE') {\n  message = `⚠️ Livraison indisponible pour *${resp.zone.wilaya} / ${resp.zone.commune}* (zone désactivée).\nChoisis *à emporter*.`;\n} else if (resp.code === 'DELIVERY_MIN_ORDER') {\n  message = `⚠️ Minimum commande pour livraison: ${fmt(resp.fee.min_order_cents)}.\nFrais actuels: ${fmt(resp.fee.final_cents)}`;\n} else {\n  message = `⚠️ Impossible de calculer la livraison (${resp.code}).`;\n}\n\nreturn [{json:{\n  ...$items('B0 - Apply Auth Context')[0].json,\n  _resp: { ...resp, message }\n}}];\n"
+        "jsCode": "\nconst q = $json;\n\n// Postgres node outputs row fields at top-level\nconst reason = (q.reason || '').toString();\n\nlet ok = (q.zone_found === true || q.zone_found === 't' || q.zone_found === 'true') && (q.zone_active === true || q.zone_active === 't' || q.zone_active === 'true') && reason === '';\n\n// In our DB function, reason is always a code when not OK\nif (reason === '') ok = true;\n\nconst resp = {\n  ok: reason === '' ? true : false,\n  code: reason === '' ? 'OK' : reason,\n  zone: {\n    found: !!q.zone_found,\n    active: !!q.zone_active,\n    wilaya: $items('D2 - Parse Request')[0].json.req.wilaya,\n    commune: $items('D2 - Parse Request')[0].json.req.commune,\n  },\n  fee: {\n    base_cents: Number(q.fee_base_cents||0),\n    surcharge_cents: Number(q.surcharge_cents||0),\n    final_cents: Number(q.final_fee_cents||0),\n    free_threshold_cents: q.free_threshold_cents === null ? null : Number(q.free_threshold_cents||0),\n    min_order_cents: Number(q.min_order_cents||0)\n  },\n  eta: { min: Number(q.eta_min||0), max: Number(q.eta_max||0) }\n};\n\n// User-facing message\nconst fmt = (c) => (Number(c||0)/100).toFixed(2) + '\u20ac';\nlet message='';\nif (resp.ok) {\n  message = `\u2705 Livraison disponible (${resp.zone.wilaya} / ${resp.zone.commune})\nFrais: ${fmt(resp.fee.final_cents)}\nETA: ${resp.eta.min}-${resp.eta.max} min`;\n} else if (resp.code === 'DELIVERY_ZONE_NOT_FOUND') {\n  message = `\u274c Zone de livraison introuvable pour *${resp.zone.wilaya} / ${resp.zone.commune}*.\nTu peux :\n- V\u00e9rifier la commune\n- Choisir *\u00e0 emporter*`;\n} else if (resp.code === 'DELIVERY_ZONE_INACTIVE') {\n  message = `\u26a0\ufe0f Livraison indisponible pour *${resp.zone.wilaya} / ${resp.zone.commune}* (zone d\u00e9sactiv\u00e9e).\nChoisis *\u00e0 emporter*.`;\n} else if (resp.code === 'DELIVERY_MIN_ORDER') {\n  message = `\u26a0\ufe0f Minimum commande pour livraison: ${fmt(resp.fee.min_order_cents)}.\nFrais actuels: ${fmt(resp.fee.final_cents)}`;\n} else {\n  message = `\u26a0\ufe0f Impossible de calculer la livraison (${resp.code}).`;\n}\n\nreturn [{json:{\n  ...$items('B0 - Apply Auth Context')[0].json,\n  _resp: { ...resp, message }\n}}];\n"
       }
     },
     {
@@ -235,6 +253,12 @@
         "query": "INSERT INTO security_events(tenant_id, restaurant_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5::jsonb);",
         "additionalFields": {
           "queryParams": "={{[$json.tenantId, $json.restaurantId, ($json._resp.code === \"OK\" ? \"DELIVERY_QUOTE_OK\" : $json._resp.code), ($json._resp.code === \"OK\" ? \"LOW\" : \"MEDIUM\"), JSON.stringify($json._resp)]}}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-resto-bot",
+          "name": "PostgreSQL Resto Bot"
         }
       }
     },
