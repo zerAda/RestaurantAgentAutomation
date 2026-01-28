@@ -70,8 +70,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT role FROM restaurant_users WHERE tenant_id=$1 AND restaurant_id=$2 AND channel='whatsapp' AND user_id=$3 AND role IN ('admin','owner') LIMIT 1;",
-        "additionalFields": {},
-        "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.userId]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.userId]}}"
+        }
       },
       "id": "698418e6-d709-4690-b9e6-66a3c5c9f806",
       "name": "A2 - RBAC (DB)",
@@ -226,7 +227,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT ticket_id, status, reason_code, created_at, customer_user_id FROM support_tickets WHERE restaurant_id=$1 AND ( ($2='all') OR status IN ('OPEN','ASSIGNED')) ORDER BY created_at DESC LIMIT 10;",
-        "queryParams": "={{[$json.restaurantId, ($json.adminFilter||'open')]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.restaurantId, ($json.adminFilter||'open')]}}"
+        }
       },
       "id": "80a43ece-8ee3-49bc-9ea2-c7d8d4e1f5eb",
       "name": "B2a - List Tickets (DB)",
@@ -276,7 +279,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "WITH t AS (UPDATE support_tickets SET status='ASSIGNED', updated_at=now() WHERE ticket_id=$1 AND restaurant_id=$2 AND status IN ('OPEN','ASSIGNED') RETURNING ticket_id, status), a AS (INSERT INTO support_assignments(ticket_id, admin_user_id) SELECT $1,$3 WHERE EXISTS (SELECT 1 FROM t) RETURNING id) SELECT (SELECT ticket_id FROM t) AS ticket_id;",
-        "queryParams": "={{[$json.adminTicketId, $json.restaurantId, $json.userId]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.adminTicketId, $json.restaurantId, $json.userId]}}"
+        }
       },
       "id": "e1c80492-e72d-4e0f-9554-fa497f2cf295",
       "name": "B3a - Take Ticket (DB)",
@@ -326,7 +331,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE support_tickets SET status='CLOSED', closed_at=now(), updated_at=now() WHERE ticket_id=$1 AND restaurant_id=$2 RETURNING ticket_id;",
-        "queryParams": "={{[$json.adminTicketId, $json.restaurantId]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.adminTicketId, $json.restaurantId]}}"
+        }
       },
       "id": "10d59a54-034e-422b-af43-3a22eeff7ed5",
       "name": "B4a - Close Ticket (DB)",
@@ -376,7 +383,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT ticket_id, tenant_id, restaurant_id, channel, conversation_key, customer_user_id, status FROM support_tickets WHERE ticket_id=$1 AND restaurant_id=$2 LIMIT 1;",
-        "queryParams": "={{[$json.adminTicketId, $json.restaurantId]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.adminTicketId, $json.restaurantId]}}"
+        }
       },
       "id": "518d4c70-71ed-41bb-adae-25f63dcada61",
       "name": "B5a - Load Ticket (DB)",
@@ -391,7 +400,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO support_ticket_messages(ticket_id, direction, from_user_id, to_user_id, body_text, meta_json) VALUES ($1,'OUTBOUND',$2,$3,$4,$5::jsonb) RETURNING id;",
-        "queryParams": "={{[($json.data && $json.data[0] ? $json.data[0].ticket_id : 0), $json.userId, ($json.data && $json.data[0] ? $json.data[0].customer_user_id : ''), ($json.adminMessage||''), JSON.stringify({source:'admin_wa_console'})]}}"
+        "additionalFields": {
+          "queryParams": "={{[($json.data && $json.data[0] ? $json.data[0].ticket_id : 0), $json.userId, ($json.data && $json.data[0] ? $json.data[0].customer_user_id : ''), ($json.adminMessage||''), JSON.stringify({source:'admin_wa_console'})]}}"
+        }
       },
       "id": "8a5c9470-2fb3-442e-a690-5c14d64b5297",
       "name": "B5b - Log Message (DB)",
@@ -420,7 +431,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO outbound_messages(tenant_id, restaurant_id, channel, conversation_key, user_id, template_key, locale, payload_json, outbox_dedupe_key, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'PENDING') ON CONFLICT (outbox_dedupe_key) DO NOTHING;",
-        "queryParams": "={{[$json.customerOutbox.tenant_id, $json.customerOutbox.restaurant_id, $json.customerOutbox.channel, $json.customerOutbox.conversation_key, $json.customerOutbox.user_id, $json.customerOutbox.template_key, $json.customerOutbox.locale, JSON.stringify($json.customerOutbox.payload_json), $json.customerOutbox.dedupe_key]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.customerOutbox.tenant_id, $json.customerOutbox.restaurant_id, $json.customerOutbox.channel, $json.customerOutbox.conversation_key, $json.customerOutbox.user_id, $json.customerOutbox.template_key, $json.customerOutbox.locale, JSON.stringify($json.customerOutbox.payload_json), $json.customerOutbox.dedupe_key]}}"
+        }
       },
       "id": "ebea9c9f-c754-4b27-9e50-599af6d1b7cc",
       "name": "B5d - Enqueue Customer Outbox (DB)",
@@ -449,7 +462,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO outbound_messages(tenant_id, restaurant_id, channel, conversation_key, user_id, template_key, locale, payload_json, outbox_dedupe_key, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'PENDING') ON CONFLICT (outbox_dedupe_key) DO NOTHING;",
-        "queryParams": "={{[$json.adminOutbox.tenant_id, $json.adminOutbox.restaurant_id, $json.adminOutbox.channel, $json.adminOutbox.conversation_key, $json.adminOutbox.user_id, $json.adminOutbox.template_key, $json.adminOutbox.locale, JSON.stringify($json.adminOutbox.payload_json), $json.adminOutbox.dedupe_key]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.adminOutbox.tenant_id, $json.adminOutbox.restaurant_id, $json.adminOutbox.channel, $json.adminOutbox.conversation_key, $json.adminOutbox.user_id, $json.adminOutbox.template_key, $json.adminOutbox.locale, JSON.stringify($json.adminOutbox.payload_json), $json.adminOutbox.dedupe_key]}}"
+        }
       },
       "id": "840153cc-efcf-4ca3-970f-d39a03a2d325",
       "name": "O1 - Enqueue Admin Outbox (DB)",
@@ -485,7 +500,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT tenant_id, key, locale, content, variables\nFROM public.message_templates\nWHERE (tenant_id=$1 OR tenant_id='_GLOBAL')\n  AND key=$2 AND locale=lower($3)\nORDER BY CASE WHEN tenant_id=$1 THEN 0 ELSE 1 END\nLIMIT 1;",
-        "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale]}}"
+        }
       },
       "id": "90084aeb-596b-42ed-ab9a-d31f4fa54c9f",
       "name": "B7a - Template Get (DB)",
@@ -535,7 +552,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)\nVALUES ($1,$2,lower($3),$4, COALESCE((SELECT variables FROM public.message_templates WHERE tenant_id=$1 AND key=$2 AND locale=lower($3)), '[]'::jsonb))\nON CONFLICT (tenant_id, key, locale) DO UPDATE\n  SET content=EXCLUDED.content, updated_at=now()\nRETURNING tenant_id, key, locale, content, variables;",
-        "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale, $json.adminTemplateContent]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale, $json.adminTemplateContent]}}"
+        }
       },
       "id": "289806f5-8308-436f-8ec3-0ae25310328d",
       "name": "B8a - Template Set (DB)",
@@ -585,7 +604,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)\nVALUES ($1,$2,lower($3), COALESCE((SELECT content FROM public.message_templates WHERE tenant_id=$1 AND key=$2 AND locale=lower($3)), ''), $4::jsonb)\nON CONFLICT (tenant_id, key, locale) DO UPDATE\n  SET variables=EXCLUDED.variables, updated_at=now()\nRETURNING tenant_id, key, locale, content, variables;",
-        "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale, $json.adminTemplateVarsJson]}}"
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.adminTemplateKey, $json.adminTemplateLocale, $json.adminTemplateVarsJson]}}"
+        }
       },
       "id": "4f778a36-bd42-4a99-b7e6-02fb63c607a8",
       "name": "B9a - Template Vars (DB)",
