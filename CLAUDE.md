@@ -33,6 +33,16 @@ Internet → Traefik (TLS/routing) → Two paths:
 # Smoke tests (health + basic inbound)
 ./scripts/smoke.sh
 
+# Meta-specific tests (verify, signature, anti-replay)
+./scripts/smoke_meta.sh
+
+# Full test battery (100 tests)
+./scripts/test_battery.sh
+./scripts/test_battery.sh --section 4  # Run only section 4
+
+# End-to-End tests
+./scripts/test_e2e.sh --env local --verbose
+
 # Security smoke tests
 ./scripts/smoke_security.sh
 ./scripts/smoke_security_gateway.sh

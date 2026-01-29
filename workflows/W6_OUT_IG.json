@@ -1,8 +1,8 @@
 {
-  "name": "W6 - OUT Instagram Sender",
+  "name": "W6 - OUT Instagram Sender (Meta Graph API)",
   "active": false,
   "settings": {
-    "executionTimeout": 300,
+    "executionTimeout": 120,
     "saveExecutionProgress": true,
     "saveManualExecutions": true
   },
@@ -13,24 +13,18 @@
       "name": "IN - From CORE",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [
-        -2400,
-        0
-      ]
+      "position": [-2400, 0]
     },
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "// Input expected from CORE: {\n//   channel, restaurantId, userId, replyText, buttons:[{id,title}], actions, debug\n// }\nconst payload = $json;\n\nconst url = ($env.IG_SEND_URL || '').toString();\nif (!url) {\n  return [{json: {sent:false, reason:'IG_SEND_URL not set', payload} }];\n}\n\nconst token = ($env.IG_API_TOKEN || '').toString();\n\n// Generic send format (adapt to your provider / Meta Cloud API).\nconst body = {\n  channel: 'instagram',\n  to: payload.userId,\n  restaurantId: payload.restaurantId,\n  text: payload.replyText || '',\n  buttons: Array.isArray(payload.buttons) ? payload.buttons : [],\n  attachments: Array.isArray(payload.attachments) ? payload.attachments : []\n};\n\nconst res = await $httpRequest({\n  method: 'POST',\n  url,\n  headers: token ? { Authorization: 'Bearer ' + token } : {},\n  body,\n  json: true,\n  timeout: 30000\n});\n\nreturn [{json: {sent:true, providerResponse: res, body} }];"
+        "jsCode": "/**\n * W6 - Instagram DM Sender\n * Supports both Mock API (dev) and Meta Graph API (production)\n * \n * Instagram uses the same Send API as Messenger:\n *   POST https://graph.facebook.com/v21.0/{PAGE_ID}/messages\n *   Body: { recipient: { id: 'IGSID' }, message: { text: 'MSG' } }\n * \n * Input from CORE:\n *   { channel, restaurantId, userId, replyText, buttons, attachments }\n */\n\nconst payload = $json;\nconst timestamp = new Date().toISOString();\n\n// Configuration\nconst sendUrl = ($env.IG_SEND_URL || '').toString().trim();\nconst pageId = ($env.IG_PAGE_ID || '').toString().trim();\nconst token = ($env.IG_API_TOKEN || '').toString().trim();\n\n// Detect if using Meta API (production) or mock\nconst isMetaApi = sendUrl.includes('graph.facebook.com') || !!pageId;\nlet url = sendUrl;\n\nif (!url && pageId) {\n  url = `https://graph.facebook.com/v21.0/${pageId}/messages`;\n}\n\nif (!url) {\n  return [{ json: { \n    sent: false, \n    error: 'IG_SEND_URL_NOT_SET',\n    reason: 'IG_SEND_URL or IG_PAGE_ID must be configured',\n    timestamp,\n    payload \n  }}];\n}\n\nif (!token) {\n  return [{ json: { \n    sent: false, \n    error: 'IG_API_TOKEN_NOT_SET',\n    reason: 'IG_API_TOKEN must be configured',\n    timestamp,\n    payload \n  }}];\n}\n\nconst recipientId = (payload.userId || '').toString().trim();\nif (!recipientId) {\n  return [{ json: { \n    sent: false, \n    error: 'RECIPIENT_MISSING',\n    reason: 'userId (Instagram Scoped ID) is required',\n    timestamp,\n    payload \n  }}];\n}\n\n// Build request body\nlet body;\nif (isMetaApi) {\n  const text = (payload.replyText || '').toString().trim();\n  \n  if (Array.isArray(payload.buttons) && payload.buttons.length > 0) {\n    // Quick replies (Instagram supports up to 13)\n    body = {\n      recipient: { id: recipientId },\n      message: {\n        text: text || 'Choose an option:',\n        quick_replies: payload.buttons.slice(0, 13).map((btn, i) => ({\n          content_type: 'text',\n          title: (btn.title || btn.label || '').slice(0, 20),\n          payload: btn.id || `btn_${i}`\n        }))\n      }\n    };\n  } else {\n    body = {\n      recipient: { id: recipientId },\n      message: { text: text || '(empty message)' }\n    };\n  }\n} else {\n  body = {\n    channel: 'instagram',\n    to: recipientId,\n    restaurantId: payload.restaurantId || '',\n    text: payload.replyText || '',\n    buttons: Array.isArray(payload.buttons) ? payload.buttons : [],\n    attachments: Array.isArray(payload.attachments) ? payload.attachments : []\n  };\n}\n\n// Send with retry\nlet lastError = null;\nlet response = null;\nconst maxRetries = 3;\nconst baseDelay = 1000;\n\nfor (let attempt = 1; attempt <= maxRetries; attempt++) {\n  try {\n    response = await $httpRequest({\n      method: 'POST',\n      url,\n      headers: {\n        'Authorization': `Bearer ${token}`,\n        'Content-Type': 'application/json'\n      },\n      body,\n      json: true,\n      timeout: 30000,\n      returnFullResponse: true\n    });\n    \n    const statusCode = response.statusCode || response.status || 200;\n    \n    if (statusCode >= 200 && statusCode < 300) {\n      const responseBody = response.body || response.data || response;\n      return [{ json: {\n        sent: true,\n        provider: isMetaApi ? 'meta_ig_api' : 'mock',\n        messageId: responseBody?.message_id || null,\n        recipient: recipientId,\n        timestamp,\n        attempt,\n        response: responseBody\n      }}];\n    }\n    \n    if (statusCode === 429) {\n      const retryAfter = parseInt(response.headers?.['retry-after'] || '60', 10);\n      lastError = { statusCode, error: 'RATE_LIMITED', retryAfter };\n      if (attempt < maxRetries) {\n        await new Promise(r => setTimeout(r, Math.min(retryAfter * 1000, 60000)));\n        continue;\n      }\n    }\n    \n    if (statusCode >= 500) {\n      lastError = { statusCode, error: 'SERVER_ERROR', body: response.body };\n      if (attempt < maxRetries) {\n        await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt - 1)));\n        continue;\n      }\n    }\n    \n    if (statusCode >= 400) {\n      return [{ json: {\n        sent: false,\n        error: 'CLIENT_ERROR',\n        statusCode,\n        provider: isMetaApi ? 'meta_ig_api' : 'mock',\n        response: response.body || response,\n        timestamp,\n        attempt,\n        requestBody: body\n      }}];\n    }\n    \n  } catch (err) {\n    lastError = { error: 'REQUEST_FAILED', message: err.message };\n    if (attempt < maxRetries) {\n      await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt - 1)));\n      continue;\n    }\n  }\n}\n\nreturn [{ json: {\n  sent: false,\n  error: 'MAX_RETRIES_EXHAUSTED',\n  lastError,\n  provider: isMetaApi ? 'meta_ig_api' : 'mock',\n  timestamp,\n  attempts: maxRetries,\n  requestBody: body\n}}];\n"
       },
       "id": "af69ff79-fe60-4cfb-aa29-b43b0d7114f0",
       "name": "OUT - Send Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -2150,
-        0
-      ]
+      "position": [-2150, 0]
     }
   ],
   "connections": {

@@ -1,0 +1,172 @@
+{
+  "name": "W0 - Redis Helper (Dedupe + RateLimit)",
+  "active": true,
+  "settings": {
+    "executionTimeout": 30,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "={{$json.dedupeKey}}",
+        "value": "={{$json.timestamp || Date.now()}}",
+        "expire": true,
+        "ttl": "={{Number($json.dedupeTtl) || 86400}}"
+      },
+      "id": "redis-dedupe-set",
+      "name": "Redis SET NX (Dedupe)",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [250, 0],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Parse Redis SET result\n// SET NX returns OK if key was set (new), null if key existed (duplicate)\nconst redisResult = $json;\nconst input = $('Start').first().json;\n\n// Check if this is a new message or duplicate\nlet isNew = true;\nlet redisAvailable = true;\nlet error = null;\n\nif (redisResult.error) {\n  // Redis failed - mark as unavailable, will fallback to DB\n  redisAvailable = false;\n  error = redisResult.error.message || 'Redis error';\n  isNew = true; // Assume new to not drop messages\n} else if (redisResult === null || redisResult === 'nil' || redisResult === '') {\n  // Key already existed - duplicate\n  isNew = false;\n} else {\n  // Key was set - new message\n  isNew = true;\n}\n\nreturn [{\n  json: {\n    ...input,\n    _redis: {\n      available: redisAvailable,\n      isNew,\n      error,\n      dedupeKey: input.dedupeKey,\n      checkedAt: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "id": "parse-dedupe-result",
+      "name": "Parse Dedupe Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._redis.isNew}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "is-new-check",
+      "name": "Is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 0]
+    },
+    {
+      "parameters": {
+        "operation": "incr",
+        "key": "={{$json.rateLimitKey}}"
+      },
+      "id": "redis-rate-incr",
+      "name": "Redis INCR (RateLimit)",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1000, -100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Parse rate limit result and check threshold\nconst count = Number($json) || 1;\nconst input = $('Is New?').first().json;\nconst maxRate = Number(input.rateLimitMax) || 6;\n\nconst allowed = count <= maxRate;\n\nreturn [{\n  json: {\n    ...input,\n    _redis: {\n      ...input._redis,\n      rateCount: count,\n      rateAllowed: allowed,\n      rateMax: maxRate\n    },\n    _result: {\n      isNew: true,\n      isDuplicate: false,\n      rateAllowed: allowed,\n      rateLimited: !allowed,\n      redisAvailable: input._redis?.available !== false\n    }\n  }\n}];"
+      },
+      "id": "parse-rate-result",
+      "name": "Parse Rate Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, -100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Duplicate message - return result\nconst input = $json;\n\nreturn [{\n  json: {\n    ...input,\n    _result: {\n      isNew: false,\n      isDuplicate: true,\n      rateAllowed: true,\n      rateLimited: false,\n      redisAvailable: input._redis?.available !== false\n    }\n  }\n}];"
+      },
+      "id": "duplicate-result",
+      "name": "Duplicate Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 100]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Redis SET NX (Dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis SET NX (Dedupe)": {
+      "main": [
+        [
+          {
+            "node": "Parse Dedupe Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Dedupe Result": {
+      "main": [
+        [
+          {
+            "node": "Is New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New?": {
+      "main": [
+        [
+          {
+            "node": "Redis INCR (RateLimit)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis INCR (RateLimit)": {
+      "main": [
+        [
+          {
+            "node": "Parse Rate Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

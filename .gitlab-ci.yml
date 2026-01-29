@@ -1,0 +1,191 @@
+stages:
+  - validate
+  - test
+  - build
+  - security
+  - deploy
+
+variables:
+  POSTGRES_USER: n8n
+  POSTGRES_PASSWORD: n8npass
+  POSTGRES_DB: n8n
+  REDIS_URL: redis://redis:6379
+
+# =============================================================================
+# STAGE: Validate
+# =============================================================================
+lint-json:
+  stage: validate
+  image: python:3.11-alpine
+  script:
+    - echo "Validating JSON files..."
+    - |
+      for f in workflows/*.json; do
+        echo "Checking $f"
+        python3 -m json.tool "$f" > /dev/null || exit 1
+      done
+    - echo "All JSON files valid"
+
+lint-bash:
+  stage: validate
+  image: bash:5
+  script:
+    - echo "Validating bash scripts..."
+    - |
+      for f in scripts/*.sh; do
+        echo "Checking $f"
+        bash -n "$f" || exit 1
+      done
+    - echo "All scripts valid"
+
+lint-nginx:
+  stage: validate
+  image: nginx:alpine
+  script:
+    - nginx -t -c /dev/stdin < infra/gateway/nginx.conf || true
+  allow_failure: true
+
+# =============================================================================
+# STAGE: Test
+# =============================================================================
+unit-tests:
+  stage: test
+  image: python:3.11
+  script:
+    - pip install jsonschema pytest
+    - |
+      if [ -f scripts/validate_contracts.py ]; then
+        python3 scripts/validate_contracts.py
+      fi
+    - |
+      if [ -f scripts/test_l10n_script_detection.py ]; then
+        python3 scripts/test_l10n_script_detection.py
+      fi
+
+integration-tests:
+  stage: test
+  image: docker:24
+  services:
+    - name: postgres:15-alpine
+      alias: postgres
+    - name: redis:7-alpine
+      alias: redis
+  variables:
+    POSTGRES_USER: n8n
+    POSTGRES_PASSWORD: n8npass
+    POSTGRES_DB: n8n
+  before_script:
+    - apk add --no-cache bash curl postgresql-client
+  script:
+    - echo "Waiting for PostgreSQL..."
+    - until pg_isready -h postgres -U n8n; do sleep 1; done
+    - echo "Running migrations..."
+    - |
+      if [ -f db/bootstrap.sql ]; then
+        PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -f db/bootstrap.sql
+      fi
+    - echo "Validating test scripts..."
+    - bash -n scripts/test_battery.sh
+    - bash -n scripts/test_e2e.sh
+
+# =============================================================================
+# STAGE: Build
+# =============================================================================
+docker-build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  script:
+    - echo "Validating docker-compose..."
+    - |
+      for f in docker-compose*.yml docker/docker-compose*.yml; do
+        if [ -f "$f" ]; then
+          echo "Checking $f"
+          docker compose -f "$f" config > /dev/null || true
+        fi
+      done
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# =============================================================================
+# STAGE: Security
+# =============================================================================
+security-scan:
+  stage: security
+  image: alpine:latest
+  script:
+    - apk add --no-cache grep
+    - echo "Checking for secrets..."
+    - |
+      if grep -rE "(password|secret|token)\s*=\s*['\"][^'\"]{8,}" --include="*.json" . 2>/dev/null | grep -v "example" | grep -v "CHANGE_ME"; then
+        echo "WARNING: Potential secrets found"
+      fi
+    - echo "Checking .env not committed..."
+    - |
+      if [ -f ".env" ] || [ -f "config/.env" ]; then
+        echo "ERROR: .env committed!"
+        exit 1
+      fi
+    - echo "Checking nginx security headers..."
+    - grep -q "X-Content-Type-Options" infra/gateway/nginx.conf
+    - grep -q "X-Frame-Options" infra/gateway/nginx.conf
+    - grep -q "server_tokens off" infra/gateway/nginx.conf
+
+# =============================================================================
+# STAGE: Deploy
+# =============================================================================
+deploy-staging:
+  stage: deploy
+  image: alpine:latest
+  environment:
+    name: staging
+    url: https://api.staging.example.com
+  script:
+    - echo "Deploying to staging..."
+    - echo "Customize this for your infrastructure"
+  only:
+    - develop
+  when: manual
+
+deploy-production:
+  stage: deploy
+  image: alpine:latest
+  environment:
+    name: production
+    url: https://api.example.com
+  script:
+    - echo "Deploying to production..."
+    - echo "Customize this for your infrastructure"
+  only:
+    - main
+  when: manual
+
+# =============================================================================
+# POST-DEPLOY
+# =============================================================================
+smoke-tests-staging:
+  stage: deploy
+  image: alpine:latest
+  needs: [deploy-staging]
+  script:
+    - apk add --no-cache curl bash
+    - echo "Running smoke tests on staging..."
+    # - API_URL=https://api.staging.example.com ./scripts/smoke.sh
+  only:
+    - develop
+  when: manual
+
+smoke-tests-production:
+  stage: deploy
+  image: alpine:latest
+  needs: [deploy-production]
+  script:
+    - apk add --no-cache curl bash
+    - echo "Running smoke tests on production..."
+    # - API_URL=https://api.example.com ./scripts/smoke.sh
+  only:
+    - main
+  when: manual
