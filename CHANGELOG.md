@@ -39,6 +39,23 @@
 - Alertes webhook si seuil dépassé (`DLQ_ALERT_THRESHOLD`)
 - Documentation dans `docs/RUNBOOK.md`
 
+#### P1-06: Structured Logging + Correlation Propagation
+- **NOUVEAU**: Logs structurés JSON avec `correlation_id` pour traçabilité end-to-end
+- **NOUVEAU**: `db/migrations/2026-01-30_p1_06_structured_logging.sql` - Schema logging
+  - Table `structured_logs` pour logs centralisés
+  - Fonction `log_structured()` pour insertion depuis workflows
+  - Vue `v_request_trace` pour tracer une requête complète
+- **NOUVEAU**: Colonnes `correlation_id` ajoutées à: `security_events`, `workflow_errors`, `outbound_messages`, `inbound_messages`
+- **W1/W2/W3**: `correlation_id` généré au début (header ou UUID)
+- **W5/W6/W7**: Propagation du `correlation_id` dans outbox et DLQ
+- **ENV**: Nouvelles variables:
+  - `LOG_LEVEL` (DEBUG|INFO|WARN|ERROR)
+  - `LOG_STRUCTURED` (true|false)
+  - `LOG_MASK_PATTERNS` (patterns à masquer: token, password, secret...)
+  - `CORRELATION_ID_HEADER` (header à utiliser, défaut: x-correlation-id)
+- **Masquage secrets**: Tokens et credentials masqués automatiquement dans les logs
+- **NOUVEAU**: `scripts/test_p106_logging.sh` - Tests de validation
+
 ### 🟢 P2 - Tests & CI/CD
 
 #### P2-01: Tests End-to-End
