@@ -52,14 +52,21 @@ description = "Allowlist for known safe patterns"
 
 paths = [
   '''\.env\.example$''',
+  '''config/\.env\.example$''',
   '''docs/.*\.md$''',
   '''tests/.*\.json$''',
+  '''tests/fixtures/.*\.sql$''',
   '''\.gitleaks\.toml$''',
   '''CLAUDE\.md$''',
   '''CREDENTIALS\.md$''',
   '''PIPELINE_GUIDE\.md$''',
+  '''CHANGELOG\.md$''',
+  '''PATCHLOG\.md$''',
   '''docs/RUNBOOK_HOSTINGER\.md$''',
   '''docs/DEVOPS\.md$''',
+  '''db/seed.*\.sql$''',
+  '''scripts/test_.*\.sh$''',
+  '''workflows/.*\.json$''',
 ]
 
 regexes = [

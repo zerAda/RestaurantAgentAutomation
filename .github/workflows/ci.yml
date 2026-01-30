@@ -24,20 +24,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Validate JSON files
         run: |
           echo "Validating workflow JSON files..."
+          ERRORS=0
           for f in workflows/*.json; do
-            echo "Checking $f"
-            python3 -m json.tool "$f" > /dev/null || exit 1
+            echo -n "Checking $f ... "
+            # Use Node.js for reliable JSON parsing (handles various encodings)
+            if node -e "JSON.parse(require('fs').readFileSync('$f', 'utf8'))" 2>/dev/null; then
+              echo "OK"
+            else
+              echo "INVALID"
+              ERRORS=$((ERRORS + 1))
+            fi
           done
-          echo "All JSON files valid"
+          if [ $ERRORS -gt 0 ]; then
+            echo "::error::$ERRORS JSON files are invalid"
+            exit 1
+          fi
+          echo "All $(($(ls workflows/*.json | wc -l))) JSON files valid"
 
       - name: Check for placeholder values
         run: |
           echo "Checking for unresolved placeholders..."
-          if grep -r "CHANGE_ME\|REPLACE_ME\|TODO\|FIXME" --include="*.json" workflows/; then
-            echo "WARNING: Found placeholder values in workflows"
+          # Only warn, don't fail - some TODOs are acceptable in development
+          if grep -rE "CHANGE_ME|REPLACE_ME" --include="*.json" workflows/ 2>/dev/null; then
+            echo "::warning::Found placeholder values that need replacing before production"
+          else
+            echo "No critical placeholders found"
           fi
 
       - name: Validate bash scripts

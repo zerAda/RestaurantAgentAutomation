@@ -1,6 +1,6 @@
 # CHANGELOG - Resto Bot Production Patch
 
-## Version 3.3.3 - COD + No-Show Algeria (2026-01-30)
+## Version 3.3.4 - Delivery Location + COD Algeria (2026-01-30)
 
 ### P2-DZ-01: COD Flow + No-Show Scoring + Admin Controls (Algeria)
 
@@ -57,6 +57,65 @@ Le marché algérien est dominé par le paiement à la livraison (COD). Les no-s
 | 30-49 | MEDIUM | Acompte suggéré |
 | 1-29 | HIGH | Acompte requis |
 | 0 | BLACKLISTED | Prépaiement uniquement |
+
+---
+
+### P2-DZ-02: Delivery Wilaya/Commune + WhatsApp Location (Algeria)
+
+#### Problem
+L'adresse de livraison texte est source d'erreurs: fautes de frappe (Algiers vs Alger), mix arabe/latin, confusion wilaya/commune. WhatsApp permet d'envoyer une position GPS mais elle n'est pas exploitée.
+
+#### Solution
+
+**1. Database Migration** (`db/migrations/2026-01-30_p2_dz02_delivery_location.sql`):
+
+- **Table `wilaya_reference`** - 48 wilayas d'Algérie avec:
+  - Noms français et arabes
+  - Variantes orthographiques (algiers → Alger, الجزائر → Alger)
+  - Coordonnées centrales (lat/lng)
+
+- **Table `commune_reference`** - Communes avec variantes (extensible)
+
+- **Colonnes ajoutées à `delivery_zones`**:
+  - `center_lat`, `center_lng` - Centre de la zone
+  - `radius_km` - Rayon de matching (défaut 10km)
+
+- **Fonctions**:
+  - `normalize_address(raw, wilaya_hint, commune_hint)` - Normalisation fuzzy
+  - `location_to_zone(restaurant_id, lat, lng)` - Coordinates → zone matching
+  - `delivery_quote_v2(...)` - Quote avec support location + text fallback
+
+**2. Location Pin Support**:
+- W1_IN_WA extrait déjà latitude/longitude/address des messages location
+- W4_CORE patché pour passer les coordonnées à `delivery_quote_v2`
+- Match par coordonnées prioritaire, fallback sur texte normalisé
+
+**3. Admin Commands** (W14 patché):
+```
+!zone coords <wilaya> <commune> <lat> <lng>  # Définir centre zone
+!zone radius <wilaya> <commune> <km>         # Définir rayon matching
+!zone lookup <lat> <lng>                     # Tester matching par coords
+!address normalize <texte>                   # Tester normalisation
+```
+
+**4. Templates** (FR/AR):
+- `delivery_location_request` - Demande de position GPS
+- `delivery_location_received` - Confirmation zone détectée
+- `delivery_zone_not_found` - Zone hors couverture
+
+**5. Tests**:
+- `scripts/test_p2dz02_location.sh` - Tests DB + API location
+
+#### Matching Algorithm
+1. **Coordinates** (si location pin): Haversine distance → zone la plus proche dans radius_km
+2. **Wilaya Center**: Coords → wilaya la plus proche → zone par nom wilaya
+3. **Text Fallback**: Normalisation adresse → lookup wilaya/commune
+
+#### Address Normalization
+- Insensible à la casse
+- Supporte Arabic (الجزائر) et Latin (Alger, Algiers)
+- Gère variantes communes (tizi-ouzou, tizi ouzou, Tizi Wuzzu)
+- Ignore préfixes (Wilaya de, ولاية)
 
 ---
 
