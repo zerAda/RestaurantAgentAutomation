@@ -69,7 +69,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT role FROM restaurant_users WHERE tenant_id=$1 AND restaurant_id=$2 AND channel='whatsapp' AND user_id=$3 AND role IN ('admin','owner') LIMIT 1;",
+        "query": "-- P2-02: Check both RBAC table and phone allowlist\nWITH rbac_check AS (\n  SELECT role, 'rbac' AS source\n  FROM restaurant_users\n  WHERE tenant_id=$1 AND restaurant_id=$2 AND channel='whatsapp' AND user_id=$3 AND role IN ('admin','owner')\n  LIMIT 1\n),\nphone_check AS (\n  SELECT role, 'phone_allowlist' AS source, permissions\n  FROM admin_phone_allowlist\n  WHERE phone_number=$3 AND is_active=true\n  LIMIT 1\n)\nSELECT COALESCE(r.role, p.role) AS role,\n       COALESCE(r.source, p.source) AS auth_source,\n       p.permissions\nFROM rbac_check r\nFULL OUTER JOIN phone_check p ON true\nWHERE r.role IS NOT NULL OR p.role IS NOT NULL\nLIMIT 1;",
         "additionalFields": {
           "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.userId]}}"
         }
@@ -121,7 +121,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const e = $json;\nconst cmd = (e.adminConsole?.cmd || '').toLowerCase();\nconst args = Array.isArray(e.adminConsole?.args) ? e.adminConsole.args : [];\nconst raw = (e.adminConsole?.raw || '').toString();\n\nfunction usage() {\n  return [\n    '*Console Support + L10N*',\n    '- !help',\n    '- !tickets [open|all]',\n    '- !take <ticket_id>',\n    '- !close <ticket_id>',\n    '- !reply <ticket_id> <message>',\n    '',\n    '*Templates (FR/AR)*',\n    '- !template get <KEY> [fr|ar]',\n    '- !template set <KEY> [fr|ar] <CONTENT...>',\n    '- !template vars <KEY> [fr|ar] <var1,var2,...>',\n    '',\n    '*Delivery Zones*',\n    '- !zone list',\n    '- !zone set <wilaya> ; <commune> ; <fee_cents> ; <min_cents> ; <eta_min> ; <eta_max> ; <active:true|false>'\n  ].join('\\n');\n}\n\n\nfunction normLocale(x) {\n  const l = (x || 'fr').toString().trim().toLowerCase();\n  return (l.startsWith('ar')) ? 'ar' : 'fr';\n}\n\nlet action = 'HELP';\nlet ticketId = null;\nlet filter = 'open';\nlet message = '';\n\nlet templateKey = null;\nlet templateLocale = 'fr';\nlet templateContent = '';\nlet templateVars = [];\n\nlet zoneWilaya = null;\nlet zoneCommune = null;\nlet zoneFee = null;\nlet zoneMin = null;\nlet zoneEtaMin = null;\nlet zoneEtaMax = null;\nlet zoneActive = null;\nlet zoneOp = null;\n\nif (!cmd || cmd === 'help') action = 'HELP';\nelse if (cmd === 'tickets') { action = 'TICKETS'; filter = (args[0]||'open').toLowerCase(); }\nelse if (cmd === 'take') { action = 'TAKE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'close') { action = 'CLOSE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'reply') {\n  action = 'REPLY';\n  // raw tail: \"<id> <message>\"\n  const tail = (e.adminConsole?.tail || '').trim();\n  const m = tail.match(/^(\\d+)\\s+([\\s\\S]{1,2000})$/);\n  ticketId = m ? (parseInt(m[1],10)||0) : 0;\n  message = m ? m[2].trim() : '';\n}\nelse if (cmd === 'template') {\n  const sub = (args[0] || '').toLowerCase();\n  templateKey = (args[1] || '').toString().trim();\n  // locale can be args[2] if looks like fr/ar\n  const maybeLoc = (args[2] || '').toString().trim();\n  const hasLoc = /^(fr|ar)([-_].+)?$/i.test(maybeLoc);\n  templateLocale = normLocale(hasLoc ? maybeLoc : 'fr');\n\n  if (!templateKey) {\n    action = 'UNKNOWN';\n  } else if (sub === 'get') {\n    action = 'TEMPLATE_GET';\n  } else if (sub === 'set') {\n    action = 'TEMPLATE_SET';\n    // Parse tail: !template set KEY [loc] CONTENT...\n    const m = raw.match(/^!template\\s+set\\s+([^\\s]+)\\s+((fr|ar)([-_].+)?)?\\s*([\\s\\S]{0,4000})$/i);\n    if (m) {\n      templateKey = m[1].trim();\n      templateLocale = normLocale(m[2]);\n      templateContent = (m[5] || '').toString().trim();\n    } else {\n      templateContent = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    }\n    if (templateContent.length > 2000) templateContent = templateContent.slice(0, 2000);\n  } else if (sub === 'vars') {\n    action = 'TEMPLATE_VARS';\n    const rest = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    templateVars = rest.split(/[\\s,]+/).map(s => s.trim()).filter(Boolean);\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse if (cmd === 'zone' || cmd === 'delzone') {\n  const sub = (args[0] || 'list').toLowerCase();\n  zoneOp = sub;\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ZONE_LIST';\n  } else if (sub === 'set' || sub === 'add' || sub === 'upsert') {\n    action = 'ZONE_SET';\n    const m = raw.match(/^!zone\\s+(set|add|upsert)\\s+([\\s\\S]{1,500})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    zoneFee = parseInt(parts[2] || args[3] || '0', 10) || 0;\n    zoneMin = parseInt(parts[3] || args[4] || '0', 10) || 0;\n    zoneEtaMin = parseInt(parts[4] || args[5] || '45', 10) || 45;\n    zoneEtaMax = parseInt(parts[5] || args[6] || '60', 10) || 60;\n    const actRaw = (parts[6] || args[7] || 'true').toString().trim().toLowerCase();\n    zoneActive = !(actRaw === 'false' || actRaw === '0' || actRaw === 'off' || actRaw === 'inactive');\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else if (sub === 'del' || sub === 'delete' || sub === 'rm') {\n    action = 'ZONE_DELETE';\n    const m = raw.match(/^!zone\\s+(del|delete|rm)\\s+([\\s\\S]{1,200})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse action = 'UNKNOWN';\n\nreturn [{json:{\n  ...e,\n  adminAction: action,\n  adminTicketId: ticketId,\n  adminFilter: filter,\n  adminMessage: message,\n  adminUsage: usage(),\n  adminTemplateKey: templateKey,\n  adminTemplateLocale: templateLocale,\n  adminTemplateContent: templateContent,\n  adminTemplateVars: templateVars,\n  adminTemplateVarsJson: JSON.stringify(templateVars),\n  adminZoneOp: zoneOp,\n  adminZoneWilaya: zoneWilaya,\n  adminZoneCommune: zoneCommune,\n  adminZoneFeeCents: zoneFee,\n  adminZoneMinCents: zoneMin,\n  adminZoneEtaMin: zoneEtaMin,\n  adminZoneEtaMax: zoneEtaMax,\n  adminZoneActive: zoneActive\n}}];\n"
+        "jsCode": "const e = $json;\nconst cmd = (e.adminConsole?.cmd || '').toLowerCase();\nconst args = Array.isArray(e.adminConsole?.args) ? e.adminConsole.args : [];\nconst raw = (e.adminConsole?.raw || '').toString();\n\nfunction usage() {\n  return [\n    '*Console Admin P2-02*',\n    '',\n    '*Statut & Monitoring*',\n    '- !status',\n    '- !flags [list]',\n    '- !flags set <FLAG> <VALUE>',\n    '',\n    '*Dead Letter Queue*',\n    '- !dlq list [limit]',\n    '- !dlq show <outbound_id>',\n    '- !dlq replay <outbound_id>',\n    '- !dlq drop <outbound_id>',\n    '',\n    '*Support Tickets*',\n    '- !help',\n    '- !tickets [open|all]',\n    '- !take <ticket_id>',\n    '- !close <ticket_id>',\n    '- !reply <ticket_id> <message>',\n    '',\n    '*Templates (FR/AR/Darija)*',\n    '- !template get <KEY> [fr|ar|darija]',\n    '- !template set <KEY> [locale] <CONTENT...>',\n    '',\n    '*Commandes (P2-DZ-01)*',\n    '- !order list [limit] [status]',\n    '- !order show <id>',\n    '- !order noshow <id>',\n    '- !order cancel <id> [reason]',\n    '- !order delivered <id>',\n    '',\n    '*Clients*',\n    '- !customer risk <phone>',\n    '- !customer blacklist <phone> [reason]',\n    '- !customer unblock <phone>',\n    '',\n    '*Delivery Zones*',\n    '- !zone list',\n    '- !zone set <wilaya> ; <commune> ; <fee> ; <min> ; <eta_min> ; <eta_max> ; <active>'\n  ].join('\n');\n}\n\n\nfunction normLocale(x) {\n  const l = (x || 'fr').toString().trim().toLowerCase();\n  return (l.startsWith('ar')) ? 'ar' : 'fr';\n}\n\nlet action = 'HELP';\nlet ticketId = null;\nlet filter = 'open';\nlet message = '';\n\nlet templateKey = null;\nlet templateLocale = 'fr';\nlet templateContent = '';\nlet templateVars = [];\n\nlet zoneWilaya = null;\nlet zoneCommune = null;\nlet zoneFee = null;\nlet zoneMin = null;\nlet zoneEtaMin = null;\nlet zoneEtaMax = null;\nlet zoneActive = null;\nlet zoneOp = null;\n\nif (!cmd || cmd === 'help') action = 'HELP';\nelse if (cmd === 'tickets') { action = 'TICKETS'; filter = (args[0]||'open').toLowerCase(); }\nelse if (cmd === 'take') { action = 'TAKE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'close') { action = 'CLOSE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'reply') {\n  action = 'REPLY';\n  // raw tail: \"<id> <message>\"\n  const tail = (e.adminConsole?.tail || '').trim();\n  const m = tail.match(/^(\\d+)\\s+([\\s\\S]{1,2000})$/);\n  ticketId = m ? (parseInt(m[1],10)||0) : 0;\n  message = m ? m[2].trim() : '';\n}\nelse if (cmd === 'template') {\n  const sub = (args[0] || '').toLowerCase();\n  templateKey = (args[1] || '').toString().trim();\n  // locale can be args[2] if looks like fr/ar\n  const maybeLoc = (args[2] || '').toString().trim();\n  const hasLoc = /^(fr|ar)([-_].+)?$/i.test(maybeLoc);\n  templateLocale = normLocale(hasLoc ? maybeLoc : 'fr');\n\n  if (!templateKey) {\n    action = 'UNKNOWN';\n  } else if (sub === 'get') {\n    action = 'TEMPLATE_GET';\n  } else if (sub === 'set') {\n    action = 'TEMPLATE_SET';\n    // Parse tail: !template set KEY [loc] CONTENT...\n    const m = raw.match(/^!template\\s+set\\s+([^\\s]+)\\s+((fr|ar)([-_].+)?)?\\s*([\\s\\S]{0,4000})$/i);\n    if (m) {\n      templateKey = m[1].trim();\n      templateLocale = normLocale(m[2]);\n      templateContent = (m[5] || '').toString().trim();\n    } else {\n      templateContent = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    }\n    if (templateContent.length > 2000) templateContent = templateContent.slice(0, 2000);\n  } else if (sub === 'vars') {\n    action = 'TEMPLATE_VARS';\n    const rest = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    templateVars = rest.split(/[\\s,]+/).map(s => s.trim()).filter(Boolean);\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse if (cmd === 'zone' || cmd === 'delzone') {\n  const sub = (args[0] || 'list').toLowerCase();\n  zoneOp = sub;\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ZONE_LIST';\n  } else if (sub === 'set' || sub === 'add' || sub === 'upsert') {\n    action = 'ZONE_SET';\n    const m = raw.match(/^!zone\\s+(set|add|upsert)\\s+([\\s\\S]{1,500})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    zoneFee = parseInt(parts[2] || args[3] || '0', 10) || 0;\n    zoneMin = parseInt(parts[3] || args[4] || '0', 10) || 0;\n    zoneEtaMin = parseInt(parts[4] || args[5] || '45', 10) || 45;\n    zoneEtaMax = parseInt(parts[5] || args[6] || '60', 10) || 60;\n    const actRaw = (parts[6] || args[7] || 'true').toString().trim().toLowerCase();\n    zoneActive = !(actRaw === 'false' || actRaw === '0' || actRaw === 'off' || actRaw === 'inactive');\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else if (sub === 'del' || sub === 'delete' || sub === 'rm') {\n    action = 'ZONE_DELETE';\n    const m = raw.match(/^!zone\\s+(del|delete|rm)\\s+([\\s\\S]{1,200})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n\n// P2-02: STATUS command\nelse if (cmd === 'status') {\n  action = 'STATUS';\n}\n// P2-02: FLAGS command\nelse if (cmd === 'flags' || cmd === 'flag') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls' || !args[0]) {\n    action = 'FLAGS_LIST';\n  } else if (sub === 'set') {\n    action = 'FLAGS_SET';\n    e.adminFlagKey = (args[1] || '').toString().toUpperCase();\n    e.adminFlagValue = (args[2] || '').toString();\n  } else if (sub === 'unset' || sub === 'del') {\n    action = 'FLAGS_UNSET';\n    e.adminFlagKey = (args[1] || '').toString().toUpperCase();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n// P2-02: DLQ command\nelse if (cmd === 'dlq') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls') {\n    action = 'DLQ_LIST';\n    e.adminDlqLimit = parseInt(args[1] || '20', 10) || 20;\n  } else if (sub === 'show' || sub === 'get') {\n    action = 'DLQ_SHOW';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else if (sub === 'replay' || sub === 'retry') {\n    action = 'DLQ_REPLAY';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else if (sub === 'drop' || sub === 'delete' || sub === 'rm') {\n    action = 'DLQ_DROP';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n// P2-04: STATS command\nelse if (cmd === 'stats') {\n  action = 'STATS';\n  const sub = (args[0] || 'today').toLowerCase();\n  e.adminStatsRange = sub;\n  if (sub === 'week' || sub === '7d') {\n    e.adminStatsDays = 7;\n  } else if (sub === 'month' || sub === '30d') {\n    e.adminStatsDays = 30;\n  } else {\n    e.adminStatsDays = 1;\n  }\n}\n\n\n// P2-DZ-01: ORDER command\nelse if (cmd === 'order' || cmd === 'orders' || cmd === 'cmd' || cmd === 'commande') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ORDER_LIST';\n    e.adminOrderLimit = parseInt(args[1] || '20', 10) || 20;\n    e.adminOrderStatus = (args[2] || '').toUpperCase() || null;\n  } else if (sub === 'show' || sub === 'get' || sub === 'view') {\n    action = 'ORDER_SHOW';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else if (sub === 'noshow' || sub === 'no-show' || sub === 'ns') {\n    action = 'ORDER_NOSHOW';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else if (sub === 'cancel' || sub === 'annuler') {\n    action = 'ORDER_CANCEL';\n    e.adminOrderId = (args[1] || '').toString().trim();\n    e.adminCancelReason = args.slice(2).join(' ') || 'Admin cancelled';\n  } else if (sub === 'delivered' || sub === 'done' || sub === 'livré' || sub === 'livre') {\n    action = 'ORDER_DELIVERED';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n// P2-DZ-01: CUSTOMER command\nelse if (cmd === 'customer' || cmd === 'client' || cmd === 'user') {\n  const sub = (args[0] || 'risk').toLowerCase();\n  if (sub === 'risk' || sub === 'risque' || sub === 'score' || sub === 'profile') {\n    action = 'CUSTOMER_RISK';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n  } else if (sub === 'blacklist' || sub === 'block' || sub === 'ban') {\n    action = 'CUSTOMER_BLACKLIST';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n    e.adminBlacklistReason = args.slice(2).join(' ') || 'Admin blacklisted';\n    e.adminBlacklistDays = 30;\n  } else if (sub === 'unblock' || sub === 'unban' || sub === 'unblacklist') {\n    action = 'CUSTOMER_UNBLOCK';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse action = 'UNKNOWN';\n\nreturn [{json:{\n  ...e,\n  adminAction: action,\n  adminTicketId: ticketId,\n  adminFilter: filter,\n  adminMessage: message,\n  adminUsage: usage(),\n  adminTemplateKey: templateKey,\n  adminTemplateLocale: templateLocale,\n  adminTemplateContent: templateContent,\n  adminTemplateVars: templateVars,\n  adminTemplateVarsJson: JSON.stringify(templateVars),\n  adminZoneOp: zoneOp,\n  adminZoneWilaya: zoneWilaya,\n  adminZoneCommune: zoneCommune,\n  adminZoneFeeCents: zoneFee,\n  adminZoneMinCents: zoneMin,\n  adminZoneEtaMin: zoneEtaMin,\n  adminZoneEtaMax: zoneEtaMax,\n  adminZoneActive: zoneActive\n}}];\n"
       },
       "id": "f146c550-0219-4ecf-84d8-24d5a7b64ec0",
       "name": "A5 - Parse Intent",
@@ -817,6 +817,832 @@
         1510,
         1300
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "STATUS"
+            }
+          ]
+        }
+      },
+      "id": "D1_IS_STATUS",
+      "name": "D1 - Is STATUS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT get_system_status() AS status;",
+        "additionalFields": {}
+      },
+      "id": "D1A_STATUS_DB",
+      "name": "D1a - Get Status (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst statusData = e.data?.[0]?.status || {};\nconst ts = statusData.timestamp || new Date().toISOString();\nconst db = statusData.database || {};\nconst counts = statusData.counts || {};\nconst flags = statusData.flags || {};\n\nlet txt = '*System Status*\\n';\ntxt += '─────────────\\n';\ntxt += `⏰ ${ts}\\n\\n`;\n\ntxt += '*Database*\\n';\ntxt += `  Connected: ${db.connected ? '✅' : '❌'}\\n\\n`;\n\ntxt += '*Counts*\\n';\ntxt += `  Pending outbound: ${counts.pending_outbound || 0}\\n`;\ntxt += `  DLQ messages: ${counts.dlq_messages || 0}\\n`;\ntxt += `  Active tickets: ${counts.active_tickets || 0}\\n`;\ntxt += `  Conversations (24h): ${counts.conversations_24h || 0}\\n\\n`;\n\ntxt += '*Flags*\\n';\nfor (const [k, v] of Object.entries(flags)) {\n  const icon = (v === 'true' || v === true) ? '🟢' : (v === 'false' || v === false) ? '🔴' : '⚪';\n  txt += `  ${icon} ${k}: ${v}\\n`;\n}\n\nreturn [{json:{...e, adminReplyText: txt.trim()}}];"
+      },
+      "id": "D1B_FORMAT_STATUS",
+      "name": "D1b - Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "FLAGS_LIST"
+            }
+          ]
+        }
+      },
+      "id": "D2_IS_FLAGS_LIST",
+      "name": "D2 - Is FLAGS_LIST?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        820
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT flag_key, flag_value, description, updated_at FROM system_flags ORDER BY flag_key;",
+        "additionalFields": {}
+      },
+      "id": "D2A_FLAGS_LIST_DB",
+      "name": "D2a - Get Flags (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        820
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst rows = e.data || [];\nif (!rows.length) {\n  return [{json:{...e, adminReplyText: 'No system flags configured.'}}];\n}\nlet txt = '*System Flags*\\n';\ntxt += '─────────────\\n';\nfor (const r of rows) {\n  const icon = (r.flag_value === 'true') ? '🟢' : (r.flag_value === 'false') ? '🔴' : '⚪';\n  txt += `${icon} *${r.flag_key}*: ${r.flag_value}\\n`;\n  if (r.description) txt += `   _${r.description}_\\n`;\n}\ntxt += '\\n➡️ !flags set <KEY> <VALUE>';\nreturn [{json:{...e, adminReplyText: txt.trim()}}];"
+      },
+      "id": "D2B_FORMAT_FLAGS_LIST",
+      "name": "D2b - Format Flags List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        820
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "FLAGS_SET"
+            }
+          ]
+        }
+      },
+      "id": "D3_IS_FLAGS_SET",
+      "name": "D3 - Is FLAGS_SET?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE system_flags SET flag_value=$2, updated_at=now(), updated_by=$3 WHERE flag_key=$1 RETURNING flag_key, flag_value;",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminFlagKey, $json.adminFlagValue, $json.userId]}}"
+        }
+      },
+      "id": "D3A_FLAGS_SET_DB",
+      "name": "D3a - Set Flag (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst rows = e.data || [];\nif (!rows.length) {\n  return [{json:{...e, adminReplyText: '❌ Flag not found: ' + (e.adminFlagKey || '?')}}];\n}\nconst r = rows[0];\nconst icon = (r.flag_value === 'true') ? '🟢' : (r.flag_value === 'false') ? '🔴' : '⚪';\nreturn [{json:{...e, adminReplyText: `✅ Flag updated\\n${icon} *${r.flag_key}* = ${r.flag_value}`}}];"
+      },
+      "id": "D3B_FORMAT_FLAGS_SET",
+      "name": "D3b - Format Flag Set",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "DLQ_LIST"
+            }
+          ]
+        }
+      },
+      "id": "D4_IS_DLQ_LIST",
+      "name": "D4 - Is DLQ_LIST?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_dlq_messages($1, 0);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminDlqLimit || 20]}}"
+        }
+      },
+      "id": "D4A_DLQ_LIST_DB",
+      "name": "D4a - Get DLQ List (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst rows = e.data || [];\nif (!rows.length) {\n  return [{json:{...e, adminReplyText: '✅ DLQ is empty. No failed messages.'}}];\n}\nlet txt = '*DLQ Messages (' + rows.length + ')*\\n';\ntxt += '─────────────\\n';\nfor (const r of rows.slice(0, 15)) {\n  const age = r.created_at ? new Date(r.created_at).toISOString().slice(0,16).replace('T',' ') : '?';\n  txt += `#${r.outbound_id} | ${r.channel} | ${r.user_id?.slice(0,12) || '?'} | att:${r.attempts}\\n`;\n  txt += `   err: ${(r.last_error || '?').slice(0,50)}\\n`;\n}\nif (rows.length > 15) txt += `... and ${rows.length - 15} more\\n`;\ntxt += '\\n➡️ !dlq show <id> | !dlq replay <id> | !dlq drop <id>';\nreturn [{json:{...e, adminReplyText: txt.trim()}}];"
+      },
+      "id": "D4B_FORMAT_DLQ_LIST",
+      "name": "D4b - Format DLQ List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "DLQ_SHOW"
+            }
+          ]
+        }
+      },
+      "id": "D5_IS_DLQ_SHOW",
+      "name": "D5 - Is DLQ_SHOW?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT outbound_id, channel, user_id, restaurant_id, status, attempts, last_error, created_at, correlation_id, payload_json FROM outbound_messages WHERE outbound_id=$1 AND status='DLQ';",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminDlqId]}}"
+        }
+      },
+      "id": "D5A_DLQ_SHOW_DB",
+      "name": "D5a - Get DLQ Item (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1180
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst rows = e.data || [];\nif (!rows.length) {\n  return [{json:{...e, adminReplyText: '❌ DLQ message not found: #' + (e.adminDlqId || '?')}}];\n}\nconst r = rows[0];\nlet txt = '*DLQ Message #' + r.outbound_id + '*\\n';\ntxt += '─────────────\\n';\ntxt += `Channel: ${r.channel}\\n`;\ntxt += `User: ${r.user_id}\\n`;\ntxt += `Attempts: ${r.attempts}\\n`;\ntxt += `Created: ${r.created_at}\\n`;\ntxt += `Correlation: ${r.correlation_id || '-'}\\n\\n`;\ntxt += '*Last Error*\\n${r.last_error || '-'}\\n\\n`;\ntxt += '*Payload*\\n';\ntry {\n  const p = typeof r.payload_json === 'string' ? JSON.parse(r.payload_json) : r.payload_json;\n  txt += JSON.stringify(p, null, 2).slice(0, 500);\n} catch { txt += String(r.payload_json).slice(0, 500); }\ntxt += '\\n\\n➡️ !dlq replay ' + r.outbound_id + ' | !dlq drop ' + r.outbound_id;\nreturn [{json:{...e, adminReplyText: txt.trim()}}];"
+      },
+      "id": "D5B_FORMAT_DLQ_SHOW",
+      "name": "D5b - Format DLQ Show",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "DLQ_REPLAY"
+            }
+          ]
+        }
+      },
+      "id": "D6_IS_DLQ_REPLAY",
+      "name": "D6 - Is DLQ_REPLAY?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT replay_dlq_message($1, $2) AS result;",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminDlqId, $json.userId]}}"
+        }
+      },
+      "id": "D6A_DLQ_REPLAY_DB",
+      "name": "D6a - Replay DLQ (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst result = e.data?.[0]?.result || {};\nif (!result.success) {\n  return [{json:{...e, adminReplyText: '❌ Replay failed: ' + (result.error || 'Unknown error')}}];\n}\nreturn [{json:{...e, adminReplyText: '✅ Message #' + result.outbound_id + ' queued for retry.\\nNew status: ' + result.new_status}}];"
+      },
+      "id": "D6B_FORMAT_DLQ_REPLAY",
+      "name": "D6b - Format DLQ Replay",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "DLQ_DROP"
+            }
+          ]
+        }
+      },
+      "id": "D7_IS_DLQ_DROP",
+      "name": "D7 - Is DLQ_DROP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT drop_dlq_message($1, $2) AS result;",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminDlqId, $json.userId]}}"
+        }
+      },
+      "id": "D7A_DLQ_DROP_DB",
+      "name": "D7a - Drop DLQ (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst result = e.data?.[0]?.result || {};\nif (!result.success) {\n  return [{json:{...e, adminReplyText: '❌ Drop failed: ' + (result.error || 'Unknown error')}}];\n}\nreturn [{json:{...e, adminReplyText: '🗑️ Message #' + result.outbound_id + ' permanently dropped.\\nNew status: ' + result.new_status}}];"
+      },
+      "id": "D7B_FORMAT_DLQ_DROP",
+      "name": "D7b - Format DLQ Drop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "STATS"
+            }
+          ]
+        }
+      },
+      "id": "D8_IS_STATS",
+      "name": "D8 - Is STATS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT get_daily_stats(CURRENT_DATE) AS stats;",
+        "additionalFields": {}
+      },
+      "id": "D8A_STATS_DB",
+      "name": "D8a - Get Stats (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1540
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst statsData = e.data?.[0]?.stats || {};\nconst date = statsData.date || new Date().toISOString().slice(0, 10);\nconst inbound = statsData.inbound || {};\nconst outbound = statsData.outbound || {};\nconst errors = statsData.errors || {};\nconst latency = statsData.latency || {};\n\nlet txt = '*Daily Stats (' + date + ')*\\n';\ntxt += '═══════════════════════\\n\\n';\n\ntxt += '*Inbound Messages*\\n';\ntxt += '  Total: ' + (inbound.total || 0) + '\\n';\ntxt += '  WhatsApp: ' + (inbound.whatsapp || 0) + '\\n';\ntxt += '  Instagram: ' + (inbound.instagram || 0) + '\\n';\ntxt += '  Messenger: ' + (inbound.messenger || 0) + '\\n\\n';\n\ntxt += '*Outbound Messages*\\n';\ntxt += '  Total: ' + (outbound.total || 0) + '\\n';\ntxt += '  WhatsApp: ' + (outbound.whatsapp || 0) + '\\n';\ntxt += '  Instagram: ' + (outbound.instagram || 0) + '\\n';\ntxt += '  Messenger: ' + (outbound.messenger || 0) + '\\n\\n';\n\ntxt += '*Errors*\\n';\ntxt += '  Total: ' + (errors.total || 0) + '\\n';\ntxt += '  Auth: ' + (errors.auth || 0) + '\\n';\ntxt += '  Validation: ' + (errors.validation || 0) + '\\n';\ntxt += '  Outbound: ' + (errors.outbound || 0) + '\\n\\n';\n\nif (latency && latency.samples > 0) {\n  txt += '*Latency*\\n';\n  txt += '  Samples: ' + latency.samples + '\\n';\n  txt += '  Avg: ' + (latency.avg_ms || 0) + 'ms\\n';\n  txt += '  P50: ' + (latency.p50_ms || 0) + 'ms\\n';\n  txt += '  P95: ' + (latency.p95_ms || 0) + 'ms\\n';\n  txt += '  P99: ' + (latency.p99_ms || 0) + 'ms\\n';\n  txt += '  Max: ' + (latency.max_ms || 0) + 'ms\\n';\n} else {\n  txt += '*Latency*\\n  No samples yet\\n';\n}\n\ntxt += '\\n➡️ !stats [today|week|month]';\n\nreturn [{json:{...e, adminReplyText: txt.trim()}}];"
+      },
+      "id": "D8B_FORMAT_STATS",
+      "name": "D8b - Format Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1540
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ORDER_LIST"
+            }
+          ]
+        }
+      },
+      "id": "ORDER_LIST_CHECK",
+      "name": "E1 - Is ORDER_LIST?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_recent_orders($1, $2, $3);",
+        "additionalFields": {
+          "queryParams": "={{[$json.restaurantId, $json.adminOrderLimit || 20, $json.adminOrderStatus || null]}}"
+        }
+      },
+      "id": "ORDER_LIST_DB",
+      "name": "E1a - Get Orders (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const rows = $json.data || [];\nif (rows.length === 0) {\n  return [{json: {...$json, adminReplyText: '📋 Aucune commande trouvée.'}}];\n}\nconst lines = rows.slice(0, 20).map((r, i) => {\n  const status = r.status || 'NEW';\n  const pay = r.payment_status || 'PENDING';\n  const emoji = status === 'DONE' ? '✅' : status === 'CANCELLED' ? '❌' : status === 'READY' ? '🔔' : '⏳';\n  const total = ((r.total_cents || 0) / 100).toFixed(0);\n  const id = (r.order_id || '').toString().slice(0, 8);\n  return `${emoji} ${id} | ${r.user_id?.slice(-4) || '????'} | ${total} DA | ${status}/${pay}`;\n});\nconst reply = '*📋 Commandes récentes*\\n\\n' + lines.join('\\n') + '\\n\\n_!order show <id> pour détails_';\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "ORDER_LIST_FORMAT",
+      "name": "E1b - Format Order List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ORDER_SHOW"
+            }
+          ]
+        }
+      },
+      "id": "ORDER_SHOW_CHECK",
+      "name": "E2 - Is ORDER_SHOW?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_order_details($1::uuid);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminOrderId]}}"
+        }
+      },
+      "id": "ORDER_SHOW_DB",
+      "name": "E2a - Get Order (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nif (!r) {\n  return [{json: {...$json, adminReplyText: '❌ Commande non trouvée: ' + ($json.adminOrderId || 'ID manquant')}}];\n}\nconst total = ((r.total_cents || 0) / 100).toFixed(0);\nconst items = r.items_json || [];\nconst itemsText = items.map(it => `  • ${it.qty}x ${it.label} = ${(it.line_total/100).toFixed(0)} DA`).join('\\n');\nconst trust = r.customer_trust_score || 50;\nconst noshow = r.customer_no_show_count || 0;\nconst riskEmoji = noshow > 0 ? '⚠️' : trust >= 70 ? '✅' : '⚡';\n\nconst reply = `*📦 Commande ${r.order_id?.toString().slice(0,8)}*\n\n*Status:* ${r.status} / ${r.payment_status}\n*Mode:* ${r.payment_mode} | ${r.service_mode}\n*Total:* ${total} DA\n\n*Articles:*\n${itemsText || '(vide)'}\n\n*Client:* ${r.user_id}\n${riskEmoji} Trust: ${trust}/100 | No-shows: ${noshow}\n${r.delivery_address ? '*Adresse:* ' + r.delivery_address : ''}\n\n_Actions: !order noshow|cancel|delivered ${r.order_id?.toString().slice(0,8)}_`;\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "ORDER_SHOW_FORMAT",
+      "name": "E2b - Format Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ORDER_NOSHOW"
+            }
+          ]
+        }
+      },
+      "id": "ORDER_NOSHOW_CHECK",
+      "name": "E3 - Is ORDER_NOSHOW?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM mark_order_noshow($1::uuid, $2);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminOrderId, $json.userId]}}"
+        }
+      },
+      "id": "ORDER_NOSHOW_DB",
+      "name": "E3a - Mark No-Show (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1640
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nif (!r || !r.success) {\n  return [{json: {...$json, adminReplyText: '❌ Erreur: ' + (r?.message || 'Commande non trouvée')}}];\n}\nconst blacklistNote = r.blacklisted ? '\\n⛔ Client blacklisté (2+ no-shows)' : '';\nconst reply = `✅ *No-show enregistré*\n\nCommande: ${$json.adminOrderId?.slice(0,8)}\nNouveau score: ${r.new_trust_score}/100\nTotal no-shows: ${r.new_no_show_count}${blacklistNote}`;\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "ORDER_NOSHOW_FORMAT",
+      "name": "E3b - Format No-Show",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ORDER_DELIVERED"
+            }
+          ]
+        }
+      },
+      "id": "ORDER_DELIVERED_CHECK",
+      "name": "E4 - Is ORDER_DELIVERED?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM mark_order_delivered($1::uuid, $2);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminOrderId, $json.userId]}}"
+        }
+      },
+      "id": "ORDER_DELIVERED_DB",
+      "name": "E4a - Mark Delivered (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nif (!r || !r.success) {\n  return [{json: {...$json, adminReplyText: '❌ Erreur: ' + (r?.message || 'Commande non trouvée')}}];\n}\nconst reply = `✅ *Commande livrée!*\n\nCommande: ${$json.adminOrderId?.slice(0,8)}\nScore client: ${r.new_trust_score}/100 (+5)`;\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "ORDER_DELIVERED_FORMAT",
+      "name": "E4b - Format Delivered",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "ORDER_CANCEL"
+            }
+          ]
+        }
+      },
+      "id": "ORDER_CANCEL_CHECK",
+      "name": "E5 - Is ORDER_CANCEL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        1880
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE orders SET status='CANCELLED', payment_status='CANCELLED', updated_at=now() WHERE order_id=$1::uuid AND status NOT IN ('DONE','CANCELLED') RETURNING order_id;",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminOrderId]}}"
+        }
+      },
+      "id": "ORDER_CANCEL_DB",
+      "name": "E5a - Cancel Order (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1880
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nif (!r) {\n  return [{json: {...$json, adminReplyText: '❌ Commande non trouvée ou déjà terminée'}}];\n}\nconst reply = `✅ *Commande annulée*\\n\\nID: ${r.order_id?.toString().slice(0,8)}\\nRaison: ${$json.adminCancelReason || 'Admin'}`;\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "ORDER_CANCEL_FORMAT",
+      "name": "E5b - Format Cancel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "CUSTOMER_RISK"
+            }
+          ]
+        }
+      },
+      "id": "CUSTOMER_RISK_CHECK",
+      "name": "F1 - Is CUSTOMER_RISK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_customer_risk_profile($1);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminCustomerId]}}"
+        }
+      },
+      "id": "CUSTOMER_RISK_DB",
+      "name": "F1a - Get Risk (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nif (!r) {\n  return [{json: {...$json, adminReplyText: '❌ Client non trouvé: ' + $json.adminCustomerId}}];\n}\nconst riskEmoji = {\n  'BLACKLISTED': '⛔',\n  'HIGH': '🔴',\n  'MEDIUM': '🟡',\n  'LOW': '🟢',\n  'TRUSTED': '✅',\n  'NEW': '🆕'\n}[r.risk_level] || '❓';\n\nconst blacklistInfo = r.soft_blacklisted\n  ? `\\n⛔ *BLACKLISTÉ*\\nRaison: ${r.blacklist_reason || 'N/A'}\\nJusqu'au: ${r.blacklist_until ? new Date(r.blacklist_until).toLocaleDateString('fr') : 'N/A'}`\n  : '';\n\nconst reply = `*👤 Profil Client*\n\n📱 ${r.user_id}\n${riskEmoji} Risque: *${r.risk_level}*\n\n📊 *Score:* ${r.trust_score}/100\n📦 Commandes: ${r.total_orders} total\n✅ Livrées: ${r.completed_orders}\n❌ Annulées: ${r.cancelled_orders}\n🚫 No-shows: ${r.no_show_count}\n\n💳 Acompte requis: ${r.requires_deposit ? 'Oui' : 'Non'}${blacklistInfo}\n\n_!customer blacklist/unblock ${r.user_id}_`;\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "CUSTOMER_RISK_FORMAT",
+      "name": "F1b - Format Risk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "CUSTOMER_BLACKLIST"
+            }
+          ]
+        }
+      },
+      "id": "CUSTOMER_BLACKLIST_CHECK",
+      "name": "F2 - Is CUSTOMER_BLACKLIST?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        2120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM blacklist_customer($1, $2::uuid, $3, $4, $5);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminCustomerId, $json.tenantId, $json.adminBlacklistReason, $json.adminBlacklistDays || 30, $json.userId]}}"
+        }
+      },
+      "id": "CUSTOMER_BLACKLIST_DB",
+      "name": "F2a - Blacklist (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        2120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nconst reply = r?.success\n  ? `⛔ *Client blacklisté*\\n\\n${$json.adminCustomerId}\\nRaison: ${$json.adminBlacklistReason}\\nDurée: ${$json.adminBlacklistDays || 30} jours`\n  : '❌ Erreur: ' + (r?.message || 'Échec blacklist');\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "CUSTOMER_BLACKLIST_FORMAT",
+      "name": "F2b - Format Blacklist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        2120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "CUSTOMER_UNBLOCK"
+            }
+          ]
+        }
+      },
+      "id": "CUSTOMER_UNBLOCK_CHECK",
+      "name": "F3 - Is CUSTOMER_UNBLOCK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM unblacklist_customer($1, $2);",
+        "additionalFields": {
+          "queryParams": "={{[$json.adminCustomerId, $json.userId]}}"
+        }
+      },
+      "id": "CUSTOMER_UNBLOCK_DB",
+      "name": "F3a - Unblock (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        320,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const r = ($json.data || [])[0];\nconst reply = r?.success\n  ? `✅ *Client débloqué*\\n\\n${$json.adminCustomerId}`\n  : '❌ ' + (r?.message || 'Client non trouvé');\nreturn [{json: {...$json, adminReplyText: reply}}];"
+      },
+      "id": "CUSTOMER_UNBLOCK_FORMAT",
+      "name": "F3b - Format Unblock",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        2240
+      ]
     }
   ],
   "connections": {
@@ -960,6 +1786,46 @@
           },
           {
             "node": "C3 - Is ZONE_DELETE?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D1 - Is STATUS?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D2 - Is FLAGS_LIST?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D3 - Is FLAGS_SET?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D4 - Is DLQ_LIST?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D5 - Is DLQ_SHOW?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D6 - Is DLQ_REPLAY?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D7 - Is DLQ_DROP?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "D8 - Is STATS?",
             "type": "main",
             "index": 0
           }
@@ -1394,6 +2260,592 @@
       ]
     },
     "C3c - Format Zone Delete": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D1 - Is STATUS?": {
+      "main": [
+        [
+          {
+            "node": "D1a - Get Status (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D1a - Get Status (DB)": {
+      "main": [
+        [
+          {
+            "node": "D1b - Format Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D1b - Format Status": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D2 - Is FLAGS_LIST?": {
+      "main": [
+        [
+          {
+            "node": "D2a - Get Flags (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D2a - Get Flags (DB)": {
+      "main": [
+        [
+          {
+            "node": "D2b - Format Flags List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D2b - Format Flags List": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D3 - Is FLAGS_SET?": {
+      "main": [
+        [
+          {
+            "node": "D3a - Set Flag (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D3a - Set Flag (DB)": {
+      "main": [
+        [
+          {
+            "node": "D3b - Format Flag Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D3b - Format Flag Set": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D4 - Is DLQ_LIST?": {
+      "main": [
+        [
+          {
+            "node": "D4a - Get DLQ List (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D4a - Get DLQ List (DB)": {
+      "main": [
+        [
+          {
+            "node": "D4b - Format DLQ List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D4b - Format DLQ List": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D5 - Is DLQ_SHOW?": {
+      "main": [
+        [
+          {
+            "node": "D5a - Get DLQ Item (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D5a - Get DLQ Item (DB)": {
+      "main": [
+        [
+          {
+            "node": "D5b - Format DLQ Show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D5b - Format DLQ Show": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D6 - Is DLQ_REPLAY?": {
+      "main": [
+        [
+          {
+            "node": "D6a - Replay DLQ (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D6a - Replay DLQ (DB)": {
+      "main": [
+        [
+          {
+            "node": "D6b - Format DLQ Replay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D6b - Format DLQ Replay": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D7 - Is DLQ_DROP?": {
+      "main": [
+        [
+          {
+            "node": "D7a - Drop DLQ (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D7a - Drop DLQ (DB)": {
+      "main": [
+        [
+          {
+            "node": "D7b - Format DLQ Drop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D7b - Format DLQ Drop": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D8 - Is STATS?": {
+      "main": [
+        [
+          {
+            "node": "D8a - Get Stats (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "D8a - Get Stats (DB)": {
+      "main": [
+        [
+          {
+            "node": "D8b - Format Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "D8b - Format Stats": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E1 - Is ORDER_LIST?": {
+      "main": [
+        [
+          {
+            "node": "E1a - Get Orders (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E2 - Is ORDER_SHOW?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E1a - Get Orders (DB)": {
+      "main": [
+        [
+          {
+            "node": "E1b - Format Order List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E1b - Format Order List": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E2 - Is ORDER_SHOW?": {
+      "main": [
+        [
+          {
+            "node": "E2a - Get Order (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E3 - Is ORDER_NOSHOW?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E2a - Get Order (DB)": {
+      "main": [
+        [
+          {
+            "node": "E2b - Format Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E2b - Format Order": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E3 - Is ORDER_NOSHOW?": {
+      "main": [
+        [
+          {
+            "node": "E3a - Mark No-Show (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E4 - Is ORDER_DELIVERED?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E3a - Mark No-Show (DB)": {
+      "main": [
+        [
+          {
+            "node": "E3b - Format No-Show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E3b - Format No-Show": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E4 - Is ORDER_DELIVERED?": {
+      "main": [
+        [
+          {
+            "node": "E4a - Mark Delivered (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E5 - Is ORDER_CANCEL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E4a - Mark Delivered (DB)": {
+      "main": [
+        [
+          {
+            "node": "E4b - Format Delivered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E4b - Format Delivered": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E5 - Is ORDER_CANCEL?": {
+      "main": [
+        [
+          {
+            "node": "E5a - Cancel Order (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "F1 - Is CUSTOMER_RISK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E5a - Cancel Order (DB)": {
+      "main": [
+        [
+          {
+            "node": "E5b - Format Cancel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E5b - Format Cancel": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F1 - Is CUSTOMER_RISK?": {
+      "main": [
+        [
+          {
+            "node": "F1a - Get Risk (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "F2 - Is CUSTOMER_BLACKLIST?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F1a - Get Risk (DB)": {
+      "main": [
+        [
+          {
+            "node": "F1b - Format Risk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F1b - Format Risk": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F2 - Is CUSTOMER_BLACKLIST?": {
+      "main": [
+        [
+          {
+            "node": "F2a - Blacklist (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "F3 - Is CUSTOMER_UNBLOCK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F2a - Blacklist (DB)": {
+      "main": [
+        [
+          {
+            "node": "F2b - Format Blacklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F2b - Format Blacklist": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F3 - Is CUSTOMER_UNBLOCK?": {
+      "main": [
+        [
+          {
+            "node": "F3a - Unblock (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "F3a - Unblock (DB)": {
+      "main": [
+        [
+          {
+            "node": "F3b - Format Unblock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "F3b - Format Unblock": {
       "main": [
         [
           {

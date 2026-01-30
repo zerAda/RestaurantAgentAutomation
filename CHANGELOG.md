@@ -1,5 +1,65 @@
 # CHANGELOG - Resto Bot Production Patch
 
+## Version 3.3.3 - COD + No-Show Algeria (2026-01-30)
+
+### P2-DZ-01: COD Flow + No-Show Scoring + Admin Controls (Algeria)
+
+#### Problem
+Le marché algérien est dominé par le paiement à la livraison (COD). Les no-shows et abus (fausses commandes, spam) détruisent la marge sans système de contrôle.
+
+#### Solution
+
+**1. Database Migration** (`db/migrations/2026-01-30_p2_dz01_cod_noshow.sql`):
+- Colonnes ajoutées à `orders`: `payment_mode`, `payment_status`, `delivery_address`, `customer_phone`
+- Table `customer_payment_profiles` avec scoring de confiance
+- Fonctions:
+  - `mark_order_noshow(order_id)` - Marque no-show, -20 score, auto-blacklist après 2
+  - `mark_order_delivered(order_id)` - Marque livré, +5 score
+  - `get_customer_risk_profile(user_id)` - Profil risque complet
+  - `blacklist_customer()` / `unblacklist_customer()` - Gestion manuelle
+  - `get_recent_orders()` / `get_order_details()` - Pour admin
+
+**2. Admin WhatsApp Commands** (W14 patché):
+```
+!order list [limit] [status]     # Liste commandes récentes
+!order show <id>                 # Détails commande + profil client
+!order noshow <id>               # Marquer no-show (score -20)
+!order cancel <id> [raison]      # Annuler commande
+!order delivered <id>            # Marquer livrée (score +5)
+
+!customer risk <phone>           # Voir profil risque
+!customer blacklist <phone> [raison]  # Blacklister 30 jours
+!customer unblock <phone>        # Débloquer
+```
+
+**3. Trust Score System**:
+- Score par défaut: 50/100
+- +5 par commande livrée
+- -20 par no-show
+- Auto-blacklist après 2 no-shows (30 jours)
+- Acompte requis si score < 70 ou historique no-show
+- Client "trusted" si ≥3 commandes + score ≥70
+
+**4. Templates COD** (FR/AR):
+- `COD_CONFIRMATION_REQUEST` - Récap avant confirmation
+- `COD_CONFIRMED` - Confirmation avec numéro
+- `DEPOSIT_REQUIRED` - Acompte requis (clients risqués)
+- `HIGH_RISK_WARNING` - Vérification double
+
+**5. Tests**:
+- `scripts/test_p2dz01_cod.sh` - Tests admin commands et scoring
+
+#### Risk Levels
+| Score | Level | Action |
+|-------|-------|--------|
+| 70-100 | TRUSTED | COD sans acompte |
+| 50-69 | LOW | COD normal |
+| 30-49 | MEDIUM | Acompte suggéré |
+| 1-29 | HIGH | Acompte requis |
+| 0 | BLACKLISTED | Prépaiement uniquement |
+
+---
+
 ## Version 3.3.2 - Media Fetch Worker (2026-01-30)
 
 ### P1-02: WhatsApp Media URL Fetch via Graph API
