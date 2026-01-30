@@ -56,9 +56,25 @@
 - **Masquage secrets**: Tokens et credentials masqués automatiquement dans les logs
 - **NOUVEAU**: `scripts/test_p106_logging.sh` - Tests de validation
 
-### 🟢 P2 - Tests & CI/CD
+### 🟢 P2 - Fonctionnalités
 
-#### P2-01: Tests End-to-End
+#### P2-01: FR/AR/Darija Auto-detect + LANG Command
+- **NOUVEAU**: Support Darija comme locale distinct (fr, ar, darija)
+- **NOUVEAU**: `db/migrations/2026-01-30_p2_01_darija_locale.sql`
+  - Table `darija_patterns` pour détection par mots-clés
+  - Fonction `detect_darija()` pour détection automatique
+  - 20+ templates Darija (CORE, Support, Order Status, Delivery)
+  - Mise à jour contrainte locale pour inclure 'darija'
+- **W4_CORE**: Détection automatique:
+  - Message en script arabe → réponse en arabe
+  - Message en Darija (latin) → réponse en Darija
+  - Message en français → réponse en français
+  - Autre langue → réponse en français (défaut)
+- **LANG Command**: `LANG FR`, `LANG AR`, `LANG DARIJA` (ou `LANG DZ`)
+- **Patterns Darija**: chno kayn, wakha, kml, salam, bghit, nchouf, etc.
+- **NOUVEAU**: `scripts/test_p201_l10n.sh` - Tests de validation
+
+#### P2-02: Tests End-to-End
 - **NOUVEAU**: `scripts/test_e2e.sh` - Tests E2E complets
 - 8 scénarios: WA flow, IG flow, MSG flow, conversation, security, verify, admin, perf
 - Options: `--env local|staging|prod`, `--verbose`
