@@ -1,5 +1,52 @@
 # CHANGELOG - Resto Bot Production Patch
 
+## Version 3.3.2 - Media Fetch Worker (2026-01-30)
+
+### P1-02: WhatsApp Media URL Fetch via Graph API
+
+#### Problem
+WhatsApp inbound messages contain `media_id` for attachments (audio, image, video, document) but not the actual URL. Without fetching from Graph API, media cannot be processed or forwarded.
+
+#### Solution
+- **NEW**: `workflows/W18_MEDIA_FETCH_WORKER.json` - Dedicated worker
+  - CRON trigger every 15 seconds
+  - Pops from `ralphe:media:pending` Redis queue
+  - Fetches URL via `GET https://graph.facebook.com/{version}/{media_id}`
+  - Stores resolved URL in `ralphe:media:resolved:{correlation_id}`
+  - Exponential backoff retry (15s base, 30min max, 5 attempts)
+  - DLQ at `ralphe:media:dlq` on permanent failure
+  - Critical alert on 401 (token expired) at `ralphe:alerts:critical`
+
+- **UPDATED**: `workflows/W1_IN_WA.json`
+  - New nodes: `B1 - Prepare Media Queue`, `B1 - Has Media to Fetch?`, `B1 - Split Media Entries`, `B1 - LPUSH Media Queue`, `B1 - Restore Context`
+  - Automatically queues media_id attachments for async fetch
+  - Non-blocking: main flow continues while media is fetched
+
+- **NEW**: Environment variables in `config/.env.example`
+  - `MEDIA_FETCH_ENABLED=true` - Enable/disable media fetch worker
+  - `MEDIA_FETCH_BATCH_SIZE=10` - Batch size per cycle
+  - `MEDIA_FETCH_MAX_ATTEMPTS=5` - Max retry attempts
+  - `MEDIA_FETCH_BASE_DELAY_SEC=15` - Base delay for backoff
+  - `MEDIA_FETCH_MAX_DELAY_SEC=1800` - Max delay (30 min)
+
+- **NEW**: `scripts/test_media_fetch.sh` - Smoke tests for media fetch
+- **NEW**: `tests/contracts/media_fetch_request.json` - Queue entry schema
+- **NEW**: `tests/contracts/media_fetch_dlq.json` - DLQ entry schema
+
+#### Redis Keys
+- `ralphe:media:pending` - Queue of media fetch requests (list)
+- `ralphe:media:resolved:{correlation_id}` - Resolved media URLs (string, 1h TTL)
+- `ralphe:media:dlq` - Failed media fetch requests (list)
+- `ralphe:alerts:critical` - Admin alerts for 401 errors (list)
+
+#### DLQ Reasons
+- `AUTH_EXPIRED` - 401 token invalid/expired (triggers admin alert)
+- `MEDIA_EXPIRED` - 400 media no longer available
+- `RATE_LIMITED` - 429 Graph API rate limit
+- `MAX_RETRIES_EXHAUSTED` - All retry attempts failed
+
+---
+
 ## Version 3.3.1 - Meta Auth Fix (2026-01-29)
 
 ### 🔴 P0 - Corrections Critiques
@@ -74,13 +121,34 @@
 - **Patterns Darija**: chno kayn, wakha, kml, salam, bghit, nchouf, etc.
 - **NOUVEAU**: `scripts/test_p201_l10n.sh` - Tests de validation
 
-#### P2-02: Tests End-to-End
+#### P2-02: Admin WA Commands + Audit Trail
+- **NOUVEAU**: Console d'administration WhatsApp-first avec commandes textuelles
+- **NOUVEAU**: `db/migrations/2026-01-30_p2_02_admin_wa_commands.sql`
+  - Table `admin_phone_allowlist` pour autorisation par numéro de téléphone
+  - Table `system_flags` pour feature toggles dynamiques
+  - Fonctions `get_system_status()`, `get_dlq_messages()`, `replay_dlq_message()`, `drop_dlq_message()`
+  - Vue `v_dlq_recent` pour monitoring DLQ
+  - Statut `DROPPED` ajouté pour outbound_messages
+- **W14_ADMIN_WA_SUPPORT_CONSOLE**: Nouveaux handlers pour:
+  - `!status` - Affiche l'état du système (DB, counts, flags)
+  - `!flags [list]` - Liste les feature flags
+  - `!flags set <KEY> <VALUE>` - Modifie un flag
+  - `!dlq list [limit]` - Liste les messages en DLQ
+  - `!dlq show <id>` - Détails d'un message DLQ
+  - `!dlq replay <id>` - Rejoue un message DLQ
+  - `!dlq drop <id>` - Supprime définitivement un message DLQ
+- **RBAC**: Double vérification via `restaurant_users` ET `admin_phone_allowlist`
+- **Permissions**: Granulaires par commande (status, flags, dlq:list, dlq:replay, etc.)
+- **Audit**: Toutes les actions admin loguées dans `admin_wa_audit_log`
+- **NOUVEAU**: `scripts/test_p202_admin.sh` - Tests de validation
+
+#### P2-03: Tests End-to-End
 - **NOUVEAU**: `scripts/test_e2e.sh` - Tests E2E complets
 - 8 scénarios: WA flow, IG flow, MSG flow, conversation, security, verify, admin, perf
 - Options: `--env local|staging|prod`, `--verbose`
 - Vérification DB optionnelle avec `DB_URL`
 
-#### P2-03: Pipeline CI/CD
+#### P2-04: Pipeline CI/CD
 - **NOUVEAU**: `.github/workflows/ci.yml` - GitHub Actions
 - **NOUVEAU**: `.gitlab-ci.yml` - GitLab CI
 - 6 jobs: lint, unit-tests, integration-tests, docker-build, security-scan, deploy
@@ -181,6 +249,12 @@ workflows/
 ├── W7_OUT_MSG.json              (Meta Send API + retry)
 ├── W8_DLQ_HANDLER.json          (NOUVEAU - monitoring DLQ)
 ├── W8_DLQ_REPLAY.json           (NOUVEAU - API replay DLQ)
+├── W14_ADMIN_WA_SUPPORT_CONSOLE.json (P2-02 - STATUS/FLAGS/DLQ handlers)
+
+db/migrations/
+├── 2026-01-30_p1_06_structured_logging.sql (P1-06 - logging schema)
+├── 2026-01-30_p2_01_darija_locale.sql      (P2-01 - darija locale)
+├── 2026-01-30_p2_02_admin_wa_commands.sql  (P2-02 - admin commands)
 
 infra/gateway/
 ├── nginx.conf                   (hardening complet)
@@ -192,6 +266,10 @@ scripts/
 ├── smoke_meta.sh                (NOUVEAU - tests Meta)
 ├── test_battery.sh              (NOUVEAU - 100 tests)
 ├── test_e2e.sh                  (NOUVEAU - tests E2E)
+├── test_p106_logging.sh         (NOUVEAU - P1-06 tests)
+├── test_p201_l10n.sh            (NOUVEAU - P2-01 tests)
+├── test_p202_admin.sh           (NOUVEAU - P2-02 tests)
+├── patch_w14_p202.js            (P2-02 - workflow patcher)
 
 .github/workflows/
 ├── ci.yml                       (NOUVEAU - GitHub Actions CI/CD)

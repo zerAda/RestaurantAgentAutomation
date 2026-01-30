@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "media_fetch_request",
+  "title": "P1-02 Media Fetch Request",
+  "description": "Request queued to ralphe:media:pending for Graph API fetch",
+  "type": "object",
+  "required": ["media_id", "media_type", "channel", "queued_at"],
+  "properties": {
+    "media_id": {
+      "type": "string",
+      "description": "WhatsApp media ID from inbound message",
+      "minLength": 1
+    },
+    "media_type": {
+      "type": "string",
+      "enum": ["image", "audio", "video", "document", "sticker"],
+      "description": "Type of media attachment"
+    },
+    "mime": {
+      "type": "string",
+      "description": "MIME type of the media"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "SHA256 hash of the media content"
+    },
+    "msg_id": {
+      "type": "string",
+      "description": "Original message ID from WhatsApp"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Correlation ID for end-to-end tracing"
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["whatsapp"],
+      "description": "Channel (always whatsapp for media fetch)"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User/phone number that sent the media"
+    },
+    "conversation_key": {
+      "type": "string",
+      "description": "Conversation key for context"
+    },
+    "queued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when request was queued"
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Number of fetch attempts"
+    },
+    "nextRetryAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for next retry (if retrying)"
+    },
+    "lastError": {
+      "type": "string",
+      "description": "Last error code if retrying"
+    },
+    "lastStatusCode": {
+      "type": "integer",
+      "description": "Last HTTP status code if retrying"
+    },
+    "lastAttemptAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last attempt"
+    }
+  },
+  "examples": [
+    {
+      "media_id": "1234567890123456",
+      "media_type": "audio",
+      "mime": "audio/ogg",
+      "sha256": "abc123def456789",
+      "msg_id": "wamid.HBgLMjEyNjAwMDAwMDAxFQIAEhgUM0EB",
+      "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+      "channel": "whatsapp",
+      "user_id": "212600000001",
+      "conversation_key": "tenant1:rest1:whatsapp:212600000001",
+      "queued_at": "2026-01-30T12:00:00.000Z",
+      "attempts": 0
+    }
+  ]
+}

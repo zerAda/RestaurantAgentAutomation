@@ -1,5 +1,5 @@
 {
-  "name": "W1 - IN WhatsApp Adapter (Secure)",
+  "name": "W1 - IN WhatsApp Adapter (Secure + Fast ACK)",
   "active": false,
   "settings": {
     "executionTimeout": 300,
@@ -20,24 +20,126 @@
       "name": "IN - Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [
-        -2400,
-        0
-      ]
+      "position": [-2400, 0]
     },
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\n\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\n\nfunction normVersion(v) {\n  const s = (v || '').toString().trim().toLowerCase();\n  if (!s) return 'v1';\n  if (s === '1' || s === 'v1') return 'v1';\n  if (s === '2' || s === 'v2') return 'v2';\n  return 'unknown';\n}\n\nconst headerVer = headers['x-contract-version'] || headers['X-Contract-Version'] || headers['x_contract_version'] || '';\nconst bodyVer = body.contract_version || body.contractVersion || '';\nconst contractVersion = normVersion(headerVer || bodyVer || 'v1');\n\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n\nconst headerToken = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  ''\n).toString().trim();\n\nconst allowQueryToken = (($env.ALLOW_QUERY_TOKEN || 'false').toString().toLowerCase() === 'true');\nconst queryTokenProvided = !!(qs['token'] || qs['access_token']);\nconst queryToken = allowQueryToken ? (qs['token'] || qs['access_token'] || '') : '';\n\nconst token = (headerToken || bearer || queryToken || '').toString().trim();\nconst queryTokenUsed = !!queryToken && !headerToken && !bearer;\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString().trim();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Meta/WhatsApp signature verification (X-Hub-Signature-256)\nconst metaSig = (headers['x-hub-signature-256'] || headers['X-Hub-Signature-256'] || '').toString().trim();\nconst metaSecret = ($env.META_APP_SECRET || '').toString();\nconst metaSigRequired = (($env.META_SIGNATURE_REQUIRED || 'false').toString().toLowerCase() === 'true');\n\nfunction timingSafeEq(a,b){\n  try{\n    const ba = Buffer.from(String(a));\n    const bb = Buffer.from(String(b));\n    if (ba.length !== bb.length) return false;\n    return crypto.timingSafeEqual(ba, bb);\n  }catch{ return false; }\n}\n\nlet metaSigValid = null;\nlet metaSigReason = '';\nif (!metaSig) {\n  metaSigValid = metaSigRequired ? false : null;\n  metaSigReason = 'signature_missing';\n} else if (!metaSecret) {\n  metaSigValid = false;\n  metaSigReason = 'secret_missing';\n} else {\n  const raw = ($json.rawBody && typeof $json.rawBody === 'string') ? $json.rawBody : JSON.stringify(body || {});\n  const expected = 'sha256=' + crypto.createHmac('sha256', metaSecret).update(raw, 'utf8').digest('hex');\n  metaSigValid = timingSafeEq(expected, metaSig);\n  metaSigReason = metaSigValid ? 'ok' : 'invalid';\n}\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nconst inboundReceivedAt = new Date().toISOString();\n\n// P1-01: Generate correlation ID for end-to-end tracing\nconst correlationId = (headers['x-correlation-id'] || headers['X-Correlation-Id'] || headers['x-request-id'] || crypto.randomUUID()).toString();\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || body.tenant || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || body.restaurant || '').toString();\n\n// Detect canonical envelope\nconst looksLikeV1 = body && typeof body === 'object' && body.provider && (body.msg_id || body.msgId) && (body.from || body.sender || body.sender_id);\nconst looksLikeV2 = body && typeof body === 'object' && body.provider && body.sender && body.message && (body.msg_id || body.msgId);\n\nfunction buildEnvelopeLegacy() {\n  const userId = (body.userId || body.from || body.sender || body.sender_id || 'unknown-user').toString();\n  const msgId = (body.msgId || body.messageId || body.mid || body.message?.id || body.message?.mid || crypto.randomUUID()).toString();\n  const text = (body.text || body.message?.text || body.message?.body || '').toString();\n\n  const buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\n  const audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\n  const audioMime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n  const imageUrl = (body.imageUrl || body.image?.url || body.message?.image?.url || '').toString();\n  const imageMime = (body.image?.mime || body.message?.image?.mime || 'image/jpeg').toString();\n\n  let attachments = [];\n  if (audioUrl) attachments.push({type:'audio', url: audioUrl, mime: audioMime});\n  if (imageUrl) attachments.push({type:'image', url: imageUrl, mime: imageMime});\n\n  const locale = (body.locale || body.meta?.locale || '').toString();\n  const timezone = (body.timezone || body.meta?.timezone || '').toString();\n\n  return {\n    contract_version: contractVersion === 'unknown' ? 'v1' : contractVersion,\n    provider: 'wa',\n    msg_id: msgId,\n    from: userId,\n    text: buttonId ? buttonId : text,\n    timestamp: (body.timestamp || body.time || body.meta?.timestamp || inboundReceivedAt).toString(),\n    attachments,\n    meta: {\n      locale: locale || undefined,\n      timezone: timezone || undefined,\n      ip: ip || undefined,\n      user_agent: (headers['user-agent'] || headers['User-Agent'] || '').toString() || undefined\n    },\n    tenant_context: {\n      source: 'untrusted_payload',\n      hints: {\n        tenant_hint: tenantHint || undefined,\n        restaurant_hint: restaurantHint || undefined\n      }\n    }\n  };\n}\n\nfunction buildEnvelopeFromV1(obj) {\n  return {\n    contract_version: 'v1',\n    provider: (obj.provider || 'wa').toString(),\n    msg_id: (obj.msg_id || obj.msgId).toString(),\n    from: (obj.from || obj.sender || obj.sender_id).toString(),\n    text: (obj.text || '').toString(),\n    timestamp: (obj.timestamp || inboundReceivedAt).toString(),\n    attachments: Array.isArray(obj.attachments) ? obj.attachments : [],\n    meta: obj.meta || {},\n    tenant_context: obj.tenant_context || obj.tenantContext || {\n      source: 'untrusted_payload',\n      hints: { tenant_hint: tenantHint || undefined, restaurant_hint: restaurantHint || undefined }\n    }\n  };\n}\n\nfunction buildEnvelopeFromV2(obj) {\n  return {\n    contract_version: 'v2',\n    provider: (obj.provider || 'wa').toString(),\n    msg_id: (obj.msg_id || obj.msgId).toString(),\n    sender: {\n      id: (obj.sender?.id || obj.sender?.from || obj.sender?.userId || '').toString(),\n      display_name: (obj.sender?.display_name || obj.sender?.displayName || '').toString() || undefined\n    },\n    message: {\n      text: (obj.message?.text || '').toString() || undefined,\n      attachments: Array.isArray(obj.message?.attachments) ? obj.message.attachments : []\n    },\n    timestamp: (obj.timestamp || inboundReceivedAt).toString(),\n    meta: obj.meta || {},\n    tenant_context: obj.tenant_context || obj.tenantContext || {\n      source: 'untrusted_payload',\n      hints: { tenant_hint: tenantHint || undefined, restaurant_hint: restaurantHint || undefined }\n    }\n  };\n}\n\nlet envelope;\nlet normalizedVersion = contractVersion;\nif (normalizedVersion === 'unknown') {\n  envelope = null;\n} else if (normalizedVersion === 'v2') {\n  // strict: if caller requested v2, we validate as v2 (no fallback to v1)\n  envelope = buildEnvelopeFromV2(body);\n} else if (normalizedVersion === 'v1' && looksLikeV1 && !looksLikeV2) {\n  envelope = buildEnvelopeFromV1(body);\n} else {\n  // legacy or mismatch => compat layer (v1)\n  normalizedVersion = 'v1';\n  envelope = buildEnvelopeLegacy();\n}\n\n// Validate envelope against schema\nlet isValid = false;\nlet errors = [];\nlet schemaHash = '';\nlet schemaPath = '';\nlet validator = 'ajv';\n\ntry {\n  if (!envelope) throw new Error('unknown_contract_version');\n  if ((envelope.provider || '').toString() !== 'wa') throw new Error('provider_mismatch');\n  const schemasRoot = ($env.SCHEMAS_ROOT || '/opt/resto/schemas').toString();\n  schemaPath = path.join(schemasRoot, 'inbound', `${envelope.contract_version}.json`);\n  const schemaText = fs.readFileSync(schemaPath, 'utf8');\n  schemaHash = crypto.createHash('sha256').update(schemaText).digest('hex');\n  const schema = JSON.parse(schemaText);\n\n  let Ajv;\n  try { Ajv = require('ajv'); } catch (e) { Ajv = null; }\n  if (!Ajv) {\n    validator = 'basic';\n    // Hard fail: schema validation must be available in production\n    throw new Error('ajv_not_available');\n  }\n  const ajv = new Ajv({allErrors:true, strict:false, allowUnionTypes:true});\n  const validate = ajv.compile(schema);\n  isValid = validate(envelope);\n  if (!isValid) {\n    errors = (validate.errors || []).slice(0, 10).map(e => ({path: e.instancePath || '', message: e.message || 'invalid'}));\n  }\n} catch (err) {\n  isValid = false;\n  errors = [{path:'', message: (err && err.message) ? err.message : 'validation_error'}];\n}\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\n// Build internal canonical message (keep existing fields)\nconst ch = 'whatsapp';\nconst userId = envelope?.contract_version === 'v2'\n  ? (envelope.sender?.id || '').toString()\n  : (envelope?.from || '').toString();\n\nconst msgId = envelope?.contract_version === 'v2'\n  ? (envelope.msg_id || '').toString()\n  : (envelope?.msg_id || '').toString();\n\nconst text = envelope?.contract_version === 'v2'\n  ? ((envelope.message?.text || '')).toString()\n  : ((envelope?.text || '')).toString();\n\nconst atts = envelope?.contract_version === 'v2'\n  ? (Array.isArray(envelope.message?.attachments) ? envelope.message.attachments : [])\n  : (Array.isArray(envelope.attachments) ? envelope.attachments : []);\n\nconst firstAudio = Array.isArray(atts) ? atts.find(a => a && a.type === 'audio' && a.url) : null;\nconst firstImage = Array.isArray(atts) ? atts.find(a => a && a.type === 'image' && a.url) : null;\n\nlet type = 'text';\nif (firstAudio) type = 'audio';\nif (firstImage) type = 'image';\n\nconst textHash = crypto.createHash('sha256').update((text || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: ch,\n    userId: userId || (body.userId || body.from || body.sender || 'unknown-user').toString(),\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    contract_version: normalizedVersion,\n    inbound_envelope: envelope,\n    metadata: {\n      msgId: msgId || (body.msgId || body.messageId || crypto.randomUUID()).toString(),\n      timestamp: envelope?.timestamp || inboundReceivedAt,\n      ip,\n      userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString(),\n      testMode: !!body.testMode\n    },\n    message: {\n      type,\n      text: (text || '').toString().trim(),\n      buttonId: '',\n      audio: firstAudio ? { url: firstAudio.url, mime: firstAudio.mime || 'audio/ogg' } : null,\n      image: firstImage ? { url: firstImage.url, mime: firstImage.mime || 'image/jpeg' } : null\n    },\n    tenant_context_hints: {\n      tenant_hint: tenantHint || '',\n      restaurant_hint: restaurantHint || ''\n    },\n    _contract: {\n      version: normalizedVersion,\n      schemaPath,\n      schemaHash,\n      validator,\n      isValid,\n      errors\n    },\n    _timing: {\n      inbound_received_at: inboundReceivedAt,\n      correlation_id: correlationId\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      \n    metaSigPresent: !!metaSig,\n    metaSigRequired,\n    metaSigValid,\n    metaSigReason,\nallowQueryToken,\n      queryTokenProvided,\n      queryTokenUsed,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];\n"
+        "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\n\n// =============================================================================\n// P0-01: Parse Meta Native WhatsApp Payload\n// Meta sends: { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [...] } }] }] }\n// =============================================================================\nfunction extractAttachmentsWA(msg) {\n  const attachments = [];\n  const type = (msg.type || '').toString();\n  \n  if (type === 'image' && msg.image) {\n    attachments.push({\n      type: 'image',\n      id: msg.image.id || '',\n      mime: msg.image.mime_type || 'image/jpeg',\n      sha256: msg.image.sha256 || '',\n      url: '' // URL must be fetched via Graph API using media ID\n    });\n  }\n  if (type === 'audio' && msg.audio) {\n    attachments.push({\n      type: 'audio',\n      id: msg.audio.id || '',\n      mime: msg.audio.mime_type || 'audio/ogg',\n      sha256: msg.audio.sha256 || '',\n      url: '' // URL must be fetched via Graph API using media ID\n    });\n  }\n  if (type === 'video' && msg.video) {\n    attachments.push({\n      type: 'video',\n      id: msg.video.id || '',\n      mime: msg.video.mime_type || 'video/mp4',\n      sha256: msg.video.sha256 || '',\n      url: ''\n    });\n  }\n  if (type === 'document' && msg.document) {\n    attachments.push({\n      type: 'document',\n      id: msg.document.id || '',\n      mime: msg.document.mime_type || 'application/pdf',\n      filename: msg.document.filename || '',\n      sha256: msg.document.sha256 || '',\n      url: ''\n    });\n  }\n  if (type === 'location' && msg.location) {\n    attachments.push({\n      type: 'location',\n      latitude: msg.location.latitude,\n      longitude: msg.location.longitude,\n      name: msg.location.name || '',\n      address: msg.location.address || ''\n    });\n  }\n  if (type === 'sticker' && msg.sticker) {\n    attachments.push({\n      type: 'sticker',\n      id: msg.sticker.id || '',\n      mime: msg.sticker.mime_type || 'image/webp',\n      animated: !!msg.sticker.animated\n    });\n  }\n  if (type === 'contacts' && Array.isArray(msg.contacts)) {\n    attachments.push({\n      type: 'contacts',\n      contacts: msg.contacts\n    });\n  }\n  return attachments;\n}\n\nfunction parseMetaNativeWA(rawBody) {\n  // Check if this is Meta native format\n  if (!rawBody || typeof rawBody !== 'object') return null;\n  if (rawBody.object !== 'whatsapp_business_account') return null;\n  \n  const entry = rawBody.entry?.[0];\n  if (!entry) return null;\n  \n  const change = entry.changes?.[0];\n  if (!change) return null;\n  \n  const value = change.value;\n  if (!value) return null;\n  \n  // P1-02: Ignore status updates (delivered, read, sent) - ACK 200 but no processing\n  if (value.statuses && Array.isArray(value.statuses) && value.statuses.length > 0) {\n    return { _isStatusUpdate: true, _ignore: true };\n  }\n  \n  // Get first message (P1-01: multi-entry handled later)\n  const msg = value.messages?.[0];\n  if (!msg) return null;\n  \n  // Extract message text based on type\n  let text = '';\n  const msgType = (msg.type || 'text').toString();\n  \n  if (msgType === 'text') {\n    text = msg.text?.body || '';\n  } else if (msgType === 'interactive') {\n    // Button reply or list reply\n    if (msg.interactive?.type === 'button_reply') {\n      text = msg.interactive.button_reply?.id || msg.interactive.button_reply?.title || '';\n    } else if (msg.interactive?.type === 'list_reply') {\n      text = msg.interactive.list_reply?.id || msg.interactive.list_reply?.title || '';\n    }\n  } else if (msgType === 'button') {\n    // Quick reply button\n    text = msg.button?.payload || msg.button?.text || '';\n  }\n  \n  // Convert epoch timestamp to ISO 8601\n  const epochTs = msg.timestamp;\n  let isoTimestamp;\n  if (epochTs) {\n    const epochNum = Number(epochTs);\n    // Meta sends seconds, not milliseconds\n    const msTs = epochNum > 9999999999 ? epochNum : epochNum * 1000;\n    isoTimestamp = new Date(msTs).toISOString();\n  } else {\n    isoTimestamp = new Date().toISOString();\n  }\n  \n  // Extract metadata from value\n  const metadata = value.metadata || {};\n  const phoneNumberId = metadata.phone_number_id || '';\n  const displayPhoneNumber = metadata.display_phone_number || '';\n  \n  return {\n    _isMetaNative: true,\n    provider: 'wa',\n    msg_id: msg.id || '',\n    from: msg.from || '',\n    text: text,\n    timestamp: isoTimestamp,\n    type: msgType,\n    attachments: extractAttachmentsWA(msg),\n    meta: {\n      phone_number_id: phoneNumberId,\n      display_phone_number: displayPhoneNumber,\n      wa_id: entry.id || '',\n      original_type: msgType,\n      context: msg.context || null // Reply context if any\n    },\n    raw_meta_message: msg\n  };\n}\n\n// =============================================================================\n// Original code continues - body parsing\n// =============================================================================\nconst rawBodyInput = $json.body ?? $json;\n\n// P0-01: Try to parse as Meta native format first\nconst metaNativeParsed = parseMetaNativeWA(rawBodyInput);\n\n// Determine the body to use for further processing\nlet body;\nlet isMetaNative = false;\nlet isStatusUpdate = false;\n\nif (metaNativeParsed && metaNativeParsed._isStatusUpdate) {\n  // Status update - we'll process but mark for silent ignore\n  isStatusUpdate = true;\n  body = rawBodyInput; // Keep original for logging if needed\n} else if (metaNativeParsed && metaNativeParsed._isMetaNative) {\n  // Meta native message - use parsed data as the body\n  isMetaNative = true;\n  body = metaNativeParsed;\n} else {\n  // Legacy format or unknown - use as-is\n  body = rawBodyInput;\n}\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\n\nfunction normVersion(v) {\n  const s = (v || '').toString().trim().toLowerCase();\n  if (!s) return 'v1';\n  if (s === '1' || s === 'v1') return 'v1';\n  if (s === '2' || s === 'v2') return 'v2';\n  return 'unknown';\n}\n\nconst headerVer = headers['x-contract-version'] || headers['X-Contract-Version'] || headers['x_contract_version'] || '';\nconst bodyVer = body.contract_version || body.contractVersion || '';\nconst contractVersion = normVersion(headerVer || bodyVer || 'v1');\n\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n\nconst headerToken = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  ''\n).toString().trim();\n\nconst allowQueryToken = (($env.ALLOW_QUERY_TOKEN || 'false').toString().toLowerCase() === 'true');\nconst queryTokenProvided = !!(qs['token'] || qs['access_token']);\nconst queryToken = allowQueryToken ? (qs['token'] || qs['access_token'] || '') : '';\n\nconst token = (headerToken || bearer || queryToken || '').toString().trim();\nconst queryTokenUsed = !!queryToken && !headerToken && !bearer;\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString().trim();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Meta/WhatsApp signature verification (X-Hub-Signature-256) - P0-SEC-03\nconst metaSig = (headers['x-hub-signature-256'] || headers['X-Hub-Signature-256'] || '').toString().trim();\nconst metaSecret = ($env.META_APP_SECRET || '').toString();\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'off').toString().toLowerCase();\n// P0-05: Normalized modes: off|warn|enforce ('true' supported for backward compat, deprecated)\nconst metaSigRequired = (metaSigMode === 'enforce' || metaSigMode === 'true');\nconst metaSigWarn = (metaSigMode === 'warn');\n\nfunction timingSafeEq(a,b){\n  try{\n    const ba = Buffer.from(String(a));\n    const bb = Buffer.from(String(b));\n    if (ba.length !== bb.length) return false;\n    return crypto.timingSafeEqual(ba, bb);\n  }catch{ return false; }\n}\n\nlet metaSigValid = null;\nlet metaSigReason = '';\nif (!metaSig) {\n  metaSigValid = metaSigRequired ? false : null;\n  metaSigReason = 'signature_missing';\n} else if (!metaSecret) {\n  metaSigValid = false;\n  metaSigReason = 'secret_missing';\n} else {\n  // P0-01: Use original raw body for signature verification, not the parsed body\n  const raw = ($json.rawBody && typeof $json.rawBody === 'string') ? $json.rawBody : JSON.stringify(rawBodyInput || {});\n  const expected = 'sha256=' + crypto.createHmac('sha256', metaSecret).update(raw, 'utf8').digest('hex');\n  metaSigValid = timingSafeEq(expected, metaSig);\n  metaSigReason = metaSigValid ? 'ok' : 'invalid';\n}\n\n// P0-04: Fast ACK - determine if we should reject early (signature enforce fail)\nconst sigEnforceReject = metaSigRequired && (metaSigValid === false);\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nconst inboundReceivedAt = new Date().toISOString();\n\n// P1-01: Generate correlation ID for end-to-end tracing\nconst correlationId = (headers['x-correlation-id'] || headers['X-Correlation-Id'] || headers['x-request-id'] || crypto.randomUUID()).toString();\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || body.tenant || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || body.restaurant || '').toString();\n\n// Detect canonical envelope\nconst looksLikeV1 = body && typeof body === 'object' && body.provider && (body.msg_id || body.msgId) && (body.from || body.sender || body.sender_id);\nconst looksLikeV2 = body && typeof body === 'object' && body.provider && body.sender && body.message && (body.msg_id || body.msgId);\n\nfunction buildEnvelopeLegacy() {\n  const userId = (body.userId || body.from || body.sender || body.sender_id || 'unknown-user').toString();\n  const msgId = (body.msgId || body.messageId || body.mid || body.message?.id || body.message?.mid || crypto.randomUUID()).toString();\n  const text = (body.text || body.message?.text || body.message?.body || '').toString();\n\n  const buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\n  const audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\n  const audioMime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n  const imageUrl = (body.imageUrl || body.image?.url || body.message?.image?.url || '').toString();\n  const imageMime = (body.image?.mime || body.message?.image?.mime || 'image/jpeg').toString();\n\n  let attachments = [];\n  if (audioUrl) attachments.push({type:'audio', url: audioUrl, mime: audioMime});\n  if (imageUrl) attachments.push({type:'image', url: imageUrl, mime: imageMime});\n\n  const locale = (body.locale || body.meta?.locale || '').toString();\n  const timezone = (body.timezone || body.meta?.timezone || '').toString();\n\n  return {\n    contract_version: contractVersion === 'unknown' ? 'v1' : contractVersion,\n    provider: 'wa',\n    msg_id: msgId,\n    from: userId,\n    text: buttonId ? buttonId : text,\n    timestamp: (body.timestamp || body.time || body.meta?.timestamp || inboundReceivedAt).toString(),\n    attachments,\n    meta: {\n      locale: locale || undefined,\n      timezone: timezone || undefined,\n      ip: ip || undefined,\n      user_agent: (headers['user-agent'] || headers['User-Agent'] || '').toString() || undefined\n    },\n    tenant_context: {\n      source: 'untrusted_payload',\n      hints: {\n        tenant_hint: tenantHint || undefined,\n        restaurant_hint: restaurantHint || undefined\n      }\n    }\n  };\n}\n\nfunction buildEnvelopeFromV1(obj) {\n  return {\n    contract_version: 'v1',\n    provider: (obj.provider || 'wa').toString(),\n    msg_id: (obj.msg_id || obj.msgId).toString(),\n    from: (obj.from || obj.sender || obj.sender_id).toString(),\n    text: (obj.text || '').toString(),\n    timestamp: (obj.timestamp || inboundReceivedAt).toString(),\n    attachments: Array.isArray(obj.attachments) ? obj.attachments : [],\n    meta: obj.meta || {},\n    tenant_context: obj.tenant_context || obj.tenantContext || {\n      source: 'untrusted_payload',\n      hints: { tenant_hint: tenantHint || undefined, restaurant_hint: restaurantHint || undefined }\n    }\n  };\n}\n\nfunction buildEnvelopeFromV2(obj) {\n  return {\n    contract_version: 'v2',\n    provider: (obj.provider || 'wa').toString(),\n    msg_id: (obj.msg_id || obj.msgId).toString(),\n    sender: {\n      id: (obj.sender?.id || obj.sender?.from || obj.sender?.userId || '').toString(),\n      display_name: (obj.sender?.display_name || obj.sender?.displayName || '').toString() || undefined\n    },\n    message: {\n      text: (obj.message?.text || '').toString() || undefined,\n      attachments: Array.isArray(obj.message?.attachments) ? obj.message.attachments : []\n    },\n    timestamp: (obj.timestamp || inboundReceivedAt).toString(),\n    meta: obj.meta || {},\n    tenant_context: obj.tenant_context || obj.tenantContext || {\n      source: 'untrusted_payload',\n      hints: { tenant_hint: tenantHint || undefined, restaurant_hint: restaurantHint || undefined }\n    }\n  };\n}\n\nlet envelope;\nlet normalizedVersion = contractVersion;\n\n// P1-02: Status updates get a minimal valid envelope to skip processing gracefully\nif (isStatusUpdate) {\n  normalizedVersion = 'v1';\n  envelope = {\n    contract_version: 'v1',\n    provider: 'wa',\n    msg_id: 'status_' + crypto.randomUUID(),\n    from: 'status_update',\n    text: '',\n    timestamp: inboundReceivedAt,\n    attachments: [],\n    meta: { status_update: true },\n    tenant_context: { source: 'status_update', hints: {} }\n  };\n} else if (normalizedVersion === 'unknown') {\n  envelope = null;\n} else if (normalizedVersion === 'v2') {\n  envelope = buildEnvelopeFromV2(body);\n} else if (normalizedVersion === 'v1' && looksLikeV1 && !looksLikeV2) {\n  envelope = buildEnvelopeFromV1(body);\n} else {\n  normalizedVersion = 'v1';\n  envelope = buildEnvelopeLegacy();\n}\n\n// Validate envelope against schema\n// P1-02: Status updates are always valid (they'll be filtered out later)\nlet isValid = isStatusUpdate ? true : false;\nlet errors = [];\nlet schemaHash = '';\nlet schemaPath = '';\nlet validator = 'ajv';\n\ntry {\n  if (!envelope) throw new Error('unknown_contract_version');\n  if ((envelope.provider || '').toString() !== 'wa') throw new Error('provider_mismatch');\n  const schemasRoot = ($env.SCHEMAS_ROOT || '/opt/resto/schemas').toString();\n  schemaPath = path.join(schemasRoot, 'inbound', `${envelope.contract_version}.json`);\n  const schemaText = fs.readFileSync(schemaPath, 'utf8');\n  schemaHash = crypto.createHash('sha256').update(schemaText).digest('hex');\n  const schema = JSON.parse(schemaText);\n\n  let Ajv;\n  try { Ajv = require('ajv'); } catch (e) { Ajv = null; }\n  if (!Ajv) {\n    validator = 'basic';\n    throw new Error('ajv_not_available');\n  }\n  const ajv = new Ajv({allErrors:true, strict:false, allowUnionTypes:true});\n  const validate = ajv.compile(schema);\n  isValid = validate(envelope);\n  if (!isValid) {\n    errors = (validate.errors || []).slice(0, 10).map(e => ({path: e.instancePath || '', message: e.message || 'invalid'}));\n  }\n} catch (err) {\n  isValid = false;\n  errors = [{path:'', message: (err && err.message) ? err.message : 'validation_error'}];\n}\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\nconst ch = 'whatsapp';\nconst userId = envelope?.contract_version === 'v2'\n  ? (envelope.sender?.id || '').toString()\n  : (envelope?.from || '').toString();\n\nconst msgId = envelope?.contract_version === 'v2'\n  ? (envelope.msg_id || '').toString()\n  : (envelope?.msg_id || '').toString();\n\nconst text = envelope?.contract_version === 'v2'\n  ? ((envelope.message?.text || '')).toString()\n  : ((envelope?.text || '')).toString();\n\nconst atts = envelope?.contract_version === 'v2'\n  ? (Array.isArray(envelope.message?.attachments) ? envelope.message.attachments : [])\n  : (Array.isArray(envelope.attachments) ? envelope.attachments : []);\n\nconst firstAudio = Array.isArray(atts) ? atts.find(a => a && a.type === 'audio' && a.url) : null;\nconst firstImage = Array.isArray(atts) ? atts.find(a => a && a.type === 'image' && a.url) : null;\n\nlet type = 'text';\nif (firstAudio) type = 'audio';\nif (firstImage) type = 'image';\n\nconst textHash = crypto.createHash('sha256').update((text || '').toString()).digest('hex');\n\n// P0-01: Include Meta native parsing metadata in output\nreturn [{\n  json: {\n    channel: ch,\n    _metaParsing: {\n      isMetaNative,\n      isStatusUpdate,\n      rawBodyType: rawBodyInput?.object || 'legacy'\n    },\n    userId: userId || (body.userId || body.from || body.sender || 'unknown-user').toString(),\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    contract_version: normalizedVersion,\n    inbound_envelope: envelope,\n    metadata: {\n      msgId: msgId || (body.msgId || body.messageId || crypto.randomUUID()).toString(),\n      timestamp: envelope?.timestamp || inboundReceivedAt,\n      ip,\n      userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString(),\n      testMode: !!body.testMode\n    },\n    message: {\n      type,\n      text: (text || '').toString().trim(),\n      buttonId: '',\n      audio: firstAudio ? { url: firstAudio.url, mime: firstAudio.mime || 'audio/ogg' } : null,\n      image: firstImage ? { url: firstImage.url, mime: firstImage.mime || 'image/jpeg' } : null\n    },\n    tenant_context_hints: {\n      tenant_hint: tenantHint || '',\n      restaurant_hint: restaurantHint || ''\n    },\n    _contract: {\n      version: normalizedVersion,\n      schemaPath,\n      schemaHash,\n      validator,\n      isValid,\n      errors\n    },\n    _timing: {\n      inbound_received_at: inboundReceivedAt,\n      correlation_id: correlationId\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      metaSigPresent: !!metaSig,\n      metaSigMode,\n      metaSigRequired,\n      metaSigWarn,\n      metaSigValid,\n      metaSigReason,\n      sigEnforceReject,\n      allowQueryToken,\n      queryTokenProvided,\n      queryTokenUsed,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];\n"
       },
       "id": "57c1bc81-2ffe-4ec4-bb34-c90c01c8da25",
       "name": "B0 - Parse & Canonicalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -2150,
-        0
-      ]
+      "position": [-2150, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._auth.sigEnforceReject}}",
+              "operation": "isFalse"
+            }
+          ]
+        }
+      },
+      "id": "sig-enforce-check",
+      "name": "B0 - Signature OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-1950, 0]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseBody": "={{JSON.stringify({status:'received',channel:'whatsapp',msg_id:$json.metadata?.msgId||'unknown',correlation_id:$json._timing?.correlation_id||'unknown'})}}",
+        "options": {}
+      },
+      "id": "resp-200-ack",
+      "name": "RESP - 200 ACK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-1750, -100]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseBody": "={{JSON.stringify({error:'signature_invalid',reason:$json._auth.metaSigReason||'invalid',code:'SEC-003'})}}",
+        "options": {}
+      },
+      "id": "resp-401-sig",
+      "name": "RESP - 401 Signature",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-1750, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._contract.isValid && !$json._metaParsing?.isStatusUpdate}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "b5de0a7b-d91b-4c56-a800-ba54988f2afb",
+      "name": "B0 - Contract Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [-1550, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) SELECT NULL,NULL,NULL,$1,$2, CASE WHEN $8::boolean THEN 'STATUS_UPDATE_IGNORED' ELSE 'CONTRACT_VALIDATION_FAILED' END, CASE WHEN $8::boolean THEN 'INFO' ELSE 'MEDIUM' END, jsonb_build_object('contract_version',$3,'schema_hash',$4,'errors',$5,'ip',$6,'ua',$7,'is_status_update',$8::boolean) WHERE NOT $8::boolean RETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.channel, $json.userId, $json._contract.version, $json._contract.schemaHash, JSON.stringify($json._contract.errors || []), $json.metadata.ip, $json.metadata.userAgent, $json._metaParsing?.isStatusUpdate || false]}}"
+        }
+      },
+      "id": "f6aff14f-4f3b-4423-8e10-54c001184dbb",
+      "name": "B0 - Log Contract Reject (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-1350, 50]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
+        "additionalFields": {
+          "queryParams": "={{[$json._auth.tokenHash]}}"
+        }
+      },
+      "id": "6954cbb3-8346-4255-b5c7-5aa8aa9e81e5",
+      "name": "B0 - Resolve Client (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-1350, -200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\nconst legacyAllowed = (($env.LEGACY_SHARED_ALLOWED || 'false').toString().toLowerCase() === 'true');\n\n// P0-04: Default tenant/restaurant from env (no hardcode in prod)\nconst envDefaultTenantId = ($env.DEFAULT_TENANT_ID || '').toString().trim();\nconst envDefaultRestaurantId = ($env.DEFAULT_RESTAURANT_ID || '').toString().trim();\nconst prodEnforceDefaults = (($env.PROD_ENFORCE_DEFAULTS || 'false').toString().toLowerCase() === 'true');\nconst legacyDefaultIds = (($env.LEGACY_DEFAULT_IDS || 'false').toString().toLowerCase() === 'true');\n\n// Fallback UUIDs only if LEGACY_DEFAULT_IDS=true (for backward compat during migration)\nconst fallbackTenantId = legacyDefaultIds ? '00000000-0000-0000-0000-000000000001' : '';\nconst fallbackRestaurantId = legacyDefaultIds ? '00000000-0000-0000-0000-000000000000' : '';\n\nconst defaultTenantId = envDefaultTenantId || fallbackTenantId;\nconst defaultRestaurantId = envDefaultRestaurantId || fallbackRestaurantId;\n\n// Fail-fast validation if PROD_ENFORCE_DEFAULTS=true and defaults missing\nlet defaultsMissing = false;\nlet defaultsMissingReason = '';\nif (prodEnforceDefaults && (!defaultTenantId || !defaultRestaurantId)) {\n  defaultsMissing = true;\n  defaultsMissingReason = 'PROD_DEFAULTS_MISSING: DEFAULT_TENANT_ID and DEFAULT_RESTAURANT_ID required when PROD_ENFORCE_DEFAULTS=true';\n}\n\nconst metaSigRequired = !!e._auth?.metaSigRequired;\nconst metaSigValid = (e._auth?.metaSigValid === true);\nconst metaSigPresent = !!e._auth?.metaSigPresent;\nconst metaSigReason = (e._auth?.metaSigReason || '').toString();\n\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'off').toString().toLowerCase();\nconst metaAuthEnabled = (metaSigMode === 'warn' || metaSigMode === 'enforce');\n\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (defaultsMissing) {\n  // P0-04: Fail-fast if defaults missing in prod\n  authMode = 'deny';\n} else if (metaAuthEnabled && metaSigValid) {\n  tenantId = defaultTenantId;\n  restaurantId = defaultRestaurantId;\n  authMode = 'meta_signature';\n  scopes = ['inbound:write'];\n} else if (legacyOk && legacyAllowed) {\n  tenantId = defaultTenantId;\n  restaurantId = defaultRestaurantId;\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nlet authOk = authMode !== 'deny';\n\nconst requiredScopes = ['inbound:write'];\n\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\nconst legacyBypass = (authMode === 'legacy_shared') && requiredScopes.some(s => s.startsWith('inbound:'));\nconst scopeOk = authOk && (legacyBypass || requiredScopes.length === 0 || requiredScopes.some(r => hasScope(r, scopes)));\n\nconst endpoint_group = 'inbound';\nconst endpoint_path = '/v1/inbound/whatsapp';\n\nlet denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\nconst replayWindowMs = parseInt($env.REPLAY_WINDOW_SECONDS || '300', 10) * 1000;\nconst replayCheckEnabled = (($env.REPLAY_CHECK_ENABLED || 'true').toString().toLowerCase() === 'true');\nlet timestampValid = true;\nlet timestampReason = '';\n\nif (replayCheckEnabled && e.metadata?.timestamp) {\n  const msgTs = e.metadata.timestamp;\n  let msgTime = 0;\n  if (typeof msgTs === 'string' && msgTs.includes('T')) {\n    msgTime = new Date(msgTs).getTime();\n  } else if (typeof msgTs === 'number' || /^\\d+$/.test(msgTs)) {\n    const num = Number(msgTs);\n    msgTime = num > 9999999999 ? num : num * 1000;\n  } else {\n    msgTime = new Date(msgTs).getTime();\n  }\n  \n  const now = Date.now();\n  const age = now - msgTime;\n  \n  if (isNaN(msgTime) || msgTime <= 0) {\n    timestampValid = true;\n    timestampReason = 'unparseable';\n  } else if (age > replayWindowMs) {\n    timestampValid = false;\n    timestampReason = 'too_old';\n  } else if (age < -60000) {\n    timestampValid = false;\n    timestampReason = 'future_timestamp';\n  } else {\n    timestampReason = 'ok';\n  }\n}\n\nif (metaSigRequired && !metaSigValid) {\n  denyReason = metaSigPresent ? 'WA_SIGNATURE_INVALID' : 'WA_SIGNATURE_MISSING';\n}\nif (replayCheckEnabled && !timestampValid && timestampReason !== 'unparseable') {\n  denyReason = 'REPLAY_ATTACK_' + timestampReason.toUpperCase();\n}\nif (legacyOk && !legacyAllowed) {\n  denyReason = 'LEGACY_TOKEN_BLOCKED';\n}\n// P0-04: deny if defaults missing in prod\nif (defaultsMissing) {\n  denyReason = 'PROD_DEFAULTS_MISSING';\n}\n\nconst tenant_context = {\n  tenant_id: tenantId || null,\n  restaurant_id: restaurantId || null,\n  source: authMode === 'api_client' ? 'auth_db' : (authMode === 'meta_signature' ? 'meta_signature' : (authMode === 'legacy_shared' ? 'legacy_shared' : 'untrusted_payload')),\n  client_id: matched ? (e.client_id || null) : null,\n  client_name: matched ? (e.client_name || null) : null,\n  scopes\n};\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    tenant_context,\n    _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      scopeOk,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
+      },
+      "id": "80046a7e-854b-4e57-b467-6f04fdc9f0ad",
+      "name": "B0 - Apply Auth Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1100, -200]
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst seal = crypto.createHash('sha256').update(JSON.stringify(ctx)).digest('hex');\nreturn [{json:{...e, tenant_context_seal: seal}}];\n"
+      },
+      "id": "5c64c6c3-b752-4ca8-8031-52d74044c660",
+      "name": "B0 - Seal Tenant Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-850, -200]
     },
     {
       "parameters": {
@@ -58,10 +160,99 @@
       "name": "B0 - Token OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        -1920,
-        0
-      ]
+      "position": [-600, -200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,$6,'HIGH', jsonb_build_object('token_hash',$7,'ip',$8,'ua',$9,'tenant_hint',$10,'restaurant_hint',$11,'auth_mode',$12,'required_scopes',$13::jsonb,'scopes',$14::jsonb,'endpoint_group',$15,'endpoint_path',$16)) RETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[null, null, null, $json.channel, $json.userId, ($json._auth.denyReason || 'AUTH_DENY'), $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint, $json._auth.authMode, JSON.stringify($json._auth.requiredScopes || []), JSON.stringify($json._auth.scopes || []), $json._auth.endpoint_group, $json._auth.endpoint_path]}}"
+        }
+      },
+      "id": "75fff6ee-5c2d-4e41-af59-f32d155f11e8",
+      "name": "B0 - Log Deny (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-400, -50]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P0-06: Prepare Redis dedupe key\nconst dedupeEnabled = (($env.DEDUPE_ENABLED || 'true').toString().toLowerCase() !== 'false');\nconst dedupeTtl = parseInt($env.DEDUPE_TTL_SEC || '172800', 10); // 48h default\nconst channel = $json.channel || 'whatsapp';\nconst msgId = $json.metadata?.msgId || 'unknown';\nconst dedupeKey = `ralphe:dedupe:${channel}:${msgId}`;\n\nreturn [{\n  json: {\n    ...$json,\n    _dedupe: {\n      enabled: dedupeEnabled,\n      key: dedupeKey,\n      ttl: dedupeTtl\n    }\n  }\n}];\n"
+      },
+      "id": "dedupe-prepare-wa",
+      "name": "B0 - Prepare Dedupe Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, -350]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "={{$json._dedupe.key}}"
+      },
+      "id": "dedupe-redis-get-wa",
+      "name": "B0 - Redis Dedupe GET",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-150, -350],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P0-06: Parse Redis dedupe GET result\nconst input = $('B0 - Prepare Dedupe Key').first().json;\nconst redisResult = $json;\nconst dedupeEnabled = input._dedupe?.enabled !== false;\n\nlet isNew = true;\nlet redisAvailable = true;\nlet redisError = null;\n\nif (!dedupeEnabled) {\n  // Dedupe disabled - always treat as new\n  isNew = true;\n} else if (redisResult && redisResult.error) {\n  // Redis error - fallback to DB idempotency\n  redisAvailable = false;\n  redisError = redisResult.error.message || 'Redis GET error';\n  isNew = true; // Assume new to not drop messages on Redis failure\n} else if (redisResult === null || redisResult === undefined || redisResult === '' || (typeof redisResult === 'string' && redisResult.toLowerCase() === 'nil')) {\n  // Key doesn't exist - NEW message\n  isNew = true;\n} else {\n  // Key exists - DUPLICATE message\n  isNew = false;\n}\n\nreturn [{\n  json: {\n    ...input,\n    _dedupe: {\n      ...input._dedupe,\n      isNew,\n      isDuplicate: !isNew,\n      redisAvailable,\n      redisError,\n      checkedAt: new Date().toISOString()\n    }\n  }\n}];\n"
+      },
+      "id": "dedupe-parse-wa",
+      "name": "B0 - Parse Dedupe Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [100, -350]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._dedupe.isNew}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "dedupe-is-new-wa",
+      "name": "B0 - Is New (Redis)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [350, -350]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "={{$json._dedupe.key}}",
+        "value": "={{$json._dedupe.checkedAt}}",
+        "expire": true,
+        "ttl": "={{$json._dedupe.ttl}}"
+      },
+      "id": "dedupe-redis-set-wa",
+      "name": "B0 - Redis Dedupe SET",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [600, -450],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -75,46 +266,9 @@
       "name": "B0 - Idempotency (DB)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        -1700,
-        -120
-      ]
+      "position": [850, -450]
     },
-    {
-      "parameters": {
-        "language": "javascript",
-        "jsCode": "// P1-01: Idempotency check result + Redis key preparation\nconst inserted = Number($json.inserted || 0);\nconst isNew = inserted === 1;\n\n// Prepare Redis key for future migration (see docs/REDIS_SETUP.md)\nconst redisDedupeKey = `ralphe:dedupe:${$json.channel}:${$json.metadata?.msgId || 'unknown'}`;\nconst redisRateLimitKey = `ralphe:rl:${$json.conversationKey || 'unknown'}`;\n\nreturn [{json: {\n  ...$json,\n  _sec: {\n    ...$json._sec,\n    isNew,\n    redisDedupeKey,\n    redisRateLimitKey\n  }\n}}];"
-      },
-      "id": "57be4e3e-a55b-4bb7-ac99-5850a5b438bc",
-      "name": "B0 - Idempotency Flag",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -1480,
-        -120
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{$json._sec.isNew}}",
-              "operation": "isTrue"
-            }
-          ]
-        }
-      },
-      "id": "449a1c07-5aa5-426e-97a1-f16003a3fa19",
-      "name": "B0 - Is New Msg?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        -1260,
-        -120
-      ]
-    },
-    {
+        {
       "parameters": {
         "operation": "executeQuery",
         "query": "WITH ins AS (\n      INSERT INTO inbound_messages (conversation_key, msg_id, channel, message_type, text_hash, meta_json)\n      VALUES ($1, $2, $3, $4, $5, $6::jsonb)\n      ON CONFLICT DO NOTHING\n      RETURNING 1\n    )\n    SELECT COUNT(*)::int AS cnt_30s\n    FROM inbound_messages\n    WHERE conversation_key = $1\n      AND received_at > (now() - interval '30 seconds');",
@@ -126,24 +280,18 @@
       "name": "B0 - RateLimit + Log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        -1040,
-        -240
-      ]
+      "position": [300, -450]
     },
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const limit = Number($env.RATE_LIMIT_PER_30S || 6);\nconst cnt = Number($json.cnt_30s || 0);\nconst allowed = cnt <= limit;\nreturn [{json: {...$json, _sec: {...$json._sec, rateCnt30s: cnt, rateAllowed: allowed}}}];"
+        "jsCode": "// P1-02: Redis Rate Limit + DB fallback\nconst limit = Number($env.RATE_LIMIT_PER_30S || $env.RL_MAX_PER_30S || 6);\nconst rlEnabled = (($env.RL_ENABLED || 'true').toString().toLowerCase() !== 'false');\n\n// DB count from previous node\nconst dbCnt = Number($json.cnt_30s || 0);\n\n// Use DB count for now (Redis INCR would be added in parallel)\nconst cnt = dbCnt;\nconst allowed = !rlEnabled || (cnt <= limit);\nconst exceeded = rlEnabled && (cnt > limit);\n\n// P1-02: If exceeded, prepare quarantine data\nlet quarantineAction = null;\nif (exceeded) {\n  quarantineAction = {\n    key: `ralphe:quarantine:${$json.channel}:${$json.userId}`,\n    reason: 'RATE_LIMIT_EXCEEDED',\n    count: cnt,\n    limit: limit,\n    timestamp: new Date().toISOString()\n  };\n}\n\nreturn [{json: {\n  ...$json,\n  _sec: {\n    ...$json._sec,\n    rateCnt30s: cnt,\n    rateAllowed: allowed,\n    rateExceeded: exceeded,\n    rateLimit: limit,\n    rlEnabled\n  },\n  _quarantine: quarantineAction\n}}];"
       },
       "id": "95df564e-ace1-4aab-9f4f-ae332a28b985",
       "name": "B0 - RateLimit Flag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -820,
-        -240
-      ]
+      "position": [550, -450]
     },
     {
       "parameters": {
@@ -160,10 +308,7 @@
       "name": "B0 - Rate OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        -600,
-        -240
-      ]
+      "position": [800, -450]
     },
     {
       "parameters": {
@@ -177,10 +322,7 @@
       "name": "B0 - Quarantine Check",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        -380,
-        -360
-      ]
+      "position": [1050, -550]
     },
     {
       "parameters": {
@@ -191,10 +333,7 @@
       "name": "B0 - Quarantine Flag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -160,
-        -360
-      ]
+      "position": [1300, -550]
     },
     {
       "parameters": {
@@ -211,10 +350,88 @@
       "name": "B0 - Not Quarantined?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        60,
-        -360
-      ]
+      "position": [1550, -550]
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst seal = crypto.createHash('sha256').update(JSON.stringify(ctx)).digest('hex');\nif (e.tenant_context_seal && seal !== e.tenant_context_seal) {\n  throw new Error('TENANT_CONTEXT_TAMPERED');\n}\nreturn [{json:e}];\n"
+      },
+      "id": "f87611bd-5bce-4a31-bf10-0c04b3e15d25",
+      "name": "B0 - Verify Tenant Context Seal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, -650]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Queue media fetch requests for attachments with media_id\n * Sends to ralphe:media:pending queue for W18_MEDIA_FETCH_WORKER to process\n */\nconst mediaFetchEnabled = (($env.MEDIA_FETCH_ENABLED || 'true').toString().toLowerCase() !== 'false');\n\nif (!mediaFetchEnabled) {\n  return [{ json: { ...$json, _mediaQueue: { enabled: false, queued: 0 } } }];\n}\n\n// Get attachments from envelope\nconst envelope = $json.inbound_envelope || {};\nconst atts = envelope.contract_version === 'v2'\n  ? (Array.isArray(envelope.message?.attachments) ? envelope.message.attachments : [])\n  : (Array.isArray(envelope.attachments) ? envelope.attachments : []);\n\n// Find attachments with media_id but no URL (need Graph API fetch)\nconst mediaToFetch = atts.filter(a => {\n  if (!a || !a.id) return false;\n  // Only fetch if URL is empty or missing\n  if (a.url && a.url.length > 0) return false;\n  // Only media types that have Graph API URLs\n  return ['image', 'audio', 'video', 'document', 'sticker'].includes(a.type);\n});\n\nif (mediaToFetch.length === 0) {\n  return [{ json: { ...$json, _mediaQueue: { enabled: true, queued: 0, attachments: [] } } }];\n}\n\n// Prepare queue entries\nconst queueEntries = mediaToFetch.map(a => ({\n  media_id: a.id,\n  media_type: a.type,\n  mime: a.mime || '',\n  sha256: a.sha256 || '',\n  msg_id: $json.metadata?.msgId || '',\n  correlation_id: $json._timing?.correlation_id || '',\n  channel: 'whatsapp',\n  user_id: $json.userId || '',\n  conversation_key: $json.conversationKey || '',\n  queued_at: new Date().toISOString(),\n  attempts: 0\n}));\n\nreturn [{\n  json: {\n    ...$json,\n    _mediaQueue: {\n      enabled: true,\n      queued: queueEntries.length,\n      entries: queueEntries\n    }\n  }\n}];\n"
+      },
+      "id": "media-queue-prepare",
+      "name": "B1 - Prepare Media Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, -650]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json._mediaQueue?.queued || 0}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "media-queue-check",
+      "name": "B1 - Has Media to Fetch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2300, -650]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Push each media entry to Redis queue\n * Using LPUSH to add to head (FIFO with RPOP in worker)\n */\nconst entries = $json._mediaQueue?.entries || [];\nconst results = [];\n\nfor (const entry of entries) {\n  results.push(JSON.stringify(entry));\n}\n\n// Return entries to push (will be handled by SplitInBatches if needed)\nreturn results.map(r => ({ json: { queueData: r, originalData: $json } }));\n"
+      },
+      "id": "media-queue-split",
+      "name": "B1 - Split Media Entries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2550, -750]
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "ralphe:media:pending",
+        "messageData": "={{$json.queueData}}"
+      },
+      "id": "media-queue-push",
+      "name": "B1 - LPUSH Media Queue",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [2800, -750],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-02: Restore original data after queue push\nconst original = $json.originalData || $json;\nreturn [{ json: original }];\n"
+      },
+      "id": "media-queue-restore",
+      "name": "B1 - Restore Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3050, -750]
     },
     {
       "parameters": {
@@ -231,10 +448,7 @@
       "name": "B1a - Admin WA Console?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        -60,
-        200
-      ]
+      "position": [3300, -650]
     },
     {
       "parameters": {
@@ -252,10 +466,7 @@
       "name": "B1b - Execute ADMIN_WA_CONSOLE",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 2,
-      "position": [
-        160,
-        60
-      ]
+      "position": [3550, -750]
     },
     {
       "parameters": {
@@ -268,167 +479,140 @@
       "name": "B1 - Execute CORE_AGENT",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
-      "position": [
-        300,
-        -360
-      ]
+      "position": [3550, -550]
     },
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "return [{json:{ok:true}}];"
+        "jsCode": "// P0-04: Processing complete (response already sent via Fast ACK)\nreturn [{json:{ok:true, fastAck: true}}];"
       },
       "id": "2d849a6a-35b3-47d1-b3f4-5a80234691e8",
       "name": "END - Drop/Done",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        520,
-        0
-      ]
+      "position": [3800, -350]
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "={{$json._quarantine?.key || 'ralphe:quarantine:unknown'}}",
+        "messageData": "={{JSON.stringify({reason: $json._quarantine?.reason || 'RATE_LIMIT_EXCEEDED', count: $json._quarantine?.count || 0, limit: $json._quarantine?.limit || 6, channel: $json.channel, userId: $json.userId, conversationKey: $json.conversationKey, timestamp: $json._quarantine?.timestamp || new Date().toISOString()})}}"
+      },
+      "id": "quarantine-redis-push-wa",
+      "name": "B0 - Redis Quarantine Push",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1050, -350],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
+        "query": "INSERT INTO conversation_quarantine (conversation_key, channel, user_id, reason, quarantine_count, expires_at) VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour') ON CONFLICT (conversation_key) DO UPDATE SET quarantine_count = conversation_quarantine.quarantine_count + 1, reason = $4, updated_at = now(), expires_at = now() + interval '1 hour' RETURNING 1;",
         "additionalFields": {
-          "queryParams": "={{[$json._auth.tokenHash]}}"
+          "queryParams": "={{[$json.conversationKey, $json.channel, $json.userId, $json._quarantine?.reason || 'RATE_LIMIT_EXCEEDED', $json._quarantine?.count || 0]}}"
         }
       },
-      "id": "6954cbb3-8346-4255-b5c7-5aa8aa9e81e5",
-      "name": "B0 - Resolve Client (DB)",
+      "id": "quarantine-db-insert-wa",
+      "name": "B0 - DB Quarantine Insert",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [
-        280,
-        -120
-      ]
+      "position": [1300, -350]
     },
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\nconst legacyAllowed = (($env.LEGACY_SHARED_ALLOWED || 'false').toString().toLowerCase() === 'true');\n\n// Meta signature enforcement (fail-close only if META_SIGNATURE_REQUIRED=true)\nconst metaSigRequired = !!e._auth?.metaSigRequired;\nconst metaSigValid = (e._auth?.metaSigValid === true);\nconst metaSigPresent = !!e._auth?.metaSigPresent;\nconst metaSigReason = (e._auth?.metaSigReason || '').toString();\n\n// P0-04: Meta signature auth for WA (Meta doesn't send x-api-token)\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'off').toString().toLowerCase();\nconst metaAuthEnabled = (metaSigMode === 'warn' || metaSigMode === 'enforce');\n\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  // scopes may be returned as array or string\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (metaAuthEnabled && metaSigValid) {\n  // P0-04: Meta signature auth - valid signature = authenticated\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'meta_signature';\n  scopes = ['inbound:write'];\n} else if (legacyOk && legacyAllowed) {\n  // Legacy fallback to keep backward compatibility (MVP)\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nlet authOk = authMode !== 'deny';\n\n// ---- Scopes enforcement (Release-grade)\n// Required scopes are per-endpoint (here: inbound).\nconst requiredScopes = ['inbound:write'];\n\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\n// Legacy token can keep inbound compatibility, but MUST NOT be used for admin/internal.\nconst legacyBypass = (authMode === 'legacy_shared') && requiredScopes.some(s => s.startsWith('inbound:'));\nconst scopeOk = authOk && (legacyBypass || requiredScopes.length === 0 || requiredScopes.some(r => hasScope(r, scopes)));\n\nconst endpoint_group = 'inbound';\nconst endpoint_path = '/v1/inbound/whatsapp';\n\nlet denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\n// P0-08: Anti-replay timestamp validation\nconst replayWindowMs = parseInt($env.REPLAY_WINDOW_SECONDS || '300', 10) * 1000; // default 5 min\nconst replayCheckEnabled = (($env.REPLAY_CHECK_ENABLED || 'true').toString().toLowerCase() === 'true');\nlet timestampValid = true;\nlet timestampReason = '';\n\nif (replayCheckEnabled && e.metadata?.timestamp) {\n  const msgTs = e.metadata.timestamp;\n  let msgTime = 0;\n  // Parse timestamp: ISO string, epoch seconds, or epoch ms\n  if (typeof msgTs === 'string' && msgTs.includes('T')) {\n    msgTime = new Date(msgTs).getTime();\n  } else if (typeof msgTs === 'number' || /^\\d+$/.test(msgTs)) {\n    const num = Number(msgTs);\n    msgTime = num > 9999999999 ? num : num * 1000; // epoch s vs ms\n  } else {\n    msgTime = new Date(msgTs).getTime();\n  }\n  \n  const now = Date.now();\n  const age = now - msgTime;\n  \n  if (isNaN(msgTime) || msgTime <= 0) {\n    timestampValid = true; // skip if unparseable (lenient)\n    timestampReason = 'unparseable';\n  } else if (age > replayWindowMs) {\n    timestampValid = false;\n    timestampReason = 'too_old';\n  } else if (age < -60000) { // 1 min future tolerance\n    timestampValid = false;\n    timestampReason = 'future_timestamp';\n  } else {\n    timestampReason = 'ok';\n  }\n}\n\n// hard deny when meta signature is required and invalid/missing\nif (metaSigRequired && !metaSigValid) {\n  denyReason = metaSigPresent ? 'WA_SIGNATURE_INVALID' : 'WA_SIGNATURE_MISSING';\n}\n// deny on replay attack\nif (replayCheckEnabled && !timestampValid && timestampReason !== 'unparseable') {\n  denyReason = 'REPLAY_ATTACK_' + timestampReason.toUpperCase();\n}\n// deny legacy token if presented but legacy is not allowed\nif (legacyOk && !legacyAllowed) {\n  denyReason = 'LEGACY_TOKEN_BLOCKED';\n}\n\n\n\nconst tenant_context = {\n  tenant_id: tenantId || null,\n  restaurant_id: restaurantId || null,\n  source: authMode === 'api_client' ? 'auth_db' : (authMode === 'meta_signature' ? 'meta_signature' : (authMode === 'legacy_shared' ? 'legacy_shared' : 'untrusted_payload')),\n  client_id: matched ? (e.client_id || null) : null,\n  client_name: matched ? (e.client_name || null) : null,\n  scopes\n};\n\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    tenant_context,\n      _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      scopeOk,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
+        "jsCode": "/**\n * P1-04: Prepare anti-replay key based on payload hash\n * Hash = sha256(channel + msg_id + from + text_hash)\n */\nconst crypto = require('crypto');\nconst replayEnabled = (($env.REPLAY_GUARD_ENABLED || 'true').toString().toLowerCase() !== 'false');\nconst replayTtl = parseInt($env.META_REPLAY_WINDOW_SEC || $env.REPLAY_WINDOW_SECONDS || '300', 10);\nconst replayMode = ($env.REPLAY_GUARD_MODE || 'warn').toString().toLowerCase(); // warn|enforce\n\nconst channel = $json.channel || 'whatsapp';\nconst msgId = $json.metadata?.msgId || '';\nconst userId = $json.userId || '';\nconst textHash = $json._sec?.textHash || '';\n\n// Create payload hash for replay detection\nconst payloadStr = `${channel}:${msgId}:${userId}:${textHash}`;\nconst payloadHash = crypto.createHash('sha256').update(payloadStr).digest('hex').substring(0, 16);\nconst replayKey = `ralphe:replay:${channel}:${payloadHash}`;\n\nreturn [{\n  json: {\n    ...$json,\n    _replay: {\n      enabled: replayEnabled,\n      key: replayKey,\n      ttl: replayTtl,\n      mode: replayMode,\n      payloadHash\n    }\n  }\n}];\n"
       },
-      "id": "80046a7e-854b-4e57-b467-6f04fdc9f0ad",
-      "name": "B0 - Apply Auth Context",
+      "id": "replay-prepare-wa",
+      "name": "B0 - Prepare Replay Key",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        480,
-        -120
-      ]
+      "position": [-1350, -300]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,$6,'HIGH', jsonb_build_object('token_hash',$7,'ip',$8,'ua',$9,'tenant_hint',$10,'restaurant_hint',$11,'auth_mode',$12,'required_scopes',$13::jsonb,'scopes',$14::jsonb,'endpoint_group',$15,'endpoint_path',$16)) RETURNING 1;",
-        "additionalFields": {
-          "queryParams": "={{[null, null, null, $json.channel, $json.userId, ($json._auth.denyReason || 'AUTH_DENY'), $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint, $json._auth.authMode, JSON.stringify($json._auth.requiredScopes || []), JSON.stringify($json._auth.scopes || []), $json._auth.endpoint_group, $json._auth.endpoint_path]}}"
+        "operation": "get",
+        "key": "={{$json._replay.key}}"
+      },
+      "id": "replay-redis-get-wa",
+      "name": "B0 - Replay Check GET",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-1150, -300],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
         }
       },
-      "id": "75fff6ee-5c2d-4e41-af59-f32d155f11e8",
-      "name": "B0 - Log Deny (DB)",
-      "type": "n8n-nodes-base.postgres",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-04: Parse replay check result\n */\nconst input = $('B0 - Prepare Replay Key').first().json;\nconst redisResult = $json;\nconst replayEnabled = input._replay?.enabled !== false;\nconst replayMode = input._replay?.mode || 'warn';\n\nlet isReplay = false;\nlet redisAvailable = true;\nlet redisError = null;\n\nif (!replayEnabled) {\n  isReplay = false;\n} else if (redisResult && redisResult.error) {\n  redisAvailable = false;\n  redisError = redisResult.error.message || 'Redis GET error';\n  isReplay = false; // Fail-open if Redis unavailable\n} else if (redisResult === null || redisResult === undefined || redisResult === '' || (typeof redisResult === 'string' && redisResult.toLowerCase() === 'nil')) {\n  isReplay = false; // Key not found = new message\n} else {\n  isReplay = true; // Key exists = replay detected\n}\n\nreturn [{\n  json: {\n    ...input,\n    _replay: {\n      ...input._replay,\n      isReplay,\n      isNew: !isReplay,\n      redisAvailable,\n      redisError,\n      shouldBlock: isReplay && replayMode === 'enforce',\n      checkedAt: new Date().toISOString()\n    }\n  }\n}];\n"
+      },
+      "id": "replay-parse-wa",
+      "name": "B0 - Parse Replay Result",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        520,
-        80
-      ]
+      "position": [-950, -300]
     },
     {
       "parameters": {
         "conditions": {
           "boolean": [
             {
-              "value1": "={{$json._contract.isValid}}",
+              "value1": "={{$json._replay.isNew || !$json._replay.enabled}}",
               "operation": "isTrue"
             }
           ]
         }
       },
-      "id": "b5de0a7b-d91b-4c56-a800-ba54988f2afb",
-      "name": "B0 - Contract Valid?",
+      "id": "replay-is-new-wa",
+      "name": "B0 - Is New (Replay)?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        -1900,
-        0
-      ]
+      "typeVersion": 2,
+      "position": [-750, -300]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES (NULL,NULL,NULL,$1,$2,'CONTRACT_VALIDATION_FAILED','MEDIUM', jsonb_build_object('contract_version',$3,'schema_hash',$4,'errors',$5,'ip',$6,'ua',$7)) RETURNING 1;",
-        "additionalFields": {
-          "queryParams": "={{[$json.channel, $json.userId, $json._contract.version, $json._contract.schemaHash, $json._contract.errors, $json.metadata.ip, $json.metadata.userAgent]}}"
+        "operation": "set",
+        "key": "={{$json._replay.key}}",
+        "value": "={{$json._replay.checkedAt}}",
+        "expire": true,
+        "ttl": "={{$json._replay.ttl}}"
+      },
+      "id": "replay-redis-set-wa",
+      "name": "B0 - Replay SET",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-550, -400],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
         }
       },
-      "id": "f6aff14f-4f3b-4423-8e10-54c001184dbb",
-      "name": "B0 - Log Contract Reject (DB)",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [
-        -1630,
-        180
-      ]
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "responseCode": 400,
-        "responseBody": "={{({error:'invalid_payload', contract_version:$json._contract.version, details:$json._contract.errors})}}",
-        "options": {}
+        "language": "javascript",
+        "jsCode": "/**\n * P1-04: Replay detected - log and stop\n */\nconst input = $json;\nconst shouldBlock = input._replay?.shouldBlock || false;\nconst mode = input._replay?.mode || 'warn';\n\n// Log replay detection\nconsole.log(`[P1-04] Replay detected: key=${input._replay?.key}, mode=${mode}, block=${shouldBlock}`);\n\nreturn [{\n  json: {\n    ...input,\n    _replay: {\n      ...input._replay,\n      blocked: shouldBlock,\n      action: shouldBlock ? 'BLOCKED' : 'WARNED'\n    }\n  }\n}];\n"
       },
-      "id": "b5b00730-3173-45e9-aac3-681d29c8f7cf",
-      "name": "RESP - 400 Invalid Payload",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        -1350,
-        180
-      ]
-    },
-    {
-      "parameters": {
-        "responseCode": 200,
-        "responseBody": "={{JSON.stringify({status:'received',channel:'whatsapp',msg_id:$json.metadata?.msgId||'unknown',correlation_id:$json._timing?.correlation_id||'unknown'})}}",
-        "options": {}
-      },
-      "id": "68ccf968-3999-4215-a047-39532cd9aed7",
-      "name": "RESP - 200 OK",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        780,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "language": "JavaScript",
-        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst seal = crypto.createHash('sha256').update(JSON.stringify(ctx)).digest('hex');\nreturn [{json:{...e, tenant_context_seal: seal}}];\n"
-      },
-      "id": "5c64c6c3-b752-4ca8-8031-52d74044c660",
-      "name": "B0 - Seal Tenant Context",
+      "id": "replay-detected-wa",
+      "name": "B0 - Replay Detected",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        730,
-        -300
-      ]
-    },
-    {
-      "parameters": {
-        "language": "JavaScript",
-        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst seal = crypto.createHash('sha256').update(JSON.stringify(ctx)).digest('hex');\nif (e.tenant_context_seal && seal !== e.tenant_context_seal) {\n  throw new Error('TENANT_CONTEXT_TAMPERED');\n}\nreturn [{json:e}];\n"
-      },
-      "id": "f87611bd-5bce-4a31-bf10-0c04b3e15d25",
-      "name": "B0 - Verify Tenant Context Seal",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        50,
-        -540
-      ]
+      "position": [-550, -200]
     }
   ],
   "connections": {
@@ -447,7 +631,176 @@
       "main": [
         [
           {
+            "node": "B0 - Signature OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Signature OK?": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 ACK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESP - 401 Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RESP - 200 ACK": {
+      "main": [
+        [
+          {
             "node": "B0 - Contract Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RESP - 401 Signature": {
+      "main": [
+        []
+      ]
+    },
+    "B0 - Contract Valid?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Prepare Replay Key",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B0 - Log Contract Reject (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Prepare Replay Key": {
+      "main": [
+        [
+          {
+            "node": "B0 - Replay Check GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Replay Check GET": {
+      "main": [
+        [
+          {
+            "node": "B0 - Parse Replay Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Parse Replay Result": {
+      "main": [
+        [
+          {
+            "node": "B0 - Is New (Replay)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Is New (Replay)?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Replay SET",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B0 - Replay Detected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Replay SET": {
+      "main": [
+        [
+          {
+            "node": "B0 - Resolve Client (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Replay Detected": {
+      "main": [
+        [
+          {
+            "node": "END - Drop/Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Contract Reject (DB)": {
+      "main": [
+        [
+          {
+            "node": "END - Drop/Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Resolve Client (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Apply Auth Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Apply Auth Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Seal Tenant Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Seal Tenant Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Token OK?",
             "type": "main",
             "index": 0
           }
@@ -458,7 +811,7 @@
       "main": [
         [
           {
-            "node": "B0 - Idempotency (DB)",
+            "node": "B0 - Prepare Dedupe Key",
             "type": "main",
             "index": 0
           }
@@ -472,33 +825,44 @@
         ]
       ]
     },
-    "B0 - Idempotency (DB)": {
+    "B0 - Prepare Dedupe Key": {
       "main": [
         [
           {
-            "node": "B0 - Idempotency Flag",
+            "node": "B0 - Redis Dedupe GET",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B0 - Idempotency Flag": {
+    "B0 - Redis Dedupe GET": {
       "main": [
         [
           {
-            "node": "B0 - Is New Msg?",
+            "node": "B0 - Parse Dedupe Result",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B0 - Is New Msg?": {
+    "B0 - Parse Dedupe Result": {
       "main": [
         [
           {
-            "node": "B0 - RateLimit + Log",
+            "node": "B0 - Is New (Redis)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Is New (Redis)?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Redis Dedupe SET",
             "type": "main",
             "index": 0
           }
@@ -506,6 +870,39 @@
         [
           {
             "node": "END - Drop/Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Redis Dedupe SET": {
+      "main": [
+        [
+          {
+            "node": "B0 - Idempotency (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Deny (DB)": {
+      "main": [
+        [
+          {
+            "node": "END - Drop/Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Idempotency (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - RateLimit + Log",
             "type": "main",
             "index": 0
           }
@@ -543,6 +940,28 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "B0 - Redis Quarantine Push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Redis Quarantine Push": {
+      "main": [
+        [
+          {
+            "node": "B0 - DB Quarantine Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - DB Quarantine Insert": {
+      "main": [
         [
           {
             "node": "END - Drop/Done",
@@ -592,112 +1011,69 @@
         ]
       ]
     },
-    "B1 - Execute CORE_AGENT": {
+    "B0 - Verify Tenant Context Seal": {
       "main": [
         [
           {
-            "node": "END - Drop/Done",
+            "node": "B1 - Prepare Media Queue",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B0 - Resolve Client (DB)": {
+    "B1 - Prepare Media Queue": {
       "main": [
         [
           {
-            "node": "B0 - Apply Auth Context",
+            "node": "B1 - Has Media to Fetch?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B0 - Apply Auth Context": {
+    "B1 - Has Media to Fetch?": {
       "main": [
         [
           {
-            "node": "B0 - Seal Tenant Context",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B0 - Log Deny (DB)": {
-      "main": [
-        [
-          {
-            "node": "END - Drop/Done",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B0 - Contract Valid?": {
-      "main": [
-        [
-          {
-            "node": "B0 - Resolve Client (DB)",
+            "node": "B1 - Split Media Entries",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "B0 - Log Contract Reject (DB)",
+            "node": "B1a - Admin WA Console?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B0 - Log Contract Reject (DB)": {
+    "B1 - Split Media Entries": {
       "main": [
         [
           {
-            "node": "RESP - 400 Invalid Payload",
+            "node": "B1 - LPUSH Media Queue",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "RESP - 400 Invalid Payload": {
-      "main": [
-        []
-      ]
-    },
-    "END - Drop/Done": {
+    "B1 - LPUSH Media Queue": {
       "main": [
         [
           {
-            "node": "RESP - 200 OK",
+            "node": "B1 - Restore Context",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "RESP - 200 OK": {
-      "main": [
-        []
-      ]
-    },
-    "B0 - Seal Tenant Context": {
-      "main": [
-        [
-          {
-            "node": "B0 - Token OK?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B0 - Verify Tenant Context Seal": {
+    "B1 - Restore Context": {
       "main": [
         [
           {
@@ -727,6 +1103,17 @@
       ]
     },
     "B1b - Execute ADMIN_WA_CONSOLE": {
+      "main": [
+        [
+          {
+            "node": "END - Drop/Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Execute CORE_AGENT": {
       "main": [
         [
           {

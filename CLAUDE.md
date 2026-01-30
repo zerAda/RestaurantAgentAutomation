@@ -99,6 +99,10 @@ docker compose -f docker/docker-compose.test.yml up -d
 | W10 | Customer delivery quote |
 | W11/W12 | Admin delivery zones / orders |
 | W14 | Admin WhatsApp support console |
+| W15 | Outbox worker (retry + DLQ) |
+| W16 | Health check endpoint |
+| W17 | Health monitor (scheduled) |
+| W18 | Media fetch worker (Graph API) |
 
 ## Request Flow
 
