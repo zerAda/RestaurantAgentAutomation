@@ -1,0 +1,544 @@
+{
+  "name": "W17 - Health Monitor (Alert on Failure)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 60,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "health-monitor-cron",
+      "name": "CRON - Every 1min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Health Monitor - Check if enabled\n */\nconst monitorEnabled = (($env.HEALTH_MONITOR_ENABLED || 'true').toString().toLowerCase() !== 'false');\nconst alertThreshold = parseInt($env.HEALTH_ALERT_THRESHOLD || '3', 10);\nconst alertCooldownSec = parseInt($env.ALERT_COOLDOWN_SEC || '300', 10);\nconst webhookBaseUrl = ($env.WEBHOOK_URL || 'http://localhost:5678').toString().trim();\n\nif (!monitorEnabled) {\n  return [{ json: { skip: true, reason: 'MONITOR_DISABLED' } }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    config: {\n      alertThreshold,\n      alertCooldownSec,\n      webhookBaseUrl,\n      readyzUrl: `${webhookBaseUrl}/webhook/readyz`,\n      timestamp: new Date().toISOString()\n    }\n  }\n}];\n"
+      },
+      "id": "monitor-config",
+      "name": "B0 - Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-550, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}",
+              "operation": "isFalse"
+            }
+          ]
+        }
+      },
+      "id": "monitor-enabled-check",
+      "name": "B0 - Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-300, 0]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "ralphe:health:fail_count"
+      },
+      "id": "get-fail-count",
+      "name": "B1 - Get Fail Count",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-50, -100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Parse current fail count and call readyz\n */\nconst config = $('B0 - Config').first().json.config;\nconst redisResult = $json;\n\nlet currentFailCount = 0;\nif (redisResult && typeof redisResult === 'string' && !isNaN(parseInt(redisResult))) {\n  currentFailCount = parseInt(redisResult);\n} else if (typeof redisResult === 'number') {\n  currentFailCount = redisResult;\n}\n\nreturn [{\n  json: {\n    config,\n    currentFailCount,\n    readyzUrl: config.readyzUrl\n  }\n}];\n"
+      },
+      "id": "parse-fail-count",
+      "name": "B1 - Parse Fail Count",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, -100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Call readyz endpoint to check health\n */\nconst input = $json;\nconst config = input.config;\nconst readyzUrl = input.readyzUrl;\n\nlet healthOk = false;\nlet healthResponse = null;\nlet healthError = null;\n\ntry {\n  const response = await $httpRequest({\n    method: 'GET',\n    url: readyzUrl,\n    timeout: 10000,\n    returnFullResponse: true\n  });\n  \n  const statusCode = response.statusCode || response.status || 500;\n  healthResponse = response.body || response.data;\n  \n  if (statusCode >= 200 && statusCode < 300) {\n    healthOk = true;\n  } else {\n    healthError = `HTTP ${statusCode}`;\n  }\n} catch (err) {\n  healthError = err.message || 'Request failed';\n}\n\nreturn [{\n  json: {\n    ...input,\n    healthOk,\n    healthResponse,\n    healthError,\n    checkedAt: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "call-readyz",
+      "name": "B2 - Call Readyz",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.healthOk}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "health-ok-check",
+      "name": "B2 - Health OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, -100]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "ralphe:health:fail_count",
+        "value": "0",
+        "expire": true,
+        "ttl": 3600
+      },
+      "id": "reset-fail-count",
+      "name": "B3 - Reset Fail Count",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [950, -200],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Increment fail count and check if should alert\n */\nconst input = $json;\nconst config = input.config;\nconst currentFailCount = input.currentFailCount || 0;\nconst newFailCount = currentFailCount + 1;\nconst alertThreshold = config?.alertThreshold || 3;\n\nconst shouldAlert = newFailCount >= alertThreshold;\n\nreturn [{\n  json: {\n    ...input,\n    newFailCount,\n    shouldAlert,\n    alertThreshold\n  }\n}];\n"
+      },
+      "id": "increment-fail-count",
+      "name": "B3 - Increment Fail Count",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [950, 0]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "ralphe:health:fail_count",
+        "value": "={{$json.newFailCount.toString()}}",
+        "expire": true,
+        "ttl": 3600
+      },
+      "id": "store-fail-count",
+      "name": "B3 - Store Fail Count",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1200, 0],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.shouldAlert}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "should-alert-check",
+      "name": "B4 - Should Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 0]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "ralphe:health:last_alert"
+      },
+      "id": "get-last-alert",
+      "name": "B4 - Get Last Alert",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1700, -100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Check alert cooldown\n */\nconst input = $('B3 - Store Fail Count').first().json;\nconst lastAlertResult = $json;\nconst config = input.config;\nconst cooldownSec = config?.alertCooldownSec || 300;\n\nlet lastAlertTime = 0;\nif (lastAlertResult && typeof lastAlertResult === 'string' && !isNaN(parseInt(lastAlertResult))) {\n  lastAlertTime = parseInt(lastAlertResult);\n}\n\nconst now = Date.now();\nconst timeSinceLastAlert = now - lastAlertTime;\nconst cooldownMs = cooldownSec * 1000;\n\nconst canAlert = timeSinceLastAlert >= cooldownMs;\n\nreturn [{\n  json: {\n    ...input,\n    canAlert,\n    lastAlertTime,\n    cooldownSec,\n    timeSinceLastAlert: Math.round(timeSinceLastAlert / 1000)\n  }\n}];\n"
+      },
+      "id": "check-cooldown",
+      "name": "B4 - Check Cooldown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1950, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.canAlert}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "can-alert-check",
+      "name": "B4 - Can Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2200, -100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Prepare alert message for admin\n */\nconst input = $json;\nconst adminPhone = ($env.ADMIN_ALERT_PHONE || '').toString().trim();\nconst alertWebhook = ($env.ALERT_WEBHOOK_URL || '').toString().trim();\n\nif (!adminPhone && !alertWebhook) {\n  return [{ json: { ...input, alertSkipped: true, reason: 'NO_ALERT_TARGET' } }];\n}\n\nconst failedChecks = [];\nif (input.healthResponse?.checks) {\n  for (const [name, check] of Object.entries(input.healthResponse.checks)) {\n    if (check.status !== 'ok') {\n      failedChecks.push(`${name}: ${check.error || 'FAIL'}`);\n    }\n  }\n}\n\nconst alertMessage = `🚨 ALERTE SANTÉ SYSTÈME\\n\\nStatut: ${input.healthResponse?.status || 'UNKNOWN'}\\nÉchecs consécutifs: ${input.newFailCount}\\nProblèmes: ${failedChecks.length > 0 ? failedChecks.join(', ') : input.healthError || 'Unknown'}\\n\\nHeure: ${input.checkedAt}`;\n\nreturn [{\n  json: {\n    ...input,\n    adminPhone,\n    alertWebhook,\n    alertMessage,\n    failedChecks\n  }\n}];\n"
+      },
+      "id": "prepare-alert",
+      "name": "B5 - Prepare Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, -200]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "ralphe:health:last_alert",
+        "value": "={{Date.now().toString()}}",
+        "expire": true,
+        "ttl": 86400
+      },
+      "id": "set-last-alert",
+      "name": "B5 - Set Last Alert",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [2700, -200],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Send alert via WhatsApp (if configured) or webhook\n */\nconst input = $json;\nconst adminPhone = input.adminPhone;\nconst alertWebhook = input.alertWebhook;\nconst alertMessage = input.alertMessage;\n\nlet alertSent = false;\nlet alertError = null;\n\n// Try webhook first (generic, could be Slack, Discord, etc.)\nif (alertWebhook) {\n  try {\n    await $httpRequest({\n      method: 'POST',\n      url: alertWebhook,\n      body: {\n        text: alertMessage,\n        type: 'health_alert',\n        severity: 'critical',\n        timestamp: new Date().toISOString()\n      },\n      json: true,\n      timeout: 10000\n    });\n    alertSent = true;\n  } catch (err) {\n    alertError = err.message;\n  }\n}\n\n// If webhook failed or not configured, try WhatsApp\nif (!alertSent && adminPhone) {\n  const waUrl = $env.WA_SEND_URL;\n  const waToken = $env.WA_API_TOKEN;\n  const waPhoneId = $env.WA_PHONE_NUMBER_ID;\n  const graphVersion = $env.GRAPH_API_VERSION || 'v21.0';\n  \n  let sendUrl = waUrl;\n  if (!sendUrl && waPhoneId) {\n    sendUrl = `https://graph.facebook.com/${graphVersion}/${waPhoneId}/messages`;\n  }\n  \n  if (sendUrl && waToken) {\n    try {\n      await $httpRequest({\n        method: 'POST',\n        url: sendUrl,\n        headers: {\n          'Authorization': `Bearer ${waToken}`,\n          'Content-Type': 'application/json'\n        },\n        body: {\n          messaging_product: 'whatsapp',\n          to: adminPhone,\n          type: 'text',\n          text: { body: alertMessage }\n        },\n        json: true,\n        timeout: 10000\n      });\n      alertSent = true;\n    } catch (err) {\n      alertError = (alertError ? alertError + '; ' : '') + err.message;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    ...input,\n    alertSent,\n    alertError,\n    alertTime: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "send-alert",
+      "name": "B5 - Send Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2950, -200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-05: Health check passed\nreturn [{ json: { status: 'HEALTHY', timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-healthy",
+      "name": "END - Healthy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, -200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-05: Not alerting (cooldown or no threshold)\nreturn [{ json: { status: 'DEGRADED_NO_ALERT', failCount: $json.newFailCount, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-no-alert",
+      "name": "END - No Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-05: Alert sent or attempted\nreturn [{ json: { status: 'ALERT_SENT', alertSent: $json.alertSent, error: $json.alertError, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-alerted",
+      "name": "END - Alerted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3200, -200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-05: Cooldown active, skip alert\nreturn [{ json: { status: 'COOLDOWN_ACTIVE', timeSinceLastAlert: $json.timeSinceLastAlert, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-cooldown",
+      "name": "END - Cooldown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-05: Monitor disabled\nreturn [{ json: { status: 'DISABLED', timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-disabled",
+      "name": "END - Disabled",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-50, 100]
+    }
+  ],
+  "connections": {
+    "CRON - Every 1min": {
+      "main": [
+        [
+          {
+            "node": "B0 - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Config": {
+      "main": [
+        [
+          {
+            "node": "B0 - Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Enabled?": {
+      "main": [
+        [
+          {
+            "node": "B1 - Get Fail Count",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END - Disabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Get Fail Count": {
+      "main": [
+        [
+          {
+            "node": "B1 - Parse Fail Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Parse Fail Count": {
+      "main": [
+        [
+          {
+            "node": "B2 - Call Readyz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Call Readyz": {
+      "main": [
+        [
+          {
+            "node": "B2 - Health OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Health OK?": {
+      "main": [
+        [
+          {
+            "node": "B3 - Reset Fail Count",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B3 - Increment Fail Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Reset Fail Count": {
+      "main": [
+        [
+          {
+            "node": "END - Healthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Increment Fail Count": {
+      "main": [
+        [
+          {
+            "node": "B3 - Store Fail Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Store Fail Count": {
+      "main": [
+        [
+          {
+            "node": "B4 - Should Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Should Alert?": {
+      "main": [
+        [
+          {
+            "node": "B4 - Get Last Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END - No Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Get Last Alert": {
+      "main": [
+        [
+          {
+            "node": "B4 - Check Cooldown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Check Cooldown": {
+      "main": [
+        [
+          {
+            "node": "B4 - Can Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Can Alert?": {
+      "main": [
+        [
+          {
+            "node": "B5 - Prepare Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END - Cooldown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5 - Prepare Alert": {
+      "main": [
+        [
+          {
+            "node": "B5 - Set Last Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5 - Set Last Alert": {
+      "main": [
+        [
+          {
+            "node": "B5 - Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5 - Send Alert": {
+      "main": [
+        [
+          {
+            "node": "END - Alerted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

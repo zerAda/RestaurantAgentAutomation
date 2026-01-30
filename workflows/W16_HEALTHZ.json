@@ -1,0 +1,261 @@
+{
+  "name": "W16 - Health Check Endpoints (readyz/livez)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 30,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "readyz",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "readyz-webhook",
+      "name": "IN - /readyz",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "livez",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "livez-webhook",
+      "name": "IN - /livez",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-800, 200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Livez - Simple liveness check (n8n is running)\n */\nreturn [{\n  json: {\n    status: 'ok',\n    check: 'livez',\n    timestamp: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "livez-response",
+      "name": "Livez OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-550, 200]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseBody": "={{JSON.stringify($json)}}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "livez-resp",
+      "name": "RESP - Livez 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-300, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 AS pg_ok;",
+        "additionalFields": {}
+      },
+      "id": "check-postgres",
+      "name": "Check Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-550, -100],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "ralphe:health:ping"
+      },
+      "id": "check-redis",
+      "name": "Check Redis",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-550, 100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-05: Aggregate health check results\n */\nconst timestamp = new Date().toISOString();\n\n// Get results from parallel checks\nconst pgResult = $('Check Postgres').first()?.json;\nconst redisResult = $('Check Redis').first()?.json;\n\n// Evaluate Postgres\nlet pgOk = false;\nlet pgError = null;\ntry {\n  if (pgResult?.pg_ok === 1 || pgResult?.pg_ok === '1') {\n    pgOk = true;\n  } else if (pgResult?.error) {\n    pgError = pgResult.error.message || 'Postgres check failed';\n  } else {\n    pgOk = true; // Query returned something\n  }\n} catch (e) {\n  pgError = e.message;\n}\n\n// Evaluate Redis\nlet redisOk = false;\nlet redisError = null;\ntry {\n  if (redisResult?.error) {\n    redisError = redisResult.error.message || 'Redis check failed';\n  } else {\n    // Redis GET returns null/nil for non-existent key, which is OK (connected)\n    redisOk = true;\n  }\n} catch (e) {\n  redisError = e.message;\n}\n\n// n8n is always OK if we reached here\nconst n8nOk = true;\n\n// Overall status\nconst allOk = pgOk && redisOk && n8nOk;\n\nconst checks = {\n  n8n: { status: n8nOk ? 'ok' : 'fail', latency_ms: 0 },\n  postgres: { status: pgOk ? 'ok' : 'fail', error: pgError },\n  redis: { status: redisOk ? 'ok' : 'fail', error: redisError }\n};\n\nreturn [{\n  json: {\n    status: allOk ? 'ok' : 'degraded',\n    ready: allOk,\n    checks,\n    timestamp\n  }\n}];\n"
+      },
+      "id": "aggregate-health",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-300, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.ready}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "check-ready",
+      "name": "All Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-50, 0]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseBody": "={{JSON.stringify($json)}}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "resp-200-ready",
+      "name": "RESP - 200 Ready",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [200, -100]
+    },
+    {
+      "parameters": {
+        "responseCode": 503,
+        "responseBody": "={{JSON.stringify($json)}}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "resp-503-not-ready",
+      "name": "RESP - 503 Not Ready",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [200, 100]
+    }
+  ],
+  "connections": {
+    "IN - /readyz": {
+      "main": [
+        [
+          {
+            "node": "Check Postgres",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IN - /livez": {
+      "main": [
+        [
+          {
+            "node": "Livez OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Livez OK": {
+      "main": [
+        [
+          {
+            "node": "RESP - Livez 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Postgres": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Redis": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "All Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Ready?": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESP - 503 Not Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
