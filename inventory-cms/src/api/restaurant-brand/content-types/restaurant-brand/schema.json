@@ -1,0 +1,60 @@
+{
+    "kind": "singleType",
+    "collectionName": "restaurant_brand",
+    "info": {
+        "singularName": "restaurant-brand",
+        "pluralName": "restaurant-brands",
+        "displayName": "Restaurant Brand",
+        "description": "Brand identity configuration for AI personalisation"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "restaurant_name": {
+            "type": "string",
+            "required": true
+        },
+        "brand_story": {
+            "type": "text",
+            "description": "History, values, what makes this restaurant unique"
+        },
+        "visual_identity": {
+            "type": "json",
+            "default": {
+                "primary_color": "#000000",
+                "secondary_color": "#FFFFFF",
+                "logo_url": "",
+                "preferred_aesthetic": "luxury_minimalist"
+            }
+        },
+        "voice_tone": {
+            "type": "enumeration",
+            "enum": [
+                "professional_elegant",
+                "friendly_casual",
+                "bold_streetfood",
+                "warm_family",
+                "trendy_genz"
+            ],
+            "default": "friendly_casual"
+        },
+        "target_audience": {
+            "type": "string",
+            "default": "Jeunes urbains 18-35 ans"
+        },
+        "unique_selling_points": {
+            "type": "json",
+            "description": "Array of USPs: e.g. ['Ingrédients bio', 'Livraison 15min', 'Recettes grand-mère']"
+        },
+        "prohibited_terms": {
+            "type": "json",
+            "description": "Words to avoid in captions (competitors, inappropriate terms)"
+        },
+        "signature_phrases": {
+            "type": "json",
+            "description": "Brand catchphrases to inject: e.g. ['Faim de qualité', 'Votre resto de quartier']"
+        }
+    }
+}

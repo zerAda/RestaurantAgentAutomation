@@ -37,6 +37,38 @@
         },
         {
             "parameters": {
+                "operation": "get",
+                "collection": "restaurant-brand",
+                "id": "singleton"
+            },
+            "name": "Get Brand DNA",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                250,
+                450
+            ],
+            "credentials": {
+                "strapiApi": {
+                    "id": "STRAPI_CREDENTIAL_ID",
+                    "name": "Strapi connection"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "const asset = $input.item(0).json;\nconst brand = $input.item(1).json;\n\nreturn {\n  json: {\n    asset: asset,\n    brand: brand,\n    aesthetic: asset.aesthetic_style || brand.visual_identity.preferred_aesthetic\n  }\n};"
+            },
+            "name": "Merge Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
                 "url": "https://api.openai.com/v1/chat/completions",
                 "method": "POST",
                 "authentication": "genericCredentialType",
@@ -50,7 +82,7 @@
                         },
                         {
                             "name": "messages",
-                            "value": "={{ [{\"role\": \"system\", \"content\": \"You are a Michelin Star Food Stylist & Gen Z Social Media Manager. Step 1: Analyze the image and list ingredients. Step 2: Write a PROMPT for FLUX.1 Pro to recreate this dish in style: '\" + $json.aesthetic_style + \"'. Use keywords: 8k, bokeh, cinematic. Step 3: Write a witty CAPTION for Instagram/TikTok with 2-3 emojis. Return JSON: { prompt: '...', caption: '...' }\"}, {\"role\": \"user\", \"content\": [{\"type\": \"image_url\", \"image_url\": {\"url\": $json.original_media.url}}]}] }}"
+                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `You are the AI Creative Director for '${$json.brand.restaurant_name}'. \n\nBRAND IDENTITY:\n- Story: ${$json.brand.brand_story}\n- Voice: ${$json.brand.voice_tone}\n- Target: ${$json.brand.target_audience}\n- USPs: ${JSON.stringify($json.brand.unique_selling_points)}\n- Signature Phrases: ${JSON.stringify($json.brand.signature_phrases)}\n\nTASK:\n1. Analyze the food image\n2. Generate a FLUX.1 Pro prompt for style '${$json.aesthetic}' that reflects our brand aesthetic\n3. Write an Instagram/TikTok caption:\n   - Tone: ${$json.brand.voice_tone}\n   - Include 1 signature phrase naturally\n   - 2-3 emojis max\n   - Mention our USP subtly\n   - Avoid: ${JSON.stringify($json.brand.prohibited_terms)}\n\nReturn JSON: { \"prompt\": \"...\", \"caption\": \"...\" }`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"image_url\",\n        \"image_url\": { \"url\": $json.asset.original_media.url }\n      }\n    ]\n  }\n] }}"
                         },
                         {
                             "name": "response_format",
@@ -59,11 +91,11 @@
                     ]
                 }
             },
-            "name": "AI Vision & Creative Director",
+            "name": "AI Vision & Brand Director",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
-                450,
+                600,
                 300
             ]
         },
@@ -78,7 +110,7 @@
                     "parameters": [
                         {
                             "name": "version",
-                            "value": "flux-pro-1.0-ultra-schnell"
+                            "value": "flux-pro-1.0-ultra"
                         },
                         {
                             "name": "input",
@@ -99,7 +131,7 @@
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
-                650,
+                800,
                 300
             ]
         },
@@ -107,10 +139,10 @@
             "parameters": {
                 "operation": "update",
                 "collection": "creative_assets",
-                "id": "={{ $node[\"Get Asset\"].json.id }}",
+                "id": "={{ $node[\"Merge Context\"].json.asset.id }}",
                 "fields": {
-                    "ai_prompt_used": "={{ $node[\"AI Vision & Creative Director\"].json.choices[0].message.content.prompt }}",
-                    "generated_caption": "={{ $node[\"AI Vision & Creative Director\"].json.choices[0].message.content.caption }}",
+                    "ai_prompt_used": "={{ $node[\"AI Vision & Brand Director\"].json.choices[0].message.content.prompt }}",
+                    "generated_caption": "={{ $node[\"AI Vision & Brand Director\"].json.choices[0].message.content.caption }}",
                     "status": "processing"
                 }
             },
@@ -118,7 +150,7 @@
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                850,
+                1000,
                 300
             ],
             "credentials": {
@@ -137,6 +169,11 @@
                         "node": "Get Asset",
                         "type": "main",
                         "index": 0
+                    },
+                    {
+                        "node": "Get Brand DNA",
+                        "type": "main",
+                        "index": 0
                     }
                 ]
             ]
@@ -145,14 +182,36 @@
             "main": [
                 [
                     {
-                        "node": "AI Vision & Creative Director",
+                        "node": "Merge Context",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "AI Vision & Creative Director": {
+        "Get Brand DNA": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge Context": {
+            "main": [
+                [
+                    {
+                        "node": "AI Vision & Brand Director",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Vision & Brand Director": {
             "main": [
                 [
                     {
