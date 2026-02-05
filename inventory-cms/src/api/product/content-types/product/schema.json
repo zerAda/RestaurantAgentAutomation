@@ -28,6 +28,34 @@
             "type": "integer",
             "default": 0
         },
+        "marketing_name": {
+            "type": "string",
+            "description": "Signature/commercial name (ex: 'Bazooka' for a burger)"
+        },
+        "aliases": {
+            "type": "json",
+            "description": "Array of alternative names/search terms: ['bazooka', 'burger bazooka', 'bzk']"
+        },
+        "category": {
+            "type": "enumeration",
+            "enum": [
+                "burgers",
+                "pizzas",
+                "tacos",
+                "salades",
+                "boissons",
+                "desserts",
+                "specials"
+            ]
+        },
+        "description_multilang": {
+            "type": "json",
+            "default": {
+                "fr": "",
+                "ar": "",
+                "dz": ""
+            }
+        },
         "ingredients": {
             "type": "relation",
             "relation": "manyToMany",

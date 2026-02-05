@@ -1,0 +1,130 @@
+{
+    "name": "W4_CORE_MENU_GROUNDED",
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "User Message",
+            "type": "n8n-nodes-base.start",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "={{ $env.MENU_VALIDATOR_WORKFLOW_ID }}"
+            },
+            "name": "Load Menu",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "collection": "restaurant-brand",
+                "id": "singleton"
+            },
+            "name": "Get Brand DNA",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                250,
+                450
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const menu = $input.item(0).json;\nconst brand = $input.item(1).json;\nconst userText = menu.user_text;\n\n// Language detection (Darija patterns)\nconst darijaPatterns = /\\b(sahit|bsaha|chhal|wesh|khouya|rabbi)\\b/i;\nconst arabicPattern = /[\\u0600-\\u06FF]/;\nconst detectedLang = arabicPattern.test(userText) ? 'ar' : (darijaPatterns.test(userText) ? 'dz' : 'fr');\n\nreturn {\n  json: {\n    user_text: userText,\n    menu: menu.menu_formatted,\n    menu_index: menu.menu_index,\n    brand: brand,\n    detected_lang: detectedLang\n  }\n};"
+            },
+            "name": "Merge Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.openai.com/v1/chat/completions",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "gpt-4"
+                        },
+                        {
+                            "name": "messages",
+                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `Tu es l'assistant de commande pour '${$json.brand.restaurant_name}'.\n\nRÈGLE ABSOLUE: TU NE PEUX SUGGÉRER QUE LES PLATS CI-DESSOUS. N'INVENTE JAMAIS.\n\n=== MENU RÉEL (SOURCE DE VÉRITÉ) ===\n${$json.menu}\n=================================\n\nLANGUE DÉTECTÉE: ${$json.detected_lang}\nTON: ${$json.brand.voice_tone}\nMARCHÉ: Algérie (FR/Darija/AR)\n\nINSTRUCTIONS:\n1. Si le client demande \"Bazooka\" ou un nom signature, trouve-le dans les alias\n2. Si le plat est en rupture (❌), propose une alternative RÉELLE\n3. Utilise les VRAIS prix affichés\n4. Si le client demande quelque chose qui n'existe pas, dis \"On n'a pas ça chef, mais regarde notre menu\"\n5. Réponds dans la langue du client (${$json.detected_lang})\n6. Si Darija: utilise expressions naturelles (sahit, bsaha, chhal)\n\nEXEMPLE CORRECT:\nClient: \"Wesh, vous avez le Bazooka ?\"\nToi: \"Sahit chef ! Oui le Bazooka (notre burger signature) est dispo 🔥 - 800 DA. Tu veux l'ajouter ?\"\n\nEXEMPLE INTERDIT:\nClient: \"T'as des sushis ?\"\nToi: \"Non chef, on fait pas ça. Mais on a des [PLAT RÉEL DU MENU] si tu veux !\"`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": $json.user_text\n  }\n] }}"
+                        }
+                    ]
+                }
+            },
+            "name": "AI Response (Menu Grounded)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "User Message": {
+            "main": [
+                [
+                    {
+                        "node": "Load Menu",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Get Brand DNA",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Menu": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Brand DNA": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge Context": {
+            "main": [
+                [
+                    {
+                        "node": "AI Response (Menu Grounded)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
