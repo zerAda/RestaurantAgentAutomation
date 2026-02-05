@@ -1,90 +1,145 @@
 {
-    "name": "W5 - OUT TikTok Sender",
-    "active": false,
-    "settings": {
-        "executionTimeout": 120,
-        "saveExecutionProgress": true,
-        "saveManualExecutions": true
-    },
+    "name": "W5_OUT_TIKTOK",
     "nodes": [
         {
             "parameters": {},
-            "id": "trigger",
-            "name": "IN - From CORE",
-            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "name": "Start",
+            "type": "n8n-nodes-base.start",
             "typeVersion": 1,
             "position": [
-                -2400,
-                0
+                100,
+                300
             ]
         },
         {
             "parameters": {
-                "language": "javascript",
-                "jsCode": "const payload = $json;\n// Placeholder for TikTok Outbound Logic\n// Assuming TikTok API is configured\n\nconst recipient = payload.userId;\nconst text = payload.replyText;\nconst channel = 'tiktok';\n\n// For Phase 1, we will primarily log this as we might not have live TikTok creds yet.\n// But we structure it for the real API.\n\nreturn [{\n    json: {\n        ...payload,\n        channel,\n        recipient,\n        finalPayload: {\n            recipient_id: recipient,\n            message: {\n                type: 'text',\n                text: text\n            }\n        }\n    }\n}];"
-            },
-            "id": "prepare-tiktok",
-            "name": "B0 - Prepare Payload",
-            "type": "n8n-nodes-base.code",
-            "typeVersion": 2,
-            "position": [
-                -2150,
-                0
-            ]
-        },
-        {
-            "parameters": {
-                "url": "={{$env.TIKTOK_SEND_URL || 'https://mock.tiktok.api/send'}}",
+                "url": "https://open-api.tiktok.com/im/v1/messages/push/",
                 "method": "POST",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
                 "sendBody": true,
                 "bodyParameters": {
                     "parameters": [
                         {
-                            "name": "recipient_id",
-                            "value": "={{$json.finalPayload.recipient_id}}"
+                            "name": "receiver_id",
+                            "value": "={{ $json.to }}"
                         },
                         {
-                            "name": "message",
-                            "value": "={{$json.finalPayload.message}}"
+                            "name": "text",
+                            "value": "={{ $json.text }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
                         }
                     ]
                 },
-                "options": {}
-            },
-            "id": "send-tiktok",
-            "name": "OUT - Send TikTok",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 4.1,
-            "position": [
-                -1900,
-                0
-            ],
-            "credentials": {
-                "httpHeaderAuth": {
-                    "id": "TIKTOK_CREDENTIAL_ID",
-                    "name": "TikTok API"
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "X-Tiktok-Token",
+                            "value": "={{ $env.TIKTOK_API_TOKEN }}"
+                        }
+                    ]
                 }
             },
-            "continueOnFail": true
+            "name": "TikTok Send API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.media_url }}",
+                            "operation": "notEqual",
+                            "value2": ""
+                        }
+                    ]
+                }
+            },
+            "name": "Has Media?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://open-api.tiktok.com/im/v1/messages/push/",
+                "method": "POST",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "receiver_id",
+                            "value": "={{ $json.to }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "image"
+                        },
+                        {
+                            "name": "media_url",
+                            "value": "={{ $json.media_url }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "X-Tiktok-Token",
+                            "value": "={{ $env.TIKTOK_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "TikTok Send Media",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                200
+            ]
         }
     ],
     "connections": {
-        "IN - From CORE": {
+        "Start": {
             "main": [
                 [
                     {
-                        "node": "B0 - Prepare Payload",
+                        "node": "TikTok Send API",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "B0 - Prepare Payload": {
+        "TikTok Send API": {
             "main": [
                 [
                     {
-                        "node": "OUT - Send TikTok",
+                        "node": "Has Media?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Media?": {
+            "main": [
+                [
+                    {
+                        "node": "TikTok Send Media",
                         "type": "main",
                         "index": 0
                     }
