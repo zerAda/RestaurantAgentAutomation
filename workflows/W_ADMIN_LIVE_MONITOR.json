@@ -1,0 +1,161 @@
+{
+    "name": "W_ADMIN_LIVE_MONITOR",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "seconds",
+                            "secondsInterval": 10
+                        }
+                    ]
+                }
+            },
+            "name": "Poll Orders",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "collection": "orders",
+                "filters": {
+                    "status": "pending",
+                    "createdAt": {
+                        "$gte": "={{ new Date(Date.now() - 300000).toISOString() }}"
+                    }
+                },
+                "limit": 50
+            },
+            "name": "Get Pending Orders",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const orders = $input.all().map(i => i.json);\nconst newOrders = orders.filter(o => !$node['Redis Check'].json[o.id]);\n\n// Format for dashboard\nconst formatted = newOrders.map(o => ({\n  id: o.id,\n  table: o.table_id || 'Livraison',\n  items: o.items?.length || 0,\n  total: o.total,\n  time: new Date(o.createdAt).toLocaleTimeString('fr-FR'),\n  urgent: (Date.now() - new Date(o.createdAt).getTime()) > 120000\n}));\n\nreturn {\n  json: {\n    new_orders: formatted,\n    count: formatted.length,\n    has_urgent: formatted.some(o => o.urgent)\n  }\n};"
+            },
+            "name": "Format Dashboard Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ $json.count }}",
+                            "operation": "larger",
+                            "value2": 0
+                        }
+                    ]
+                }
+            },
+            "name": "Has New Orders?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.ADMIN_WEBHOOK_URL || 'http://inventory-cms:1337/api/admin-notifications' }}",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "type",
+                            "value": "new_orders"
+                        },
+                        {
+                            "name": "orders",
+                            "value": "={{ $json.new_orders }}"
+                        },
+                        {
+                            "name": "count",
+                            "value": "={{ $json.count }}"
+                        },
+                        {
+                            "name": "play_sound",
+                            "value": "={{ true }}"
+                        },
+                        {
+                            "name": "urgent",
+                            "value": "={{ $json.has_urgent }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Push to Admin Dashboard",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Poll Orders": {
+            "main": [
+                [
+                    {
+                        "node": "Get Pending Orders",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Pending Orders": {
+            "main": [
+                [
+                    {
+                        "node": "Format Dashboard Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Dashboard Data": {
+            "main": [
+                [
+                    {
+                        "node": "Has New Orders?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has New Orders?": {
+            "main": [
+                [
+                    {
+                        "node": "Push to Admin Dashboard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        }
+    }
+}

@@ -1,0 +1,161 @@
+{
+    "name": "W_AI_STRATEGY_ADVISOR",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 1
+                        }
+                    ]
+                }
+            },
+            "name": "Hourly Analysis",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "collection": "orders",
+                "filters": {
+                    "createdAt": {
+                        "$gte": "={{ new Date(Date.now() - 86400000).toISOString() }}"
+                    }
+                },
+                "limit": 500
+            },
+            "name": "Get Last 24h Orders",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const orders = $input.all().map(i => i.json);\n\n// Aggregate sales by product\nconst productSales = {};\norders.forEach(o => {\n  (o.items || []).forEach(item => {\n    const name = item.product_name || 'Unknown';\n    productSales[name] = (productSales[name] || 0) + (item.quantity || 1);\n  });\n});\n\n// Sort by sales\nconst sorted = Object.entries(productSales)\n  .sort((a, b) => b[1] - a[1]);\n\nconst top3 = sorted.slice(0, 3).map(([name, qty]) => ({ name, qty }));\nconst bottom3 = sorted.slice(-3).map(([name, qty]) => ({ name, qty }));\n\nreturn {\n  json: {\n    total_orders: orders.length,\n    top_sellers: top3,\n    low_performers: bottom3,\n    analysis_time: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Analyze Sales",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.LLM_API_URL || 'http://ollama:11434/api/chat' }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "={{ $env.LLM_MODEL || 'llama3.1' }}"
+                        },
+                        {
+                            "name": "stream",
+                            "value": "={{ false }}"
+                        },
+                        {
+                            "name": "messages",
+                            "value": "={{ [{ \"role\": \"system\", \"content\": \"Tu es un consultant stratégique pour restaurant. Analyse les données et donne UN conseil actionnable en 2 lignes max. Sois direct et parle comme un pote entrepreneur.\" }, { \"role\": \"user\", \"content\": `Voici les stats des dernières 24h:\n- Total commandes: ${$json.total_orders}\n- Top 3 ventes: ${$json.top_sellers.map(t => t.name + ' (' + t.qty + ')').join(', ')}\n- Flops: ${$json.low_performers.map(t => t.name + ' (' + t.qty + ')').join(', ')}\n\nDonne un conseil stratégique.` }] }}"
+                        }
+                    ]
+                }
+            },
+            "name": "AI Strategy Advice",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.ADMIN_WEBHOOK_URL || 'http://inventory-cms:1337/api/admin-notifications' }}",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "type",
+                            "value": "strategy_insight"
+                        },
+                        {
+                            "name": "insight",
+                            "value": "={{ $json.message?.content || $json.response }}"
+                        },
+                        {
+                            "name": "stats",
+                            "value": "={{ $node['Analyze Sales'].json }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Push Insight to Dashboard",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Hourly Analysis": {
+            "main": [
+                [
+                    {
+                        "node": "Get Last 24h Orders",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Last 24h Orders": {
+            "main": [
+                [
+                    {
+                        "node": "Analyze Sales",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Analyze Sales": {
+            "main": [
+                [
+                    {
+                        "node": "AI Strategy Advice",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Strategy Advice": {
+            "main": [
+                [
+                    {
+                        "node": "Push Insight to Dashboard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
