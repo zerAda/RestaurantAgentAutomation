@@ -39,7 +39,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const menu = $input.item(0).json;\nconst brand = $input.item(1).json;\nconst userText = menu.user_text;\n\n// Language detection (Darija patterns)\nconst darijaPatterns = /\\b(sahit|bsaha|chhal|wesh|khouya|rabbi)\\b/i;\nconst arabicPattern = /[\\u0600-\\u06FF]/;\nconst detectedLang = arabicPattern.test(userText) ? 'ar' : (darijaPatterns.test(userText) ? 'dz' : 'fr');\n\nreturn {\n  json: {\n    user_text: userText,\n    menu: menu.menu_formatted,\n    menu_index: menu.menu_index,\n    brand: brand,\n    detected_lang: detectedLang\n  }\n};"
+                "jsCode": "const menu = $input.item(0).json;\nconst brand = $input.item(1).json;\nconst userText = menu.user_text;\n\n// Language detection (Darija patterns)\nconst darijaPatterns = /\\b(sahit|bsaha|chhal|wesh|khouya|rabbi|bghit|3andi)\\b/i;\nconst arabicPattern = /[\\u0600-\\u06FF]/;\nconst detectedLang = arabicPattern.test(userText) ? 'ar' : (darijaPatterns.test(userText) ? 'dz' : 'fr');\n\nreturn {\n  json: {\n    user_text: userText,\n    menu: menu.menu_formatted,\n    menu_index: menu.menu_index,\n    brand: brand,\n    detected_lang: detectedLang\n  }\n};"
             },
             "name": "Merge Context",
             "type": "n8n-nodes-base.code",
@@ -51,27 +51,43 @@
         },
         {
             "parameters": {
-                "url": "https://api.openai.com/v1/chat/completions",
+                "url": "={{ $env.LLM_API_URL || 'http://ollama:11434/api/chat' }}",
                 "method": "POST",
                 "sendBody": true,
                 "bodyParameters": {
                     "parameters": [
                         {
                             "name": "model",
-                            "value": "gpt-4"
+                            "value": "={{ $env.LLM_MODEL || 'llama3.1' }}"
+                        },
+                        {
+                            "name": "stream",
+                            "value": "={{ false }}"
                         },
                         {
                             "name": "messages",
-                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `Tu es l'assistant de commande pour '${$json.brand.restaurant_name}'.\n\nRÈGLE ABSOLUE: TU NE PEUX SUGGÉRER QUE LES PLATS CI-DESSOUS. N'INVENTE JAMAIS.\n\n=== MENU RÉEL (SOURCE DE VÉRITÉ) ===\n${$json.menu}\n=================================\n\nLANGUE DÉTECTÉE: ${$json.detected_lang}\nTON: ${$json.brand.voice_tone}\nMARCHÉ: Algérie (FR/Darija/AR)\n\nINSTRUCTIONS:\n1. Si le client demande \"Bazooka\" ou un nom signature, trouve-le dans les alias\n2. Si le plat est en rupture (❌), propose une alternative RÉELLE\n3. Utilise les VRAIS prix affichés\n4. Si le client demande quelque chose qui n'existe pas, dis \"On n'a pas ça chef, mais regarde notre menu\"\n5. Réponds dans la langue du client (${$json.detected_lang})\n6. Si Darija: utilise expressions naturelles (sahit, bsaha, chhal)\n\nEXEMPLE CORRECT:\nClient: \"Wesh, vous avez le Bazooka ?\"\nToi: \"Sahit chef ! Oui le Bazooka (notre burger signature) est dispo 🔥 - 800 DA. Tu veux l'ajouter ?\"\n\nEXEMPLE INTERDIT:\nClient: \"T'as des sushis ?\"\nToi: \"Non chef, on fait pas ça. Mais on a des [PLAT RÉEL DU MENU] si tu veux !\"`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": $json.user_text\n  }\n] }}"
+                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `Tu es l'assistant de commande pour '${$json.brand.restaurant_name}'.\n\nRÈGLE ABSOLUE: TU NE PEUX SUGGÉRER QUE LES PLATS CI-DESSOUS. N'INVENTE JAMAIS.\n\n=== MENU RÉEL ===\n${$json.menu}\n=================\n\nLANGUE: ${$json.detected_lang}\nTON: ${$json.brand.voice_tone}\nMARCHÉ: Algérie (FR/Darija/AR)\n\nINSTRUCTIONS:\n1. Si le client demande un nom signature (\"Bazooka\"), trouve-le dans les alias\n2. Si rupture (❌), propose une alternative RÉELLE\n3. Utilise les VRAIS prix\n4. Si inexistant: \"On n'a pas ça chef, mais regarde notre menu\"\n5. Réponds dans la langue du client\n6. Si Darija: expressions naturelles (sahit, bsaha, chhal)\n7. Sois concis, naturel, comme un vrai serveur algérien\n\nEXEMPLE:\nClient: \"Wesh, vous avez le Bazooka ?\"\nToi: \"Sahit chef ! Oui le Bazooka est dispo 🔥 - 800 DA. Tu veux l'ajouter ?\"`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": $json.user_text\n  }\n] }}"
                         }
                     ]
                 }
             },
-            "name": "AI Response (Menu Grounded)",
+            "name": "Ollama Chat (Local AI)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
                 650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Extract response from Ollama format\nconst ollamaResponse = $input.first().json;\nconst content = ollamaResponse.message?.content || ollamaResponse.response || '';\n\nreturn {\n  json: {\n    response: content,\n    model: ollamaResponse.model,\n    done: ollamaResponse.done\n  }\n};"
+            },
+            "name": "Format Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                850,
                 300
             ]
         }
@@ -119,7 +135,18 @@
             "main": [
                 [
                     {
-                        "node": "AI Response (Menu Grounded)",
+                        "node": "Ollama Chat (Local AI)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Ollama Chat (Local AI)": {
+            "main": [
+                [
+                    {
+                        "node": "Format Response",
                         "type": "main",
                         "index": 0
                     }
