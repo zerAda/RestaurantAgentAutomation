@@ -55,6 +55,25 @@
         "signature_phrases": {
             "type": "json",
             "description": "Brand catchphrases to inject: e.g. ['Faim de qualité', 'Votre resto de quartier']"
+        },
+        "localization": {
+            "type": "json",
+            "default": {
+                "primary_language": "fr",
+                "supported_languages": [
+                    "fr",
+                    "ar",
+                    "dz"
+                ],
+                "auto_detect": true,
+                "darija_expressions": [
+                    "sahit",
+                    "bsaha",
+                    "chhal",
+                    "wesh rak"
+                ],
+                "cultural_notes": "Marché algérien - Code-switching FR/Darija courant"
+            }
         }
     }
 }
