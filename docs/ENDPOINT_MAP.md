@@ -50,9 +50,20 @@ curl -X POST https://api.example.com/v1/inbound/whatsapp \
 
 ## Signature Validation (P0-SEC-02)
 
-For WhatsApp webhooks, validate `X-Hub-Signature-256`:
-- `META_SIGNATURE_REQUIRED=false` → warn mode (log only)
-- `META_SIGNATURE_REQUIRED=true` → enforce mode (reject invalid)
+For Meta webhooks (WhatsApp/Instagram/Messenger), validate `X-Hub-Signature-256`:
+
+| Mode | Behavior |
+|------|----------|
+| `META_SIGNATURE_REQUIRED=off` | Skip validation (dev only) |
+| `META_SIGNATURE_REQUIRED=warn` | Validate, log failures, but allow through (staging) |
+| `META_SIGNATURE_REQUIRED=enforce` | Reject requests with invalid/missing signature (PRODUCTION) |
+
+**IMPORTANT**: Meta inbound webhooks do NOT use custom `x-api-token` headers.
+Authentication is via `X-Hub-Signature-256` when `META_SIGNATURE_REQUIRED=warn|enforce`.
+
+Legacy `true`/`false` values are supported for backwards compatibility:
+- `true` → mapped to `enforce`
+- `false` → mapped to `off`
 
 ## Notes
 - `/v1/admin/*` et `/v1/customer/*` sont des namespaces privés à protéger (traefik / réseau).

@@ -28,25 +28,33 @@ psql -c "SELECT * FROM security_events WHERE event_type='LEGACY_TOKEN_BLOCKED' O
 
 ### Meta Signature Validation Rollout
 
-**Phase 1: Warn Mode**
+**Phase 1: Off (initial setup/dev only)**
 ```env
-META_SIGNATURE_REQUIRED=false
+META_SIGNATURE_REQUIRED=off
 META_APP_SECRET=your_meta_app_secret_here
 ```
 
-**Phase 2: Monitor**
+**Phase 2: Warn Mode (validate without blocking)**
+```env
+META_SIGNATURE_REQUIRED=warn
+META_APP_SECRET=your_meta_app_secret_here
+```
+
+Monitor for issues:
 ```sql
-SELECT event_type, COUNT(*) 
-FROM security_events 
-WHERE event_type IN ('WA_SIGNATURE_INVALID', 'WA_SIGNATURE_MISSING') 
+SELECT event_type, COUNT(*)
+FROM security_events
+WHERE event_type IN ('WA_SIGNATURE_INVALID', 'WA_SIGNATURE_MISSING')
   AND created_at > now() - interval '24 hours'
 GROUP BY event_type;
 ```
 
-**Phase 3: Enforce (after validation)**
+**Phase 3: Enforce (PRODUCTION - reject invalid)**
 ```env
-META_SIGNATURE_REQUIRED=true
+META_SIGNATURE_REQUIRED=enforce
 ```
+
+> **Note**: `true`/`false` are supported for backwards compatibility (`true`→`enforce`, `false`→`off`).
 
 ### Gateway Security Validation
 ```bash

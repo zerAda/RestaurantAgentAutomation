@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15551234567",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Fatima Khelifi"
+                },
+                "wa_id": "213555987654"
+              }
+            ],
+            "messages": [
+              {
+                "from": "213555987654",
+                "id": "wamid.HBgNMjEzNTU1OTg3NjU0FQIAEhggOTg3NjU0MzIxMDk4NzY1NDMyMTA5ODc2NTQzMjEw",
+                "timestamp": "__TIMESTAMP__",
+                "type": "image",
+                "image": {
+                  "caption": "Voici ma commande",
+                  "mime_type": "image/jpeg",
+                  "sha256": "abc123def456",
+                  "id": "MEDIA_ID_12345"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

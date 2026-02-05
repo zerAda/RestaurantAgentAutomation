@@ -1,0 +1,25 @@
+{
+  "object": "page",
+  "entry": [
+    {
+      "id": "PAGE_ID_123456",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "PSID_USER_777888999"
+          },
+          "recipient": {
+            "id": "PAGE_ID_123456"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "postback": {
+            "mid": "m_msg_postback_eee555fff666",
+            "title": "Voir le menu",
+            "payload": "VIEW_MENU"
+          }
+        }
+      ]
+    }
+  ]
+}

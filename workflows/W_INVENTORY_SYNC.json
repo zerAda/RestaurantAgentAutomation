@@ -1,0 +1,211 @@
+{
+    "name": "W_INVENTORY_SYNC",
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "Start",
+            "type": "n8n-nodes-base.start",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{$json.type}}",
+                            "operation": "equal",
+                            "value2": "ORDER_CONFIRMED"
+                        }
+                    ]
+                }
+            },
+            "name": "Is Order Confirmed?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return $json.items.map(item => ({ json: { item_code: item.item, qty: item.qty } }));"
+            },
+            "name": "Split Items",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "=http://localhost:1337/api/products?filters[code][$eq]={{$json.item_code}}&populate=ingredients",
+                "method": "GET",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "headerAuth": {
+                    "name": "Authorization",
+                    "value": "=Bearer {{$env.N8N_API_TOKEN}}"
+                }
+            },
+            "name": "Get Product & Ingredients",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const product = $json.data[0];\nif (!product) return [];\n\nconst ingredients = product.attributes.ingredients.data;\nconst orderQty = $item(0).$node[\"Split Items\"].json.qty;\n\nreturn ingredients.map(ing => ({\n  json: {\n    id: ing.id,\n    name: ing.attributes.name,\n    current_stock: ing.attributes.current_stock,\n    decrement_by: orderQty,\n    min_stock_alert: ing.attributes.min_stock_alert\n  }\n}));"
+            },
+            "name": "Calculate New Stock",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "=http://localhost:1337/api/ingredients/{{$json.id}}",
+                "method": "PUT",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "headerAuth": {
+                    "name": "Authorization",
+                    "value": "=Bearer {{$env.N8N_API_TOKEN}}"
+                },
+                "jsonParameters": true,
+                "options": {},
+                "body": "={{ {\"data\": {\"current_stock\": $json.current_stock - $json.decrement_by}} }}"
+            },
+            "name": "Update Stock",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{$json.data.attributes.current_stock}}",
+                            "operation": "smallerEqual",
+                            "value2": "={{$node[\"Calculate New Stock\"].json.min_stock_alert}}"
+                        }
+                    ]
+                }
+            },
+            "name": "Low Stock?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "W_LOW_STOCK_ALERT"
+            },
+            "name": "Trigger Alert",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                1650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Start": {
+            "main": [
+                [
+                    {
+                        "node": "Is Order Confirmed?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Order Confirmed?": {
+            "main": [
+                [
+                    {
+                        "node": "Split Items",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split Items": {
+            "main": [
+                [
+                    {
+                        "node": "Get Product & Ingredients",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Product & Ingredients": {
+            "main": [
+                [
+                    {
+                        "node": "Calculate New Stock",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Calculate New Stock": {
+            "main": [
+                [
+                    {
+                        "node": "Update Stock",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Stock": {
+            "main": [
+                [
+                    {
+                        "node": "Low Stock?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Low Stock?": {
+            "main": [
+                [
+                    {
+                        "node": "Trigger Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

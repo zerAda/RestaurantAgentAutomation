@@ -1,5 +1,15 @@
 # =============================================================================
-# Scheduled Backup - Resto Bot (SSH-based)
+# Scheduled Backup - Resto Bot (v2.0 - Robust)
+# =============================================================================
+# Creates PostgreSQL backups via SSH to VPS.
+# REQUIRES: VPS_SSH_KEY secret configured
+#
+# Features:
+# - Pre-checks (disk space, postgres ready, docker compose)
+# - Robust error handling with actionable messages
+# - Supports non-root VPS user (must be in docker group)
+# - Backup rotation (daily: 7 days, weekly: 4 weeks)
+# - Integrity verification (gunzip -t)
 # =============================================================================
 
 name: Scheduled Backup
@@ -7,7 +17,7 @@ name: Scheduled Backup
 on:
   schedule:
     - cron: '0 3 * * *'      # Daily at 3:00 AM UTC
-    - cron: '0 4 * * 0'      # Weekly full on Sundays
+    - cron: '0 4 * * 0'      # Weekly full on Sundays at 4:00 AM UTC
   workflow_dispatch:
     inputs:
       backup_type:
@@ -18,24 +28,61 @@ on:
         options:
           - daily
           - full
+      skip_prechecks:
+        description: 'Skip pre-checks (for debugging)'
+        type: boolean
+        default: false
 
 env:
-  VPS_HOST: 72.60.190.192
-  VPS_USER: root
-  PROJECT_DIR: /docker/n8n
-  BACKUP_DIR: /local-files/backups/resto-bot
+  VPS_HOST: ${{ vars.VPS_HOST || '72.60.190.192' }}
+  VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
+  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/docker/n8n' }}
+  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/local-files/backups/resto-bot' }}
   DAILY_RETENTION: 7
   WEEKLY_RETENTION: 4
+  MIN_DISK_GB: 1
 
 jobs:
-  backup:
-    name: Create Backup
+  # =========================================================================
+  # Job 1: Check Prerequisites
+  # =========================================================================
+  check-prerequisites:
+    name: Check Prerequisites
     runs-on: ubuntu-latest
-
     outputs:
-      backup_name: ${{ steps.backup.outputs.name }}
-      backup_type: ${{ steps.type.outputs.type }}
-      backup_size: ${{ steps.verify.outputs.size }}
+      ssh_configured: ${{ steps.check-ssh.outputs.configured }}
+      can_proceed: ${{ steps.check-ssh.outputs.configured }}
+
+    steps:
+      - name: Check SSH key configuration
+        id: check-ssh
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          # Check if SSH key is configured (using env var, not direct secret access)
+          if [ -n "$SSH_KEY" ] && [ "$SSH_KEY" != "" ]; then
+            echo "configured=true" >> $GITHUB_OUTPUT
+            echo "SSH key is configured"
+          else
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::warning::VPS_SSH_KEY secret is not configured"
+            echo "::notice::To configure: Settings > Secrets and variables > Actions > New repository secret"
+            echo "::notice::Name: VPS_SSH_KEY, Value: Your SSH private key (ed25519 or rsa)"
+          fi
+
+  # =========================================================================
+  # Job 2: Pre-checks on VPS
+  # =========================================================================
+  pre-checks:
+    name: VPS Pre-checks
+    runs-on: ubuntu-latest
+    needs: check-prerequisites
+    if: needs.check-prerequisites.outputs.ssh_configured == 'true'
+    outputs:
+      prechecks_passed: ${{ steps.verify.outputs.all_passed }}
+      disk_available_gb: ${{ steps.verify.outputs.disk_gb }}
+      postgres_ready: ${{ steps.verify.outputs.postgres_ready }}
+      compose_file: ${{ steps.verify.outputs.compose_file }}
 
     steps:
       - name: Install SSH Key
@@ -46,7 +93,153 @@ jobs:
           if_key_exists: replace
 
       - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Run pre-checks
+        id: verify
+        run: |
+          echo "=== Running VPS Pre-checks ==="
+
+          # Execute pre-checks via SSH
+          RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+
+          set -e
+
+          # --- Check 1: Project directory exists ---
+          if [ ! -d "${{ env.PROJECT_DIR }}" ]; then
+            echo "FAIL:PROJECT_DIR_NOT_FOUND"
+            exit 1
+          fi
+          cd "${{ env.PROJECT_DIR }}"
+
+          # --- Check 2: Docker compose file exists ---
+          if [ -f "docker-compose.hostinger.prod.yml" ]; then
+            COMPOSE_FILE="docker-compose.hostinger.prod.yml"
+          elif [ -f "docker-compose.yml" ]; then
+            COMPOSE_FILE="docker-compose.yml"
+          else
+            echo "FAIL:NO_COMPOSE_FILE"
+            exit 1
+          fi
+          echo "COMPOSE_FILE:$COMPOSE_FILE"
+
+          # --- Check 3: Docker accessible (user in docker group) ---
+          if ! docker info >/dev/null 2>&1; then
+            echo "FAIL:DOCKER_NOT_ACCESSIBLE"
+            exit 1
+          fi
+
+          # --- Check 4: Containers running ---
+          RUNNING=$(docker compose -f "$COMPOSE_FILE" ps --status running -q 2>/dev/null | wc -l)
+          if [ "$RUNNING" -lt 2 ]; then
+            echo "WARN:FEW_CONTAINERS_RUNNING:$RUNNING"
+          fi
+
+          # --- Check 5: PostgreSQL ready ---
+          if docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U n8n -d n8n >/dev/null 2>&1; then
+            echo "POSTGRES:READY"
+          else
+            echo "FAIL:POSTGRES_NOT_READY"
+            exit 1
+          fi
+
+          # --- Check 6: Disk space ---
+          DISK_AVAIL_KB=$(df "${{ env.BACKUP_DIR }}" 2>/dev/null | tail -1 | awk '{print $4}' || df / | tail -1 | awk '{print $4}')
+          DISK_AVAIL_GB=$((DISK_AVAIL_KB / 1024 / 1024))
+          echo "DISK_GB:$DISK_AVAIL_GB"
+
+          if [ "$DISK_AVAIL_GB" -lt "${{ env.MIN_DISK_GB }}" ]; then
+            echo "FAIL:DISK_SPACE_LOW:${DISK_AVAIL_GB}GB"
+            exit 1
+          fi
+
+          # --- Check 7: Backup directory writable ---
+          mkdir -p "${{ env.BACKUP_DIR }}"
+          if ! touch "${{ env.BACKUP_DIR }}/.write_test" 2>/dev/null; then
+            echo "FAIL:BACKUP_DIR_NOT_WRITABLE"
+            exit 1
+          fi
+          rm -f "${{ env.BACKUP_DIR }}/.write_test"
+
+          echo "ALL_CHECKS:PASSED"
+          ENDSSH
+          )
+
+          SSH_EXIT=$?
+          echo "SSH exit code: $SSH_EXIT"
+          echo "Pre-check output:"
+          echo "$RESULT"
+
+          # Parse results
+          if echo "$RESULT" | grep -q "ALL_CHECKS:PASSED"; then
+            echo "all_passed=true" >> $GITHUB_OUTPUT
+            echo "::notice::All pre-checks passed"
+          else
+            echo "all_passed=false" >> $GITHUB_OUTPUT
+
+            # Extract specific failure reason
+            if echo "$RESULT" | grep -q "FAIL:PROJECT_DIR_NOT_FOUND"; then
+              echo "::error::Project directory not found: ${{ env.PROJECT_DIR }}"
+            elif echo "$RESULT" | grep -q "FAIL:NO_COMPOSE_FILE"; then
+              echo "::error::No docker-compose file found in ${{ env.PROJECT_DIR }}"
+            elif echo "$RESULT" | grep -q "FAIL:DOCKER_NOT_ACCESSIBLE"; then
+              echo "::error::Docker not accessible. Ensure user '${{ env.VPS_USER }}' is in the docker group: sudo usermod -aG docker ${{ env.VPS_USER }}"
+            elif echo "$RESULT" | grep -q "FAIL:POSTGRES_NOT_READY"; then
+              echo "::error::PostgreSQL is not ready. Check: docker compose logs postgres"
+            elif echo "$RESULT" | grep -q "FAIL:DISK_SPACE_LOW"; then
+              echo "::error::Disk space below ${{ env.MIN_DISK_GB }}GB threshold"
+            elif echo "$RESULT" | grep -q "FAIL:BACKUP_DIR_NOT_WRITABLE"; then
+              echo "::error::Cannot write to backup directory: ${{ env.BACKUP_DIR }}"
+            else
+              echo "::error::Pre-checks failed with unknown error"
+            fi
+          fi
+
+          # Extract metrics
+          DISK_GB=$(echo "$RESULT" | grep "DISK_GB:" | cut -d: -f2)
+          COMPOSE_FILE=$(echo "$RESULT" | grep "COMPOSE_FILE:" | cut -d: -f2)
+          echo "disk_gb=${DISK_GB:-0}" >> $GITHUB_OUTPUT
+          echo "compose_file=${COMPOSE_FILE:-docker-compose.hostinger.prod.yml}" >> $GITHUB_OUTPUT
+
+          if echo "$RESULT" | grep -q "POSTGRES:READY"; then
+            echo "postgres_ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "postgres_ready=false" >> $GITHUB_OUTPUT
+          fi
+
+  # =========================================================================
+  # Job 3: Create Backup
+  # =========================================================================
+  backup:
+    name: Create Backup
+    runs-on: ubuntu-latest
+    needs: [check-prerequisites, pre-checks]
+    if: |
+      needs.check-prerequisites.outputs.ssh_configured == 'true' &&
+      (needs.pre-checks.outputs.prechecks_passed == 'true' || github.event.inputs.skip_prechecks == 'true')
+    timeout-minutes: 30
+
+    outputs:
+      backup_name: ${{ steps.backup.outputs.name }}
+      backup_type: ${{ steps.type.outputs.type }}
+      backup_size: ${{ steps.verify.outputs.size }}
+      backup_success: ${{ steps.verify.outputs.success }}
+
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Determine backup type
         id: type
@@ -59,54 +252,136 @@ jobs:
             TYPE="daily"
           fi
           echo "type=$TYPE" >> $GITHUB_OUTPUT
+          echo "Backup type: $TYPE"
 
       - name: Create backup
         id: backup
         run: |
           BACKUP_TYPE="${{ steps.type.outputs.type }}"
           BACKUP_NAME="${BACKUP_TYPE}-$(date +%Y%m%d-%H%M%S)"
+          COMPOSE_FILE="${{ needs.pre-checks.outputs.compose_file || 'docker-compose.hostinger.prod.yml' }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            set -e
-            BACKUP_DIR="${{ env.BACKUP_DIR }}"
-            PROJECT_DIR="${{ env.PROJECT_DIR }}"
-            BACKUP_NAME="${BACKUP_NAME}"
+          echo "Creating backup: $BACKUP_NAME"
+          echo "Using compose file: $COMPOSE_FILE"
 
-            mkdir -p "\$BACKUP_DIR"
-            cd "\$PROJECT_DIR"
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          set -e
 
-            # Database backup
-            echo "Backing up database..."
-            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl | gzip > "\$BACKUP_DIR/\${BACKUP_NAME}-db.sql.gz"
+          BACKUP_DIR="${{ env.BACKUP_DIR }}"
+          PROJECT_DIR="${{ env.PROJECT_DIR }}"
+          BACKUP_NAME="${BACKUP_NAME}"
+          COMPOSE_FILE="${COMPOSE_FILE}"
 
-            # Config backup
-            if [ -f ".env" ]; then
-              tar -czvf "\$BACKUP_DIR/\${BACKUP_NAME}-config.tar.gz" .env secrets/ 2>/dev/null || true
-            fi
+          mkdir -p "\$BACKUP_DIR"
+          cd "\$PROJECT_DIR"
 
-            # Version info
-            echo "$(cat /local-files/ralphe/n8n-project/VERSION 2>/dev/null || echo 'unknown')" > "\$BACKUP_DIR/\${BACKUP_NAME}-version.txt"
-            date -u >> "\$BACKUP_DIR/\${BACKUP_NAME}-version.txt"
+          echo "=== Step 1: Database Backup (pg_dump) ==="
+          # Use custom format (-Fc) for better compression and parallel restore
+          docker compose -f "\$COMPOSE_FILE" exec -T postgres \
+            pg_dump -U n8n -d n8n --no-owner --no-acl -Fc \
+            > "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump"
 
-            echo "Backup created: \$BACKUP_NAME"
-            ls -lh "\$BACKUP_DIR/\${BACKUP_NAME}"*
+          # Verify dump is not empty
+          if [ ! -s "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump" ]; then
+            echo "ERROR: Database dump is empty"
+            exit 1
+          fi
+
+          # Compress for transfer efficiency (custom format is already compressed, but gzip helps more)
+          gzip -f "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump"
+
+          echo "Database backup: \$BACKUP_DIR/\${BACKUP_NAME}-db.dump.gz"
+
+          echo ""
+          echo "=== Step 2: Config Backup ==="
+          if [ -f ".env" ]; then
+            # Create config archive (exclude sensitive runtime files)
+            tar -czf "\$BACKUP_DIR/\${BACKUP_NAME}-config.tar.gz" \
+              --exclude='*.log' \
+              --exclude='*.pid' \
+              .env \
+              secrets/ 2>/dev/null || echo "Note: Some config files may not exist"
+            echo "Config backup: \$BACKUP_DIR/\${BACKUP_NAME}-config.tar.gz"
+          else
+            echo "Note: No .env file found, skipping config backup"
+          fi
+
+          echo ""
+          echo "=== Step 3: Metadata ==="
+          cat > "\$BACKUP_DIR/\${BACKUP_NAME}-metadata.txt" << METADATA
+          Backup Name: \${BACKUP_NAME}
+          Backup Type: ${BACKUP_TYPE}
+          Created: \$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Host: \$(hostname)
+          Docker Compose: \$COMPOSE_FILE
+          PostgreSQL Version: \$(docker compose -f "\$COMPOSE_FILE" exec -T postgres psql -V 2>/dev/null | head -1 || echo "unknown")
+          METADATA
+          echo "Metadata: \$BACKUP_DIR/\${BACKUP_NAME}-metadata.txt"
+
+          echo ""
+          echo "=== Backup files created ==="
+          ls -lh "\$BACKUP_DIR/\${BACKUP_NAME}"* 2>/dev/null || echo "Listing failed"
+
           ENDSSH
 
           echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
 
-      - name: Verify backup
+      - name: Verify backup integrity
         id: verify
         run: |
           BACKUP_NAME="${{ steps.backup.outputs.name }}"
 
-          SIZE=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "du -sh ${{ env.BACKUP_DIR }}/${BACKUP_NAME}* | tail -1 | cut -f1")
-          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          echo "=== Verifying backup integrity ==="
 
-          # Verify integrity
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "gunzip -t ${{ env.BACKUP_DIR }}/${BACKUP_NAME}-db.sql.gz" || { echo "::error::Backup corrupted"; exit 1; }
-          echo "Backup verified: $SIZE"
+          VERIFY_RESULT=$(ssh -o StrictHostKeyChecking=no \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          set -e
 
-      - name: Rotate backups
+          BACKUP_DIR="${{ env.BACKUP_DIR }}"
+          BACKUP_NAME="${BACKUP_NAME}"
+
+          # Check file exists
+          if [ ! -f "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump.gz" ]; then
+            echo "FAIL:FILE_NOT_FOUND"
+            exit 1
+          fi
+
+          # Verify gzip integrity
+          if ! gunzip -t "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump.gz" 2>/dev/null; then
+            echo "FAIL:GZIP_CORRUPT"
+            exit 1
+          fi
+
+          # Get size
+          SIZE=\$(du -sh "\$BACKUP_DIR/\${BACKUP_NAME}"* 2>/dev/null | tail -1 | cut -f1)
+          echo "SIZE:\$SIZE"
+
+          # Verify minimum size (should be at least 1KB for valid dump)
+          FILE_SIZE=\$(stat -c%s "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump.gz" 2>/dev/null || stat -f%z "\$BACKUP_DIR/\${BACKUP_NAME}-db.dump.gz" 2>/dev/null)
+          if [ "\$FILE_SIZE" -lt 1024 ]; then
+            echo "FAIL:FILE_TOO_SMALL:\$FILE_SIZE"
+            exit 1
+          fi
+
+          echo "VERIFY:PASSED"
+          ENDSSH
+          )
+
+          echo "$VERIFY_RESULT"
+
+          if echo "$VERIFY_RESULT" | grep -q "VERIFY:PASSED"; then
+            SIZE=$(echo "$VERIFY_RESULT" | grep "SIZE:" | cut -d: -f2)
+            echo "size=$SIZE" >> $GITHUB_OUTPUT
+            echo "success=true" >> $GITHUB_OUTPUT
+            echo "::notice::Backup verified successfully: $SIZE"
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "::error::Backup verification failed"
+            exit 1
+          fi
+
+      - name: Rotate old backups
         run: |
           BACKUP_TYPE="${{ steps.type.outputs.type }}"
 
@@ -116,20 +391,107 @@ jobs:
             RETENTION=${{ env.WEEKLY_RETENTION }}
           fi
 
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            cd ${{ env.BACKUP_DIR }}
-            ls -t ${BACKUP_TYPE}-*-db.sql.gz 2>/dev/null | tail -n +$((RETENTION+1)) | xargs -r rm -v
-            ls -t ${BACKUP_TYPE}-*-config.tar.gz 2>/dev/null | tail -n +$((RETENTION+1)) | xargs -r rm -v
-            echo "Rotation complete"
-            du -sh ${{ env.BACKUP_DIR }}
+          echo "Rotating $BACKUP_TYPE backups (keeping last $RETENTION)"
+
+          ssh -o StrictHostKeyChecking=no \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+          cd "${{ env.BACKUP_DIR }}"
+
+          echo "=== Before rotation ==="
+          ls -la ${BACKUP_TYPE}-*-db.dump.gz 2>/dev/null | wc -l
+          echo "files found"
+
+          # Rotate database dumps
+          ls -t ${BACKUP_TYPE}-*-db.dump.gz 2>/dev/null | tail -n +$((RETENTION+1)) | while read f; do
+            echo "Removing: \$f"
+            rm -f "\$f"
+          done
+
+          # Rotate config archives
+          ls -t ${BACKUP_TYPE}-*-config.tar.gz 2>/dev/null | tail -n +$((RETENTION+1)) | while read f; do
+            echo "Removing: \$f"
+            rm -f "\$f"
+          done
+
+          # Rotate metadata
+          ls -t ${BACKUP_TYPE}-*-metadata.txt 2>/dev/null | tail -n +$((RETENTION+1)) | while read f; do
+            echo "Removing: \$f"
+            rm -f "\$f"
+          done
+
+          echo ""
+          echo "=== After rotation ==="
+          ls -la ${BACKUP_TYPE}-*-db.dump.gz 2>/dev/null | wc -l
+          echo "files remaining"
+          echo ""
+          echo "=== Disk usage ==="
+          du -sh "${{ env.BACKUP_DIR }}"
+
           ENDSSH
 
-      - name: Summary
+  # =========================================================================
+  # Job 4: Summary
+  # =========================================================================
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [check-prerequisites, pre-checks, backup]
+    if: always()
+
+    steps:
+      - name: Generate summary report
         run: |
-          echo "## Backup Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Type** | ${{ steps.type.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Name** | ${{ steps.backup.outputs.name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Size** | ${{ steps.verify.outputs.size }} |" >> $GITHUB_STEP_SUMMARY
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## Backup Summary
+
+          | Property | Value |
+          |----------|-------|
+          | **SSH Configured** | ${{ needs.check-prerequisites.outputs.ssh_configured || 'N/A' }} |
+          | **Pre-checks Passed** | ${{ needs.pre-checks.outputs.prechecks_passed || 'N/A' }} |
+          | **Disk Available** | ${{ needs.pre-checks.outputs.disk_available_gb || 'N/A' }} GB |
+          | **PostgreSQL Ready** | ${{ needs.pre-checks.outputs.postgres_ready || 'N/A' }} |
+          | **Backup Type** | ${{ needs.backup.outputs.backup_type || 'N/A' }} |
+          | **Backup Name** | ${{ needs.backup.outputs.backup_name || 'N/A' }} |
+          | **Backup Size** | ${{ needs.backup.outputs.backup_size || 'N/A' }} |
+          | **Backup Success** | ${{ needs.backup.outputs.backup_success || 'N/A' }} |
+          | **Timestamp** | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
+
+          EOF
+
+          # Add troubleshooting if failed
+          if [ "${{ needs.check-prerequisites.outputs.ssh_configured }}" != "true" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ### Configuration Required
+
+          The `VPS_SSH_KEY` secret is not configured. To set it up:
+
+          1. Go to **Settings** > **Secrets and variables** > **Actions**
+          2. Click **New repository secret**
+          3. Name: `VPS_SSH_KEY`
+          4. Value: Your SSH private key (ed25519 recommended)
+
+          Generate a new key on your VPS:
+          \`\`\`bash
+          ssh-keygen -t ed25519 -C "github-actions-backup" -f ~/.ssh/github_actions
+          cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+          # Copy ~/.ssh/github_actions content to GitHub secret
+          \`\`\`
+
+          EOF
+          fi
+
+          if [ "${{ needs.pre-checks.outputs.prechecks_passed }}" = "false" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ### Troubleshooting Pre-check Failures
+
+          | Issue | Solution |
+          |-------|----------|
+          | Docker not accessible | `sudo usermod -aG docker $USER && newgrp docker` |
+          | PostgreSQL not ready | `docker compose logs postgres` |
+          | Disk space low | Clean old files: `docker system prune -a` |
+          | Backup dir not writable | `sudo chown -R $USER:$USER /local-files/backups` |
+
+          EOF
+          fi

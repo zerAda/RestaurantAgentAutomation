@@ -47,7 +47,8 @@ ADMIN_WA_CONSOLE_WORKFLOW_ID=<ID du workflow W14>
 # Sécurité
 ALLOW_QUERY_TOKEN=false
 LEGACY_SHARED_ALLOWED=false
-META_SIGNATURE_REQUIRED=false
+# META_SIGNATURE_REQUIRED: off (dev) | warn (staging) | enforce (PRODUCTION)
+META_SIGNATURE_REQUIRED=off  # Change to 'enforce' in production!
 
 # Rate limiting
 RATE_LIMIT_PER_30S=6

@@ -1,0 +1,63 @@
+{
+    "name": "W_LOW_STOCK_ALERT",
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "Start",
+            "type": "n8n-nodes-base.start",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const ing = $json.data.attributes;\nreturn [{\n  json: {\n    channel: 'whatsapp',\n    to: $env.ADMIN_PHONE_NUMBER, // Needs to be set in env\n    text: `⚠️ ALERTE STOCK: ${ing.name} est bas (${ing.current_stock} ${ing.unit || 'unités'}).`\n  }\n}];"
+            },
+            "name": "Format Alert",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "W5_OUT_WA"
+            },
+            "name": "Send WhatsApp",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Start": {
+            "main": [
+                [
+                    {
+                        "node": "Format Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Alert": {
+            "main": [
+                [
+                    {
+                        "node": "Send WhatsApp",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

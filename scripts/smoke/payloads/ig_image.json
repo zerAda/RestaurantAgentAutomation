@@ -1,0 +1,31 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "IG_USER_ID_789012"
+          },
+          "recipient": {
+            "id": "INSTAGRAM_PAGE_ID"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "message": {
+            "mid": "m_ig_image_xyz789ghi012",
+            "attachments": [
+              {
+                "type": "image",
+                "payload": {
+                  "url": "https://cdn.instagram.com/v/image123.jpg"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "IG_USER_ID_123456"
+          },
+          "recipient": {
+            "id": "INSTAGRAM_PAGE_ID"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "message": {
+            "mid": "m_ig_text_abc123def456",
+            "text": "Bonsoir, vous livrez a Alger centre?"
+          }
+        }
+      ]
+    }
+  ]
+}

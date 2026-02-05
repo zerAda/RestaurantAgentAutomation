@@ -29,8 +29,9 @@ services:
       - traefik_data:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./secrets/traefik_usersfile:/run/secrets/traefik_usersfile:ro
-    networks: [proxy]
+    networks: [ proxy ]
     logging:
+      driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
 
   postgres:
@@ -45,7 +46,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      # DB initialization (runs only on fresh install)
       - ./db/bootstrap.sql:/docker-entrypoint-initdb.d/00_bootstrap.sql:ro
+      - ./db/init/01_apply_migrations.sh:/docker-entrypoint-initdb.d/01_apply_migrations.sh:ro
+      - ./db/init/02_create_strapi_db.sh:/docker-entrypoint-initdb.d/02_create_strapi_db.sh:ro
+      - ./db/migrations:/docker-entrypoint-initdb.d/migrations:ro
     # Performance tuning
     command:
       - "postgres"
@@ -70,28 +75,113 @@ services:
       - "-c"
       - "log_min_duration_statement=1000"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n || exit 1"]
+      test: [ "CMD-SHELL", "pg_isready -U n8n -d n8n || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
-    networks: [internal]
+    networks: [ internal ]
     logging:
+      driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    command: [ "redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru" ]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 10
-    networks: [internal]
+    networks: [ internal ]
     logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "5" }
+
+  # ===========================================================================
+  # DB Migrate - Apply pending migrations on startup (P0-01)
+  # ===========================================================================
+  # This service runs ONCE on each deployment to apply any pending migrations.
+  # It's essential for UPGRADES where docker-entrypoint-initdb.d doesn't run.
+  # Fail-fast: if migrations fail, this service exits with error, blocking n8n start.
+  db-migrate:
+    image: postgres:15-alpine
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGHOST: postgres
+      PGUSER: n8n
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      PGDATABASE: n8n
+    volumes:
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./db/migrations:/migrations:ro
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -e
+        # Read password from file
+        export PGPASSWORD=$$(cat /run/secrets/postgres_password)
+
+        echo "=== DB Migration Service (P0-01) ==="
+        echo "Waiting for postgres..."
+
+        # Wait for postgres
+        until pg_isready -h postgres -U n8n -d n8n; do
+          sleep 1
+        done
+
+        echo "Postgres ready. Creating schema_migrations table..."
+
+        # Create tracking table
+        psql -v ON_ERROR_STOP=1 <<'EOSQL'
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          id          serial PRIMARY KEY,
+          filename    text NOT NULL UNIQUE,
+          applied_at  timestamptz NOT NULL DEFAULT now(),
+          checksum    text NULL
+        );
+        EOSQL
+
+        echo "Checking for pending migrations..."
+
+        # Get applied migrations
+        APPLIED=$$(psql -t -A -c "SELECT filename FROM schema_migrations ORDER BY filename")
+
+        PENDING=0
+        APPLIED_COUNT=0
+
+        # Apply each migration if not already applied
+        for migration in $$(ls -1 /migrations/*.sql 2>/dev/null | sort); do
+          filename=$$(basename "$$migration")
+
+          if echo "$$APPLIED" | grep -qx "$$filename"; then
+            APPLIED_COUNT=$$((APPLIED_COUNT + 1))
+            continue
+          fi
+
+          echo "Applying: $$filename"
+          psql -v ON_ERROR_STOP=1 < "$$migration"
+
+          # Record migration
+          psql -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$$filename')"
+
+          echo "  -> Applied: $$filename"
+          PENDING=$$((PENDING + 1))
+        done
+
+        echo ""
+        echo "=== Migration Summary ==="
+        echo "Already applied: $$APPLIED_COUNT"
+        echo "Newly applied:   $$PENDING"
+        echo "=== DB Migration Complete ==="
+    networks: [ internal ]
+    restart: "no"
+    logging:
+      driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
 
   # ===========================================================================
@@ -105,8 +195,8 @@ services:
     environment:
       ADMINER_DEFAULT_SERVER: postgres
       ADMINER_DESIGN: nette
-    expose: ["8080"]
-    networks: [proxy, internal]
+    expose: [ "8080" ]
+    networks: [ proxy, internal ]
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
@@ -125,17 +215,129 @@ services:
       - "traefik.http.middlewares.adminer-headers.headers.frameDeny=true"
       - "traefik.http.middlewares.adminer-chain.chain.middlewares=adminer-allowlist,adminer-auth,adminer-headers"
     logging:
+      driver: "json-file"
+      options: { max-size: "5m", max-file: "3" }
+
+  # ===========================================================================
+  # Inventory CMS (Strapi 5) - Menu & Inventory Management
+  # ===========================================================================
+  cms:
+    build:
+      context: ./inventory-cms
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
+    expose: [ "1337" ]
+    networks: [ proxy, internal ]
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=1337
+      - DATABASE_CLIENT=postgres
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=${STRAPI_DATABASE_NAME:-strapi}
+      - DATABASE_USERNAME=${POSTGRES_USER:-n8n}
+      - DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - DATABASE_SSL=false
+      - ADMIN_JWT_SECRET=${STRAPI_ADMIN_JWT_SECRET:?STRAPI_ADMIN_JWT_SECRET must be set}
+      - JWT_SECRET=${STRAPI_JWT_SECRET:?STRAPI_JWT_SECRET must be set}
+      - API_TOKEN_SALT=${STRAPI_API_TOKEN_SALT:?STRAPI_API_TOKEN_SALT must be set}
+      - TRANSFER_TOKEN_SALT=${STRAPI_TRANSFER_TOKEN_SALT:?STRAPI_TRANSFER_TOKEN_SALT must be set}
+      - ENCRYPTION_KEY=${STRAPI_ENCRYPTION_KEY:?STRAPI_ENCRYPTION_KEY must be set}
+      - APP_KEYS=${STRAPI_APP_KEYS:?STRAPI_APP_KEYS must be set}
+    volumes:
+      - cms_uploads:/app/public/uploads
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.cms.rule=Host(`cms.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.cms.entrypoints=websecure"
+      - "traefik.http.routers.cms.tls=true"
+      - "traefik.http.routers.cms.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.cms.loadbalancer.server.port=1337"
+      # Security: IP Allowlist + Basic Auth (same as admin tools)
+      - "traefik.http.routers.cms.middlewares=cms-chain@docker"
+      - "traefik.http.middlewares.cms-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
+      - "traefik.http.middlewares.cms-headers.headers.browserXSSFilter=true"
+      - "traefik.http.middlewares.cms-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.cms-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.cms-chain.chain.middlewares=cms-allowlist,cms-headers"
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "5" }
+
+  # ===========================================================================
+  # Admin Dashboard - React SPA
+  # ===========================================================================
+  admin-dashboard:
+    build:
+      context: .
+      dockerfile: admin-dashboard/Dockerfile
+    restart: unless-stopped
+    expose: [ "80" ]
+    networks: [ proxy ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.admin-dash.rule=Host(`admin.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.admin-dash.entrypoints=websecure"
+      - "traefik.http.routers.admin-dash.tls=true"
+      - "traefik.http.routers.admin-dash.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.admin-dash.loadbalancer.server.port=80"
+      # Security: IP Allowlist + Basic Auth
+      - "traefik.http.routers.admin-dash.middlewares=admin-dash-chain@docker"
+      - "traefik.http.middlewares.admin-dash-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
+      - "traefik.http.middlewares.admin-dash-auth.basicauth.usersfile=/run/secrets/traefik_usersfile"
+      - "traefik.http.middlewares.admin-dash-headers.headers.browserXSSFilter=true"
+      - "traefik.http.middlewares.admin-dash-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.admin-dash-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.admin-dash-chain.chain.middlewares=admin-dash-allowlist,admin-dash-auth,admin-dash-headers"
+    logging:
+      driver: "json-file"
+      options: { max-size: "5m", max-file: "3" }
+
+  # ===========================================================================
+  # Kiosk App - Customer-facing React SPA
+  # ===========================================================================
+  kiosk-app:
+    build:
+      context: .
+      dockerfile: kiosk-app/Dockerfile
+    restart: unless-stopped
+    expose: [ "80" ]
+    networks: [ proxy ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.kiosk.rule=Host(`kiosk.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.kiosk.entrypoints=websecure"
+      - "traefik.http.routers.kiosk.tls=true"
+      - "traefik.http.routers.kiosk.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.kiosk.loadbalancer.server.port=80"
+      # Public-facing – rate limit + security headers only (no IP allowlist)
+      - "traefik.http.routers.kiosk.middlewares=kiosk-chain@docker"
+      - "traefik.http.middlewares.kiosk-ratelimit.ratelimit.average=30"
+      - "traefik.http.middlewares.kiosk-ratelimit.ratelimit.burst=60"
+      - "traefik.http.middlewares.kiosk-headers.headers.browserXSSFilter=true"
+      - "traefik.http.middlewares.kiosk-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.kiosk-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.kiosk-chain.chain.middlewares=kiosk-ratelimit,kiosk-headers"
+    logging:
+      driver: "json-file"
       options: { max-size: "5m", max-file: "3" }
 
   gateway:
     image: nginx:1.27-alpine
     restart: unless-stopped
-    depends_on: [n8n-main]
+    depends_on: [ n8n-main ]
     volumes:
       - ./infra/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./infra/gateway/proxy_params:/etc/nginx/proxy_params:ro
-    expose: ["8080"]
-    networks: [proxy, internal]
+    expose: [ "8080" ]
+    networks: [ proxy, internal ]
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
@@ -174,6 +376,9 @@ services:
       - "traefik.http.middlewares.api-internal-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
       - "traefik.http.middlewares.api-internal-auth.basicauth.usersfile=/run/secrets/traefik_usersfile"
       - "traefik.http.middlewares.api-internal-chain.chain.middlewares=api-internal-allowlist,api-internal-auth,api-public-headers"
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "5" }
 
   n8n-main:
     image: docker.n8n.io/n8nio/n8n:${N8N_VERSION}
@@ -181,8 +386,9 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-    expose: ["5678"]
-    networks: [proxy, internal]
+      db-migrate: { condition: service_completed_successfully }
+    expose: [ "5678" ]
+    networks: [ proxy, internal ]
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
@@ -254,7 +460,7 @@ services:
       # App env used in workflows (P0 Security)
       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN:-}
       - LEGACY_SHARED_ALLOWED=${LEGACY_SHARED_ALLOWED:-false}
-      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-false}
+      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-warn}
       - META_APP_SECRET=${META_APP_SECRET:-}
       - META_REPLAY_WINDOW_SEC=${META_REPLAY_WINDOW_SEC:-600}
       - STRICT_AR_OUT=${STRICT_AR_OUT:-true}
@@ -299,14 +505,18 @@ services:
       - PAYMENT_TRUST_MIN_SCORE=${PAYMENT_TRUST_MIN_SCORE:-70}
       - PAYMENT_DEPOSIT_TIMEOUT_MIN=${PAYMENT_DEPOSIT_TIMEOUT_MIN:-30}
 
-      - WA_SEND_URL=${WA_SEND_URL:-http://mock-api:8080/send/wa}
-      - WA_API_TOKEN=${WA_API_TOKEN:-dev}
-      - IG_SEND_URL=${IG_SEND_URL:-http://mock-api:8080/send/ig}
-      - IG_API_TOKEN=${IG_API_TOKEN:-dev}
-      - MSG_SEND_URL=${MSG_SEND_URL:-http://mock-api:8080/send/msg}
-      - MSG_API_TOKEN=${MSG_API_TOKEN:-dev}
+      # P0-04: Outbound URLs - NO DEFAULTS (mock-api removed)
+      # CRITICAL: These MUST be configured in .env for production
+      # Failure to configure = docker compose will fail to start (not silently lost)
+      - WA_SEND_URL=${WA_SEND_URL:?WA_SEND_URL must be set for production}
+      - WA_API_TOKEN=${WA_API_TOKEN:?WA_API_TOKEN must be set for production}
+      - IG_SEND_URL=${IG_SEND_URL:?IG_SEND_URL must be set for production}
+      - IG_API_TOKEN=${IG_API_TOKEN:?IG_API_TOKEN must be set for production}
+      - MSG_SEND_URL=${MSG_SEND_URL:?MSG_SEND_URL must be set for production}
+      - MSG_API_TOKEN=${MSG_API_TOKEN:?MSG_API_TOKEN must be set for production}
 
-      - STT_API_URL=${STT_API_URL:-http://mock-api:8080/asr}
+      # STT is optional - empty = disabled
+      - STT_API_URL=${STT_API_URL:-}
       - LLM_API_URL=${LLM_API_URL:-http://ollama:11434/api/chat}
       - LLM_MODEL=${LLM_MODEL:-llama3.1}
       - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
@@ -328,6 +538,7 @@ services:
       - ./secrets/n8n_encryption_key:/run/secrets/n8n_encryption_key:ro
       - ./schemas:/opt/resto/schemas:ro
     logging:
+      driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
 
   n8n-worker:
@@ -336,8 +547,9 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-    command: ["worker"]
-    networks: [internal]
+      db-migrate: { condition: service_completed_successfully }
+    command: [ "worker" ]
+    networks: [ internal ]
     environment:
       - TZ=${TZ:-Europe/Paris}
       - GENERIC_TIMEZONE=${TZ:-Europe/Paris}
@@ -359,7 +571,7 @@ services:
       # App env used in workflows (P0 Security - Worker)
       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN:-}
       - LEGACY_SHARED_ALLOWED=${LEGACY_SHARED_ALLOWED:-false}
-      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-false}
+      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-warn}
       - META_APP_SECRET=${META_APP_SECRET:-}
       - META_REPLAY_WINDOW_SEC=${META_REPLAY_WINDOW_SEC:-600}
       - STRICT_AR_OUT=${STRICT_AR_OUT:-true}
@@ -394,14 +606,18 @@ services:
       - PAYMENT_DEPOSIT_PERCENTAGE=${PAYMENT_DEPOSIT_PERCENTAGE:-30}
       - PAYMENT_DEPOSIT_THRESHOLD=${PAYMENT_DEPOSIT_THRESHOLD:-300000}
 
-      - WA_SEND_URL=${WA_SEND_URL:-http://mock-api:8080/send/wa}
-      - WA_API_TOKEN=${WA_API_TOKEN:-dev}
-      - IG_SEND_URL=${IG_SEND_URL:-http://mock-api:8080/send/ig}
-      - IG_API_TOKEN=${IG_API_TOKEN:-dev}
-      - MSG_SEND_URL=${MSG_SEND_URL:-http://mock-api:8080/send/msg}
-      - MSG_API_TOKEN=${MSG_API_TOKEN:-dev}
+      # P0-04: Outbound URLs - NO DEFAULTS (mock-api removed)
+      # CRITICAL: These MUST be configured in .env for production
+      # Failure to configure = docker compose will fail to start (not silently lost)
+      - WA_SEND_URL=${WA_SEND_URL:?WA_SEND_URL must be set for production}
+      - WA_API_TOKEN=${WA_API_TOKEN:?WA_API_TOKEN must be set for production}
+      - IG_SEND_URL=${IG_SEND_URL:?IG_SEND_URL must be set for production}
+      - IG_API_TOKEN=${IG_API_TOKEN:?IG_API_TOKEN must be set for production}
+      - MSG_SEND_URL=${MSG_SEND_URL:?MSG_SEND_URL must be set for production}
+      - MSG_API_TOKEN=${MSG_API_TOKEN:?MSG_API_TOKEN must be set for production}
 
-      - STT_API_URL=${STT_API_URL:-http://mock-api:8080/asr}
+      # STT is optional - empty = disabled
+      - STT_API_URL=${STT_API_URL:-}
       - LLM_API_URL=${LLM_API_URL:-http://ollama:11434/api/chat}
       - LLM_MODEL=${LLM_MODEL:-llama3.1}
       - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
@@ -422,27 +638,30 @@ services:
       - ./secrets/n8n_encryption_key:/run/secrets/n8n_encryption_key:ro
       - ./schemas:/opt/resto/schemas:ro
     logging:
+      driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
 
   ollama:
     image: ollama/ollama:latest
-    profiles: ["ai"]
+    profiles: [ "ai" ]
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
-    networks: [internal]
+    networks: [ internal ]
     logging:
-      options: { max-size: "10m", max-file: "3" }
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "5" }
 
   mock-api:
     build:
       context: ./mock-api
-    profiles: ["dev"]
+    profiles: [ "dev" ]
     restart: unless-stopped
-    expose: ["8080"]
-    networks: [internal]
+    expose: [ "8080" ]
+    networks: [ internal ]
     logging:
-      options: { max-size: "10m", max-file: "3" }
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "5" }
 
 networks:
   proxy:
@@ -458,6 +677,8 @@ volumes:
   postgres_data:
     external: true
   redis_data:
+    external: true
+  cms_uploads:
     external: true
   ollama_data:
     external: true

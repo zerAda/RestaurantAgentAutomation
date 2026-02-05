@@ -1,40 +1,134 @@
 # =============================================================================
-# Health Monitor - Resto Bot (SSH-based)
+# Health Monitor - Resto Bot (v2.0 - Robust)
+# =============================================================================
+# Monitors the health of the production n8n instance via the PUBLIC API gateway.
+# IMPORTANT: HEALTH_URL must point to the API gateway (api.<domain>/healthz),
+# NOT the console (which is IP-protected and will return 403).
+#
+# The /healthz endpoint is exposed by the nginx gateway without authentication.
 # =============================================================================
 
 name: Health Monitor
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # Every 15 minutes
-  workflow_dispatch:
+    - cron: '0 */6 * * *'   # Every 6 hours
+  workflow_dispatch:        # Manual trigger
+    inputs:
+      force_ssh_check:
+        description: 'Force SSH-based internal check'
+        type: boolean
+        default: false
 
 env:
-  VPS_HOST: 72.60.190.192
-  VPS_USER: root
-  PROJECT_DIR: /docker/n8n
-  HEALTH_URL: https://n8n.srv1258231.hstgr.cloud/healthz
+  # CRITICAL: Must be the API gateway URL, not the console URL
+  # Gateway: api.<domain>/healthz (public, no auth)
+  # Console: n8n.<domain> or console.<domain> (IP-protected, will fail)
+  HEALTH_URL: ${{ vars.HEALTH_URL || 'https://api.srv1258231.hstgr.cloud/healthz' }}
+  VPS_HOST: ${{ vars.VPS_HOST || '72.60.190.192' }}
+  VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
+  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/docker/n8n' }}
 
 jobs:
-  health-check:
-    name: Health Check
+  # =========================================================================
+  # Job 1: Check SSH key availability (required for fallback diagnostics)
+  # =========================================================================
+  check-ssh:
+    name: Check SSH Configuration
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
+    outputs:
+      ssh_available: ${{ steps.check.outputs.available }}
     steps:
-      - name: Check n8n health
-        id: n8n
+      - name: Check if SSH key is configured
+        id: check
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.HEALTH_URL }}" --connect-timeout 10 || echo "000")
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "status=healthy" >> $GITHUB_OUTPUT
+          if [ -n "$SSH_KEY" ] && [ "$SSH_KEY" != "" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+            echo "SSH key configured"
           else
-            echo "status=unhealthy" >> $GITHUB_OUTPUT
-            echo "::warning::n8n returned HTTP $HTTP_CODE"
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "::notice::VPS_SSH_KEY not configured - SSH diagnostics disabled"
           fi
 
+  # =========================================================================
+  # Job 2: External HTTP Health Check (primary)
+  # =========================================================================
+  http-health-check:
+    name: HTTP Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+      http_code: ${{ steps.check.outputs.http_code }}
+      response_time: ${{ steps.check.outputs.response_time }}
+
+    steps:
+      - name: Check health endpoint (HTTP)
+        id: check
+        run: |
+          echo "Checking health endpoint: ${{ env.HEALTH_URL }}"
+          echo ""
+
+          # Measure response time and capture HTTP code
+          START=$(date +%s%N)
+          HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" \
+            "${{ env.HEALTH_URL }}" \
+            --connect-timeout 15 \
+            --max-time 30 \
+            -H "User-Agent: GitHub-Actions-HealthMonitor/2.0" \
+            2>/dev/null || echo "000")
+          END=$(date +%s%N)
+
+          RESPONSE_TIME=$(( (END - START) / 1000000 ))
+          echo "response_time=${RESPONSE_TIME}ms" >> $GITHUB_OUTPUT
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+
+          RESPONSE=$(cat /tmp/health_response.txt 2>/dev/null || echo "")
+
+          # Determine status
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "status=healthy" >> $GITHUB_OUTPUT
+            echo "::notice::Health check passed (HTTP 200, ${RESPONSE_TIME}ms)"
+          elif [ "$HTTP_CODE" = "000" ]; then
+            echo "status=unreachable" >> $GITHUB_OUTPUT
+            echo "::error::Server unreachable (connection failed after ${RESPONSE_TIME}ms)"
+          elif [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+            echo "status=auth_blocked" >> $GITHUB_OUTPUT
+            echo "::error::Authentication/IP block (HTTP $HTTP_CODE). Check if HEALTH_URL points to the PUBLIC gateway, not the protected console."
+          elif [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ] || [ "$HTTP_CODE" = "504" ]; then
+            echo "status=backend_down" >> $GITHUB_OUTPUT
+            echo "::error::Backend service down (HTTP $HTTP_CODE)"
+          else
+            echo "status=unhealthy" >> $GITHUB_OUTPUT
+            echo "::error::Unexpected response (HTTP $HTTP_CODE)"
+          fi
+
+          # Log response for debugging (truncated)
+          if [ -n "$RESPONSE" ]; then
+            echo "Response: $(echo "$RESPONSE" | head -c 500)"
+          fi
+
+  # =========================================================================
+  # Job 3: SSH-based Internal Health Check (fallback/diagnostics)
+  # =========================================================================
+  ssh-health-check:
+    name: SSH Internal Check
+    runs-on: ubuntu-latest
+    needs: [check-ssh, http-health-check]
+    # Run if: SSH available AND (HTTP unhealthy OR force_ssh_check)
+    if: |
+      needs.check-ssh.outputs.ssh_available == 'true' &&
+      (needs.http-health-check.outputs.status != 'healthy' || github.event.inputs.force_ssh_check == 'true')
+    timeout-minutes: 5
+    outputs:
+      containers_up: ${{ steps.diag.outputs.containers_up }}
+      postgres_ready: ${{ steps.diag.outputs.postgres_ready }}
+      disk_ok: ${{ steps.diag.outputs.disk_ok }}
+
+    steps:
       - name: Install SSH Key
-        if: steps.n8n.outputs.status == 'unhealthy'
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
@@ -42,48 +136,148 @@ jobs:
           if_key_exists: replace
 
       - name: Add known hosts
-        if: steps.n8n.outputs.status == 'unhealthy'
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Check services on VPS
-        if: steps.n8n.outputs.status == 'unhealthy'
-        id: services
         run: |
-          STATUS=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
-            cd /docker/n8n
-            echo "=== Docker Status ==="
-            docker compose ps --format "table {{.Name}}\t{{.Status}}"
-            echo ""
-            echo "=== Disk Usage ==="
-            df -h / | tail -1
-            echo ""
-            echo "=== Memory ==="
-            free -h | head -2
-          ENDSSH
-          )
-          echo "$STATUS"
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Alert on failure
-        if: steps.n8n.outputs.status == 'unhealthy'
+      - name: Run internal diagnostics
+        id: diag
+        run: |
+          echo "=== SSH Internal Diagnostics ==="
+
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+
+          set +e  # Don't exit on error
+
+          echo "=== 1. Docker Status ==="
+          cd ${{ env.PROJECT_DIR }} 2>/dev/null || cd /docker/n8n 2>/dev/null || { echo "PROJECT_DIR not found"; exit 1; }
+
+          # Check if docker compose file exists
+          if [ -f "docker-compose.hostinger.prod.yml" ]; then
+            COMPOSE_FILE="docker-compose.hostinger.prod.yml"
+          elif [ -f "docker-compose.yml" ]; then
+            COMPOSE_FILE="docker-compose.yml"
+          else
+            echo "No docker-compose file found"
+            exit 1
+          fi
+
+          docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}" 2>/dev/null || docker ps --format "table {{.Names}}\t{{.Status}}"
+
+          # Count running containers
+          RUNNING=$(docker compose -f "$COMPOSE_FILE" ps --status running -q 2>/dev/null | wc -l)
+          echo "Running containers: $RUNNING"
+
+          echo ""
+          echo "=== 2. Local Health Check ==="
+          LOCAL_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/healthz --connect-timeout 5 2>/dev/null || echo "000")
+          echo "Local /healthz: HTTP $LOCAL_HEALTH"
+
+          echo ""
+          echo "=== 3. PostgreSQL Status ==="
+          docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U n8n -d n8n 2>/dev/null && echo "PostgreSQL: READY" || echo "PostgreSQL: NOT READY"
+
+          echo ""
+          echo "=== 4. Disk Space ==="
+          df -h / | tail -1
+          DISK_AVAIL=$(df / | tail -1 | awk '{print $4}')
+          echo "Available: $DISK_AVAIL"
+
+          echo ""
+          echo "=== 5. Memory ==="
+          free -h | head -2
+
+          echo ""
+          echo "=== 6. Recent Errors (last 10 lines) ==="
+          docker compose -f "$COMPOSE_FILE" logs --tail=10 n8n-main 2>/dev/null | grep -iE "(error|fail|exception)" | tail -5 || echo "No recent errors"
+
+          ENDSSH
+
+          # Capture exit code
+          SSH_EXIT=$?
+          if [ $SSH_EXIT -eq 0 ]; then
+            echo "containers_up=true" >> $GITHUB_OUTPUT
+            echo "postgres_ready=true" >> $GITHUB_OUTPUT
+            echo "disk_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "containers_up=false" >> $GITHUB_OUTPUT
+            echo "::error::SSH diagnostics failed with exit code $SSH_EXIT"
+          fi
+
+  # =========================================================================
+  # Job 4: Send Alert (if unhealthy)
+  # =========================================================================
+  alert:
+    name: Send Alert
+    runs-on: ubuntu-latest
+    needs: [http-health-check, ssh-health-check]
+    if: |
+      always() &&
+      needs.http-health-check.outputs.status != 'healthy'
+
+    steps:
+      - name: Send alert webhook
         env:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          HTTP_STATUS: ${{ needs.http-health-check.outputs.status }}
+          HTTP_CODE: ${{ needs.http-health-check.outputs.http_code }}
         run: |
-          if [ -n "$ALERT_WEBHOOK_URL" ]; then
-            curl -sf -X POST "$ALERT_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "text": "Health Check Failed - n8n.srv1258231.hstgr.cloud",
-                "attachments": [{
-                  "color": "danger",
-                  "fields": [
-                    {"title": "URL", "value": "${{ env.HEALTH_URL }}", "short": true},
-                    {"title": "Time", "value": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "short": true}
-                  ]
-                }]
-              }' || echo "Alert failed"
+          if [ -z "$ALERT_WEBHOOK_URL" ]; then
+            echo "::notice::No ALERT_WEBHOOK_URL configured - skipping alert"
+            exit 0
           fi
-          exit 1
 
-      - name: Log success
-        if: steps.n8n.outputs.status == 'healthy'
-        run: echo "Health check passed at $(date -u)"
+          curl -sf -X POST "$ALERT_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"Health Check Alert\",
+              \"blocks\": [{
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*Health Check Failed*\n- URL: ${{ env.HEALTH_URL }}\n- Status: ${HTTP_STATUS}\n- HTTP Code: ${HTTP_CODE}\n- Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+                }
+              }]
+            }" || echo "::warning::Alert webhook failed"
+
+  # =========================================================================
+  # Job 5: Summary
+  # =========================================================================
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [http-health-check, ssh-health-check, check-ssh]
+    if: always()
+
+    steps:
+      - name: Generate summary report
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## Health Check Summary
+
+          | Metric | Value |
+          |--------|-------|
+          | **URL** | ${{ env.HEALTH_URL }} |
+          | **HTTP Status** | ${{ needs.http-health-check.outputs.status || 'N/A' }} |
+          | **HTTP Code** | ${{ needs.http-health-check.outputs.http_code || 'N/A' }} |
+          | **Response Time** | ${{ needs.http-health-check.outputs.response_time || 'N/A' }} |
+          | **SSH Available** | ${{ needs.check-ssh.outputs.ssh_available || 'N/A' }} |
+          | **Timestamp** | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
+
+          EOF
+
+          # Add troubleshooting tips if unhealthy
+          if [ "${{ needs.http-health-check.outputs.status }}" != "healthy" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ### Troubleshooting
+
+          | Status | Likely Cause | Action |
+          |--------|--------------|--------|
+          | `auth_blocked` | HEALTH_URL points to protected console | Change to `api.<domain>/healthz` |
+          | `unreachable` | DNS/Network issue or server down | Check VPS status |
+          | `backend_down` | n8n or gateway container crashed | SSH and check `docker compose ps` |
+
+          EOF
+          fi

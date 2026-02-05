@@ -96,6 +96,34 @@ df -h
 ./scripts/smoke_meta.sh
 ```
 
+### Database Migrations (P0-01)
+
+**Automatic migration on startup:**
+The `db-migrate` service runs automatically on each deployment and applies any pending migrations.
+n8n-main and n8n-worker will NOT start until migrations complete successfully.
+
+```bash
+# Check migration status
+docker compose -f docker-compose.hostinger.prod.yml logs db-migrate
+
+# Manual migration (if needed)
+./scripts/db_migrate_all.sh
+
+# Dry run (see what would be applied)
+./scripts/db_migrate_all.sh --dry-run
+
+# Check applied migrations in DB
+docker compose -f docker-compose.hostinger.prod.yml exec postgres \
+  psql -U n8n -d n8n -c "SELECT filename, applied_at FROM schema_migrations ORDER BY applied_at DESC LIMIT 10"
+```
+
+**Migration files location:** `db/migrations/`
+
+**How it works:**
+1. **Fresh install**: `docker-entrypoint-initdb.d` runs `00_bootstrap.sql` + `01_apply_migrations.sh`
+2. **Upgrades**: `db-migrate` service applies pending migrations before n8n starts
+3. **Fail-fast**: If any migration fails, deployment stops (n8n won't start with incomplete schema)
+
 ---
 
 ## Healthchecks

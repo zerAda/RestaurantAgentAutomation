@@ -1,0 +1,163 @@
+{
+  "name": "W1 - IN TikTok Adapter",
+  "active": false,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/inbound/tiktok",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "tiktok-webhook",
+      "name": "IN - Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-2400, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\n\n// =============================================================================\n// TikTok Business API Parser\n// =============================================================================\nfunction parseTikTok(rawBody) {\n  // Basic structure check\n  if (!rawBody || typeof rawBody !== 'object') return null;\n\n  // Extract User ID (openid) and Message\n  // Example structure: { entry: [ { changes: [ { value: { messages: [...] } } ] } ] }\n  // OR: { event: 'receive_message', from_user_id: '...', content: '...' }\n  // We'll implement a flexible parser assuming standard fields\n  \n  let msgId = rawBody.msg_id || rawBody.message_id || crypto.randomUUID();\n  let userId = rawBody.from_user_id || rawBody.sender_id || rawBody.from || 'unknown';\n  let timestamp = rawBody.create_time || rawBody.timestamp || new Date().toISOString();\n  let text = '';\n  let type = 'text';\n  let attachments = [];\n\n  if (rawBody.content) {\n    text = rawBody.content;\n  } else if (rawBody.message && rawBody.message.content) {\n    text = rawBody.message.content;\n  } else if (rawBody.text) {\n    text = rawBody.text;\n  }\n\n  // Handle specific types if present\n  if (rawBody.message_type === 'audio' || rawBody.type === 'audio') {\n    type = 'audio';\n    if (rawBody.audio_url) {\n        attachments.push({ type: 'audio', url: rawBody.audio_url, mime: 'audio/ogg' });\n    }\n  }\n\n  return {\n    provider: 'tiktok',\n    msg_id: msgId,\n    from: userId,\n    text: text,\n    timestamp: timestamp,\n    type: type,\n    attachments: attachments,\n    meta: rawBody\n  };\n}\n\nconst rawBodyInput = $json.body ?? $json;\nconst parsed = parseTikTok(rawBodyInput);\n\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst inboundReceivedAt = new Date().toISOString();\nconst correlationId = (headers['x-correlation-id'] || crypto.randomUUID()).toString();\n\n// Basic Token/Auth extraction (Similar to WA)\nconst auth = (headers['authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst headerToken = (headers['x-webhook-token'] || '').toString().trim();\nconst token = headerToken || bearer;\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\nconst metaSig = (headers['x-tiktok-business-signature'] || '').toString();\n\n// Construct canonical envelope\nconst envelope = {\n    contract_version: 'v1',\n    provider: 'tiktok',\n    msg_id: parsed?.msg_id || 'unknown',\n    from: parsed?.from || 'unknown',\n    text: parsed?.text || '',\n    timestamp: parsed?.timestamp || inboundReceivedAt,\n    attachments: parsed?.attachments || [],\n    meta: parsed?.meta || {},\n    tenant_context: { source: 'untrusted_webhook', hints: {} }\n};\n\nconst textHash = crypto.createHash('sha256').update((envelope.text || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'tiktok',\n    userId: envelope.from,\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: 'customer',\n    contract_version: 'v1',\n    inbound_envelope: envelope,\n    metadata: {\n      msgId: envelope.msg_id,\n      timestamp: inboundReceivedAt,\n      ip: (headers['x-forwarded-for'] || '').split(',')[0].trim(),\n      userAgent: (headers['user-agent'] || '').toString()\n    },\n    message: {\n      type: envelope.attachments.some(a => a.type === 'audio') ? 'audio' : 'text',\n      text: envelope.text,\n      buttonId: '',\n      audio: envelope.attachments.find(a => a.type === 'audio') || null,\n      image: null\n    },\n    _contract: { isValid: true }, // Skip strict contract for custom adapter\n    _auth: {\n        tokenPresent: !!token,\n        tokenHash,\n        metaSigPresent: !!metaSig,\n        authOk: false, // Will be set by Apply Auth\n        denyReason: 'AUTH_DENY'\n    },\n    _sec: { textHash },\n    _timing: { inbound_received_at: inboundReceivedAt, correlation_id: correlationId }\n  }\n}];"
+      },
+      "id": "tiktok-parse",
+      "name": "B0 - Parse & Canonicalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-2150, 0]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseBody": "={{JSON.stringify({status:'received'})}}",
+        "options": {}
+      },
+      "id": "resp-200-ack",
+      "name": "RESP - 200 ACK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-1950, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
+        "additionalFields": {
+          "queryParams": "={{[$json._auth.tokenHash]}}"
+        }
+      },
+      "id": "resolve-client-db",
+      "name": "B0 - Resolve Client (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-1750, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst matched = !!e.matched;\n\n// Default IDs for dev/demo\nconst defaultTenantId = ($env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001').toString();\nconst defaultRestaurantId = ($env.DEFAULT_RESTAURANT_ID || '00000000-0000-0000-0000-000000000000').toString();\n\nlet tenantId = defaultTenantId;\nlet restaurantId = defaultRestaurantId;\nlet authMode = 'legacy_shared'; // Simplified for Phase 1\nlet authOk = true; // Permissive for Phase 1 demo\n\nif (matched && e.tenant_id) {\n    tenantId = e.tenant_id;\n    restaurantId = e.restaurant_id;\n    authMode = 'api_client';\n}\n\nconst conversationKey = `${tenantId}:${restaurantId}:tiktok:${e.userId}`;\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    _auth: {\n      ...e._auth,\n      authOk,\n      authMode\n    }\n  }\n}];"
+      },
+      "id": "apply-auth",
+      "name": "B0 - Apply Auth Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1550, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (\n      INSERT INTO idempotency_keys (conversation_key, msg_id, channel)\n      VALUES ($1, $2, $3)\n      ON CONFLICT DO NOTHING\n      RETURNING 1\n    )\n    SELECT COALESCE((SELECT 1 FROM ins), 0) AS inserted;",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey, $json.metadata.msgId, 'tiktok']}}"
+        }
+      },
+      "id": "idempotency-db",
+      "name": "B0 - Idempotency (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-1350, 0]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{$env.CORE_WORKFLOW_ID}}",
+        "options": {
+          "waitTillFinished": false
+        }
+      },
+      "id": "exec-core",
+      "name": "B1 - Execute CORE_AGENT",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [-1150, 0]
+    }
+  ],
+  "connections": {
+    "IN - Webhook": {
+      "main": [
+        [
+          {
+            "node": "B0 - Parse & Canonicalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Parse & Canonicalize": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 ACK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "B0 - Resolve Client (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Resolve Client (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Apply Auth Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Apply Auth Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Idempotency (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Idempotency (DB)": {
+      "main": [
+        [
+          {
+            "node": "B1 - Execute CORE_AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

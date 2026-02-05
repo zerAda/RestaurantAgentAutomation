@@ -1,0 +1,51 @@
+{
+    "kind": "collectionType",
+    "collectionName": "ingredients",
+    "info": {
+        "singularName": "ingredient",
+        "pluralName": "ingredients",
+        "displayName": "Ingredient",
+        "description": "Raw materials for products"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "name": {
+            "type": "string",
+            "required": true
+        },
+        "current_stock": {
+            "type": "decimal",
+            "default": 0
+        },
+        "unit": {
+            "type": "enumeration",
+            "enum": [
+                "kg",
+                "g",
+                "l",
+                "ml",
+                "unit"
+            ],
+            "default": "unit"
+        },
+        "min_stock_alert": {
+            "type": "decimal",
+            "default": 10
+        },
+        "supplier": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::supplier.supplier",
+            "inversedBy": "ingredients"
+        },
+        "products": {
+            "type": "relation",
+            "relation": "manyToMany",
+            "target": "api::product.product",
+            "mappedBy": "ingredients"
+        }
+    }
+}

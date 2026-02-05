@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS restaurant_users (
   id              bigserial PRIMARY KEY,
   tenant_id       uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
-  channel         text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel         text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   user_id         text NOT NULL,
   role            text NOT NULL CHECK (role IN ('customer','owner','admin','kitchen')),
   created_at      timestamptz NOT NULL DEFAULT now(),
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS conversation_state (
   conversation_key text PRIMARY KEY,
   tenant_id        uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   restaurant_id    uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
-  channel          text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel          text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   user_id          text NOT NULL,
   state_json       jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at       timestamptz NOT NULL DEFAULT now(),
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS orders (
   order_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
-  channel         text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel         text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   user_id         text NOT NULL,
   service_mode    text NOT NULL CHECK (service_mode IN ('sur_place','a_emporter','livraison')),
   status          text NOT NULL DEFAULT 'NEW' CHECK (status IN ('NEW','ACCEPTED','IN_PROGRESS','READY','DONE','CANCELLED')),
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
   tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
   conversation_key    text NULL,
-  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   user_id             text NOT NULL,
   order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
   template            text NOT NULL DEFAULT 'reply',
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS inbound_messages (
   id               bigserial PRIMARY KEY,
   conversation_key text NOT NULL,
   msg_id           text NOT NULL,
-  channel          text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel          text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   message_type     text NOT NULL,
   text_hash        text,
   meta_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -169,7 +169,7 @@ CREATE INDEX IF NOT EXISTS idx_inbound_messages_window
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   conversation_key text NOT NULL,
   msg_id           text NOT NULL,
-  channel          text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel          text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   created_at       timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (conversation_key, msg_id, channel)
 );
@@ -221,7 +221,7 @@ CREATE TABLE IF NOT EXISTS voice_interactions (
 -- Feedback jobs (scheduled)
 CREATE TABLE IF NOT EXISTS feedback_jobs (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  channel         text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+  channel         text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger','tiktok')),
   user_id         text NOT NULL,
   restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
   order_id        uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,

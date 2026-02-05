@@ -1,0 +1,47 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15551234567",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Karim Bouzid"
+                },
+                "wa_id": "213555111222"
+              }
+            ],
+            "messages": [
+              {
+                "context": {
+                  "from": "15551234567",
+                  "id": "wamid.context12345"
+                },
+                "from": "213555111222",
+                "id": "wamid.HBgNMjEzNTU1MTExMjIyFQIAEhggQlVUVE9OMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0",
+                "timestamp": "__TIMESTAMP__",
+                "type": "interactive",
+                "interactive": {
+                  "type": "button_reply",
+                  "button_reply": {
+                    "id": "btn_confirm_order",
+                    "title": "Confirmer"
+                  }
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
