@@ -1,0 +1,50 @@
+{
+    "kind": "collectionType",
+    "collectionName": "orders",
+    "info": {
+        "singularName": "order",
+        "pluralName": "orders",
+        "displayName": "Order",
+        "description": "Sales history for ROI calculations"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "total_amount": {
+            "type": "decimal",
+            "required": true
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "pending",
+                "confirmed",
+                "delivered",
+                "cancelled"
+            ],
+            "default": "pending"
+        },
+        "customer_phone": {
+            "type": "string"
+        },
+        "items_summary": {
+            "type": "json",
+            "description": "Snapshot of items bought"
+        },
+        "attributed_campaign": {
+            "type": "string",
+            "description": "Tracking code (ex: MARDI50) for marketing ROI"
+        },
+        "payment_method": {
+            "type": "enumeration",
+            "enum": [
+                "cash",
+                "card",
+                "online"
+            ],
+            "default": "cash"
+        }
+    }
+}

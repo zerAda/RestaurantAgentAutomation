@@ -1,0 +1,65 @@
+{
+    "kind": "collectionType",
+    "collectionName": "creative_assets",
+    "info": {
+        "singularName": "creative-asset",
+        "pluralName": "creative-assets",
+        "displayName": "Creative Asset",
+        "description": "Stores marketing visuals and AI enhanced versions"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "original_media": {
+            "type": "media",
+            "multiple": false,
+            "required": true,
+            "allowedTypes": [
+                "images",
+                "videos"
+            ]
+        },
+        "enhanced_media": {
+            "type": "media",
+            "multiple": false,
+            "allowedTypes": [
+                "images",
+                "videos"
+            ]
+        },
+        "platform_format": {
+            "type": "enumeration",
+            "enum": [
+                "square",
+                "vertical",
+                "landscape"
+            ],
+            "default": "vertical"
+        },
+        "ai_prompt_used": {
+            "type": "text"
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "draft",
+                "processing",
+                "approved",
+                "published"
+            ],
+            "default": "draft"
+        },
+        "performance_score": {
+            "type": "integer",
+            "default": 0
+        },
+        "parent_product": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::product.product",
+            "inversedBy": "creative_assets"
+        }
+    }
+}

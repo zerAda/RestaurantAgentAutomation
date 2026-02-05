@@ -1,0 +1,119 @@
+{
+    "name": "W21_CAMPAIGN_BLASTER",
+    "nodes": [
+        {
+            "parameters": {
+                "triggerTimes": {
+                    "item": [
+                        {
+                            "mode": "everyHour"
+                        }
+                    ]
+                }
+            },
+            "name": "Cron Trigger",
+            "type": "n8n-nodes-base.cron",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "collection": "marketing_campaigns",
+                "limit": 5,
+                "filters": {
+                    "status": "scheduled",
+                    "sceduled_at": {
+                        "$lte": "={{ $now.format() }}"
+                    }
+                }
+            },
+            "name": "Find Active Campaigns",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ],
+            "credentials": {
+                "strapiApi": {
+                    "id": "STRAPI_CREDENTIAL_ID",
+                    "name": "Strapi connection"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "if ($input.all().length === 0) return [];\nreturn $input.all();"
+            },
+            "name": "Check Empty",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "collection": "marketing_campaigns",
+                "id": "={{ $json.id }}",
+                "fields": {
+                    "status": "active"
+                }
+            },
+            "name": "Mark Active",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ],
+            "credentials": {
+                "strapiApi": {
+                    "id": "STRAPI_CREDENTIAL_ID",
+                    "name": "Strapi connection"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Cron Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Find Active Campaigns",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Active Campaigns": {
+            "main": [
+                [
+                    {
+                        "node": "Check Empty",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Empty": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Active",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

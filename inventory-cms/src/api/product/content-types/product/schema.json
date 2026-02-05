@@ -33,6 +33,12 @@
             "relation": "manyToMany",
             "target": "api::ingredient.ingredient",
             "inversedBy": "products"
+        },
+        "creative_assets": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::creative-asset.creative-asset",
+            "mappedBy": "parent_product"
         }
     }
 }

@@ -1,0 +1,126 @@
+{
+    "name": "W20_ASSET_ENHANCER",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "enhance-asset",
+                "options": {}
+            },
+            "name": "Webhook (Internal)",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "collection": "creative_assets",
+                "id": "={{ $json.body.asset_id }}"
+            },
+            "name": "Get Asset from Strapi",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ],
+            "credentials": {
+                "strapiApi": {
+                    "id": "STRAPI_CREDENTIAL_ID",
+                    "name": "Strapi connection"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "url": "https://api.openai.com/v1/chat/completions",
+                "method": "POST",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "gpt-4-vision-preview"
+                        },
+                        {
+                            "name": "messages",
+                            "value": "={{ [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Describe this food image in detail for a marketing prompt.\"}, {\"type\": \"image_url\", \"image_url\": {\"url\": $json.original_media.url}}]}] }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Vision Analysis (Stub)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "collection": "creative_assets",
+                "id": "={{ $json.id }}",
+                "fields": {
+                    "ai_prompt_used": "={{ $json.choices[0].message.content }}",
+                    "status": "processing"
+                }
+            },
+            "name": "Update Status",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ],
+            "credentials": {
+                "strapiApi": {
+                    "id": "STRAPI_CREDENTIAL_ID",
+                    "name": "Strapi connection"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Webhook (Internal)": {
+            "main": [
+                [
+                    {
+                        "node": "Get Asset from Strapi",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Asset from Strapi": {
+            "main": [
+                [
+                    {
+                        "node": "Vision Analysis (Stub)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Vision Analysis (Stub)": {
+            "main": [
+                [
+                    {
+                        "node": "Update Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
