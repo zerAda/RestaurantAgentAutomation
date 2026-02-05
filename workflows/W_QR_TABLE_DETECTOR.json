@@ -1,0 +1,128 @@
+{
+    "name": "W_QR_TABLE_DETECTOR",
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "Input",
+            "type": "n8n-nodes-base.start",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// QR Table Detection Logic\nconst text = $input.first().json.text || '';\nconst userId = $input.first().json.from || '';\n\n// Detect table patterns: TABLE_04, table04, T4, etc.\nconst tablePattern = /(?:TABLE|table|T|t)[_\\s-]?(\\d{1,2})/i;\nconst match = text.match(tablePattern);\n\nlet tableId = null;\nlet isQrScan = false;\n\nif (match) {\n  tableId = parseInt(match[1], 10);\n  isQrScan = true;\n}\n\nreturn {\n  json: {\n    ...($input.first().json),\n    table_id: tableId,\n    is_qr_scan: isQrScan,\n    session_key: `user:${userId}:table`\n  }\n};"
+            },
+            "name": "Detect Table ID",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.is_qr_scan }}",
+                            "operation": "equal",
+                            "value2": "={{ true }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Is QR Scan?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "set",
+                "key": "={{ $json.session_key }}",
+                "value": "={{ $json.table_id }}",
+                "expire": true,
+                "ttl": 7200
+            },
+            "name": "Store Table in Session",
+            "type": "n8n-nodes-base.redis",
+            "typeVersion": 1,
+            "position": [
+                700,
+                200
+            ],
+            "credentials": {
+                "redis": {
+                    "id": "REDIS_CREDENTIAL_ID",
+                    "name": "Redis"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Return confirmation message\nconst tableId = $input.first().json.table_id;\n\nreturn {\n  json: {\n    response: `Sahit chef ! 🪑 Table ${tableId} enregistrée. Tu peux commander maintenant !`,\n    table_confirmed: true,\n    table_id: tableId\n  }\n};"
+            },
+            "name": "Confirm Table",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                900,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Input": {
+            "main": [
+                [
+                    {
+                        "node": "Detect Table ID",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Detect Table ID": {
+            "main": [
+                [
+                    {
+                        "node": "Is QR Scan?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is QR Scan?": {
+            "main": [
+                [
+                    {
+                        "node": "Store Table in Session",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Store Table in Session": {
+            "main": [
+                [
+                    {
+                        "node": "Confirm Table",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
