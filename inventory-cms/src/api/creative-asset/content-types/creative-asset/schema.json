@@ -41,6 +41,21 @@
         "ai_prompt_used": {
             "type": "text"
         },
+        "generated_caption": {
+            "type": "text",
+            "description": "AI written CM-style caption"
+        },
+        "aesthetic_style": {
+            "type": "enumeration",
+            "enum": [
+                "luxury_minimalist",
+                "warm_rustic",
+                "neon_streetfood",
+                "bright_brunch",
+                "dark_moody"
+            ],
+            "default": "luxury_minimalist"
+        },
         "status": {
             "type": "enumeration",
             "enum": [

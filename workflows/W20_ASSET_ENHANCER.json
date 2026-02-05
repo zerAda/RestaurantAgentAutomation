@@ -21,11 +21,11 @@
                 "collection": "creative_assets",
                 "id": "={{ $json.body.asset_id }}"
             },
-            "name": "Get Asset from Strapi",
+            "name": "Get Asset",
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                300,
+                250,
                 300
             ],
             "credentials": {
@@ -50,16 +50,56 @@
                         },
                         {
                             "name": "messages",
-                            "value": "={{ [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Describe this food image in detail for a marketing prompt.\"}, {\"type\": \"image_url\", \"image_url\": {\"url\": $json.original_media.url}}]}] }}"
+                            "value": "={{ [{\"role\": \"system\", \"content\": \"You are a Michelin Star Food Stylist & Gen Z Social Media Manager. Step 1: Analyze the image and list ingredients. Step 2: Write a PROMPT for FLUX.1 Pro to recreate this dish in style: '\" + $json.aesthetic_style + \"'. Use keywords: 8k, bokeh, cinematic. Step 3: Write a witty CAPTION for Instagram/TikTok with 2-3 emojis. Return JSON: { prompt: '...', caption: '...' }\"}, {\"role\": \"user\", \"content\": [{\"type\": \"image_url\", \"image_url\": {\"url\": $json.original_media.url}}]}] }}"
+                        },
+                        {
+                            "name": "response_format",
+                            "value": "={{ {\"type\": \"json_object\"} }}"
                         }
                     ]
                 }
             },
-            "name": "Vision Analysis (Stub)",
+            "name": "AI Vision & Creative Director",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
-                500,
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.replicate.com/v1/predictions",
+                "method": "POST",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "version",
+                            "value": "flux-pro-1.0-ultra-schnell"
+                        },
+                        {
+                            "name": "input",
+                            "value": "={{ {\"prompt\": $json.choices[0].message.content.prompt, \"aspect_ratio\": \"9:16\", \"safety_tolerance\": 5} }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Token {{ $env.REPLICATE_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Generate (FLUX.1 Pro)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                650,
                 300
             ]
         },
@@ -67,17 +107,18 @@
             "parameters": {
                 "operation": "update",
                 "collection": "creative_assets",
-                "id": "={{ $json.id }}",
+                "id": "={{ $node[\"Get Asset\"].json.id }}",
                 "fields": {
-                    "ai_prompt_used": "={{ $json.choices[0].message.content }}",
+                    "ai_prompt_used": "={{ $node[\"AI Vision & Creative Director\"].json.choices[0].message.content.prompt }}",
+                    "generated_caption": "={{ $node[\"AI Vision & Creative Director\"].json.choices[0].message.content.caption }}",
                     "status": "processing"
                 }
             },
-            "name": "Update Status",
+            "name": "Update Meta Data",
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                700,
+                850,
                 300
             ],
             "credentials": {
@@ -93,29 +134,34 @@
             "main": [
                 [
                     {
-                        "node": "Get Asset from Strapi",
+                        "node": "Get Asset",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Get Asset from Strapi": {
+        "Get Asset": {
             "main": [
                 [
                     {
-                        "node": "Vision Analysis (Stub)",
+                        "node": "AI Vision & Creative Director",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Vision Analysis (Stub)": {
+        "AI Vision & Creative Director": {
             "main": [
                 [
                     {
-                        "node": "Update Status",
+                        "node": "Generate (FLUX.1 Pro)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Update Meta Data",
                         "type": "main",
                         "index": 0
                     }
