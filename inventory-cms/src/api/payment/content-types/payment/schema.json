@@ -1,0 +1,64 @@
+{
+    "kind": "collectionType",
+    "collectionName": "payments",
+    "info": {
+        "singularName": "payment",
+        "pluralName": "payments",
+        "displayName": "Payment",
+        "description": "Payment tracking for orders"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "order": {
+            "type": "relation",
+            "relation": "oneToOne",
+            "target": "api::order.order"
+        },
+        "method": {
+            "type": "enumeration",
+            "enum": [
+                "cod",
+                "chargily",
+                "baridimob",
+                "ccp"
+            ],
+            "default": "cod"
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "pending",
+                "awaiting_payment",
+                "paid",
+                "failed",
+                "refunded"
+            ],
+            "default": "pending"
+        },
+        "amount": {
+            "type": "decimal",
+            "required": true
+        },
+        "currency": {
+            "type": "string",
+            "default": "DZD"
+        },
+        "external_id": {
+            "type": "string",
+            "description": "Chargily checkout_id or reference"
+        },
+        "payment_url": {
+            "type": "string",
+            "description": "Chargily payment link"
+        },
+        "paid_at": {
+            "type": "datetime"
+        },
+        "metadata": {
+            "type": "json"
+        }
+    }
+}

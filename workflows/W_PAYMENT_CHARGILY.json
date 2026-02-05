@@ -1,0 +1,147 @@
+{
+    "name": "W_PAYMENT_CHARGILY",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "create-payment",
+                "options": {}
+            },
+            "name": "Create Payment Request",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://pay.chargily.net/api/v2/checkouts",
+                "method": "POST",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "amount",
+                            "value": "={{ $json.body.amount }}"
+                        },
+                        {
+                            "name": "currency",
+                            "value": "dzd"
+                        },
+                        {
+                            "name": "success_url",
+                            "value": "={{ $env.APP_URL }}/payment/success?order_id={{ $json.body.order_id }}"
+                        },
+                        {
+                            "name": "failure_url",
+                            "value": "={{ $env.APP_URL }}/payment/failed?order_id={{ $json.body.order_id }}"
+                        },
+                        {
+                            "name": "webhook_endpoint",
+                            "value": "={{ $env.N8N_WEBHOOK_URL }}/webhook/chargily-callback"
+                        },
+                        {
+                            "name": "description",
+                            "value": "Commande #{{ $json.body.order_id }}"
+                        },
+                        {
+                            "name": "metadata",
+                            "value": "={{ { order_id: $json.body.order_id, customer_phone: $json.body.phone } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.CHARGILY_SECRET_KEY }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "name": "Chargily Create Checkout",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "create",
+                "collection": "payments",
+                "fields": {
+                    "order": "={{ $node['Create Payment Request'].json.body.order_id }}",
+                    "method": "chargily",
+                    "status": "awaiting_payment",
+                    "amount": "={{ $node['Create Payment Request'].json.body.amount }}",
+                    "external_id": "={{ $json.id }}",
+                    "payment_url": "={{ $json.checkout_url }}"
+                }
+            },
+            "name": "Save Payment Record",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return {\n  json: {\n    success: true,\n    payment_url: $node['Chargily Create Checkout'].json.checkout_url,\n    message: 'Cliquez pour payer 💳'\n  }\n};"
+            },
+            "name": "Return URL",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Create Payment Request": {
+            "main": [
+                [
+                    {
+                        "node": "Chargily Create Checkout",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Chargily Create Checkout": {
+            "main": [
+                [
+                    {
+                        "node": "Save Payment Record",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Payment Record": {
+            "main": [
+                [
+                    {
+                        "node": "Return URL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
