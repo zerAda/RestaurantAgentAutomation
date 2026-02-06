@@ -121,7 +121,7 @@ jobs:
           output: 'trivy-${{ matrix.image.name }}.txt'
 
       - name: Upload scan results
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: trivy-scan-${{ matrix.image.name }}
           path: trivy-${{ matrix.image.name }}.txt
@@ -295,7 +295,7 @@ jobs:
           output-file: sbom.spdx.json
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: sbom
           path: sbom.spdx.json
