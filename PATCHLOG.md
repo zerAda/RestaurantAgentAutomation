@@ -1,3 +1,57 @@
+# PATCHLOG — RESTO BOT
+
+## v3.3.0 — Diamond CI/CD Hardening (2026-02-06)
+
+### Scope
+Production-grade CI/CD hardening for VPS deployment with Docker Compose and PostgreSQL.
+
+### Critical Fixes (P0)
+
+1. **Dual Migration Tracking Table** — Compose `db-migrate` used `schema_migrations`, CD workflow used `_migrations`. Unified to `schema_migrations`. Risk: migrations applied twice.
+2. **GitHub Actions Pinned to SHA** — All actions (`actions/checkout`, `docker/build-push-action`, `shimataro/ssh-key-action`, `gitleaks/gitleaks-action`, `aquasecurity/trivy-action`, `anchore/sbom-action`) pinned from tags to commit SHA.
+3. **Root SSH Removed** — `cd-deploy.yml` no longer uses `VPS_USER: root`. Uses `${{ vars.VPS_USER || 'deploy' }}`.
+4. **VPS IP/Domain Not Hardcoded** — Moved to repository variables: `VPS_HOST`, `DOMAIN`, `HEALTH_URL`.
+5. **CI Pipeline Functional** — Deploy jobs replaced from `echo` placeholders to real compose validation with env vars, full migration suite, and Docker build with GHA cache.
+
+### Reliability Fixes (P1)
+
+6. **Release Directory Model** — Each deploy creates `/opt/resto/releases/<deploy-id>/` with symlink cutover. Instant rollback. Keeps 5 releases.
+7. **Resource Limits** — All containers now have `deploy.resources.limits` (memory + CPU).
+8. **Strapi Database Backup** — Pre-deploy backup now covers both `n8n` and `strapi` databases.
+9. **Compose Validation Fixed** — No longer swallows errors with `|| true` (both GitHub Actions and GitLab CI).
+10. **Integration Tests Run Full Migration Suite** — Bootstrap + all 26 migrations + critical table verification (both GitHub Actions and GitLab CI).
+11. **Healthchecks Added** — `cms`, `admin-dashboard`, `kiosk-app`, `gateway` now have healthcheck definitions.
+
+### Enhancement Fixes (P2)
+
+12. **Docker Build Cache** — GHA cache (`cache-from`/`cache-to`) for faster CI.
+13. **Security Scan Image Alignment** — Trivy now scans actual pinned versions (`traefik:v3.6.6`, `postgres:15-alpine`).
+14. **Failure Artifacts** — On deploy failure: `docker compose ps`, logs, `df -h`, `free -m`, `ss -tulpn` in job summary.
+15. **Ollama Image Pinned** — `ollama/ollama:latest` changed to `ollama/ollama:0.6.2`.
+16. **GitLab CI Hardened** — All images pinned (no `:latest`), full migration suite in integration tests, compose validation with env vars, security scan improved.
+
+### Files Changed
+
+| File | Type |
+|------|------|
+| `docker-compose.hostinger.prod.yml` | Modified — resource limits, healthchecks, ollama pin |
+| `.github/workflows/ci.yml` | Rewritten — Diamond spec |
+| `.github/workflows/cd-deploy.yml` | Rewritten — release dirs, no root, no hardcoded IP |
+| `.github/workflows/production-build.yml` | Modified — SHA pins, env vars, GHA cache |
+| `.github/workflows/security-scan.yml` | Modified — SHA pins, correct image versions |
+| `.github/workflows/health-monitor.yml` | Modified — SHA pins |
+| `.github/workflows/scheduled-backup.yml` | Modified — SHA pins |
+| `.github/workflows/rollback.yml` | Modified — SHA pins |
+| `.gitlab-ci.yml` | Modified — pinned images, full migrations, compose validation, security scan |
+| `docs/ci-cd.md` | Created — full CI/CD documentation (GitHub Actions + GitLab CI) |
+| `PATCHLOG.md` | Updated — this entry |
+
+### VPS Migration Required
+
+Before first deploy: see `docs/ci-cd.md` "VPS Setup Requirements" section.
+
+---
+
 # PATCHLOG — RESTO BOT v3.2.2 (2026-01-23)
 
 ## v3.2.2 — P0 Security Hardening Release

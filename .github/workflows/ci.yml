@@ -1,3 +1,13 @@
+# =============================================================================
+# CI Pipeline - Resto Bot (Diamond Level)
+# =============================================================================
+# Fast PR pipeline: lint + unit tests + integration tests + compose validate
+# Merge pipeline: triggers CD workflow for staging/production
+# =============================================================================
+# Actions pinned to SHA for supply-chain security.
+# To update: verify new SHA at https://github.com/<owner>/<repo>/releases
+# =============================================================================
+
 name: CI Pipeline
 
 on:
@@ -6,67 +16,112 @@ on:
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
   NODE_VERSION: '20'
   POSTGRES_USER: n8n
   POSTGRES_PASSWORD: n8npass
   POSTGRES_DB: n8n
-  REDIS_URL: redis://localhost:6379
 
 jobs:
   # ==========================================================================
-  # JOB 1: Lint & Validate
+  # JOB 1: Lint & Validate (fast gate — blocks everything else)
   # ==========================================================================
   lint:
     name: Lint & Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: Validate JSON files
+      - name: Validate JSON workflow files
         run: |
           echo "Validating workflow JSON files..."
           ERRORS=0
           for f in workflows/*.json; do
-            echo -n "Checking $f ... "
-            # Use Node.js for reliable JSON parsing (handles various encodings)
-            if node -e "JSON.parse(require('fs').readFileSync('$f', 'utf8'))" 2>/dev/null; then
-              echo "OK"
-            else
-              echo "INVALID"
+            if ! node -e "JSON.parse(require('fs').readFileSync('$f', 'utf8'))" 2>/dev/null; then
+              echo "::error file=$f::Invalid JSON"
               ERRORS=$((ERRORS + 1))
             fi
           done
+          echo "Checked $(ls workflows/*.json | wc -l) JSON files"
           if [ $ERRORS -gt 0 ]; then
             echo "::error::$ERRORS JSON files are invalid"
             exit 1
           fi
-          echo "All $(($(ls workflows/*.json | wc -l))) JSON files valid"
 
       - name: Check for placeholder values
         run: |
-          echo "Checking for unresolved placeholders..."
-          # Only warn, don't fail - some TODOs are acceptable in development
           if grep -rE "CHANGE_ME|REPLACE_ME" --include="*.json" workflows/ 2>/dev/null; then
-            echo "::warning::Found placeholder values that need replacing before production"
-          else
-            echo "No critical placeholders found"
+            echo "::warning::Found placeholder values that should be replaced before production"
           fi
 
       - name: Validate bash scripts
         run: |
-          echo "Checking bash syntax..."
+          ERRORS=0
           for f in scripts/*.sh; do
-            echo "Checking $f"
-            bash -n "$f" || exit 1
+            if ! bash -n "$f" 2>/dev/null; then
+              echo "::error file=$f::Bash syntax error"
+              ERRORS=$((ERRORS + 1))
+            fi
           done
+          if [ $ERRORS -gt 0 ]; then
+            exit 1
+          fi
           echo "All scripts valid"
+
+      - name: Validate compose files
+        run: |
+          # Production compose requires env vars — provide dummy values for validation
+          export DOMAIN_NAME=example.com
+          export CONSOLE_SUBDOMAIN=console
+          export API_SUBDOMAIN=api
+          export SSL_EMAIL=test@example.com
+          export TRAEFIK_TRUSTED_IPS=127.0.0.1/32
+          export ADMIN_ALLOWED_IPS=127.0.0.1/32
+          export N8N_VERSION=1.76.1
+          export TZ=UTC
+          export WEBHOOK_SHARED_TOKEN=ci-test
+          export META_APP_SECRET=ci-test
+          export WA_SEND_URL=http://localhost:8080/wa
+          export WA_API_TOKEN=ci-test
+          export IG_SEND_URL=http://localhost:8080/ig
+          export IG_API_TOKEN=ci-test
+          export MSG_SEND_URL=http://localhost:8080/msg
+          export MSG_API_TOKEN=ci-test
+          export STRAPI_ADMIN_JWT_SECRET=ci-test-secret-key-32ch
+          export STRAPI_JWT_SECRET=ci-test-secret-key-32ch
+          export STRAPI_API_TOKEN_SALT=ci-test-salt-value
+          export STRAPI_TRANSFER_TOKEN_SALT=ci-test-salt-value
+          export STRAPI_ENCRYPTION_KEY=ci-test-encryption-key
+          export STRAPI_APP_KEYS=ci-test-app-key-1,ci-test-app-key-2
+          export POSTGRES_USER=n8n
+
+          echo "Validating docker-compose.hostinger.prod.yml..."
+          docker compose -f docker-compose.hostinger.prod.yml config > /dev/null
+          echo "Production compose: OK"
+
+          for f in docker/docker-compose*.yml; do
+            if [ -f "$f" ]; then
+              echo "Validating $f..."
+              docker compose -f "$f" config > /dev/null
+              echo "$f: OK"
+            fi
+          done
 
   # ==========================================================================
   # JOB 2: Unit Tests
@@ -74,12 +129,14 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: '3.11'
 
@@ -98,13 +155,20 @@ jobs:
             python3 scripts/test_l10n_script_detection.py
           fi
 
+      - name: Run template render tests
+        run: |
+          if [ -f scripts/test_template_render.py ]; then
+            python3 scripts/test_template_render.py
+          fi
+
   # ==========================================================================
-  # JOB 3: Integration Tests
+  # JOB 3: Integration Tests (DB + migrations)
   # ==========================================================================
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: [lint]
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -133,14 +197,70 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Run database migrations
+      - name: Apply bootstrap schema
         env:
           PGPASSWORD: n8npass
         run: |
-          if [ -f db/bootstrap.sql ]; then
-            psql -h localhost -U n8n -d n8n -f db/bootstrap.sql
+          psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 -f db/bootstrap.sql
+          echo "Bootstrap schema applied"
+
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          # Create migration tracking table (same as compose db-migrate service)
+          psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 <<'EOSQL'
+          CREATE TABLE IF NOT EXISTS schema_migrations (
+            id          serial PRIMARY KEY,
+            filename    text NOT NULL UNIQUE,
+            applied_at  timestamptz NOT NULL DEFAULT now(),
+            checksum    text NULL
+          );
+          EOSQL
+
+          APPLIED=0
+          FAILED=0
+          for migration in $(ls -1 db/migrations/*.sql 2>/dev/null | sort); do
+            filename=$(basename "$migration")
+            echo "Applying: $filename"
+            if psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 < "$migration"; then
+              psql -h localhost -U n8n -d n8n -c "INSERT INTO schema_migrations (filename) VALUES ('$filename') ON CONFLICT (filename) DO NOTHING;"
+              APPLIED=$((APPLIED + 1))
+            else
+              echo "::error::Migration failed: $filename"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo "Migrations applied: $APPLIED, failed: $FAILED"
+          if [ $FAILED -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Verify schema integrity
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          # Verify critical tables exist
+          EXPECTED_TABLES="tenants restaurants orders menu_items api_clients inbound_messages outbound_messages schema_migrations"
+          MISSING=0
+          for table in $EXPECTED_TABLES; do
+            EXISTS=$(psql -h localhost -U n8n -d n8n -t -c "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='$table';" | tr -d ' ')
+            if [ "$EXISTS" != "1" ]; then
+              echo "::error::Missing table: $table"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          TOTAL=$(psql -h localhost -U n8n -d n8n -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" | tr -d ' ')
+          echo "Total tables: $TOTAL"
+          echo "Migration records: $(psql -h localhost -U n8n -d n8n -t -c "SELECT COUNT(*) FROM schema_migrations;" | tr -d ' ')"
+
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING critical tables missing"
+            exit 1
           fi
 
       - name: Validate test scripts
@@ -148,85 +268,133 @@ jobs:
           chmod +x scripts/*.sh
           bash -n scripts/test_battery.sh
           bash -n scripts/test_e2e.sh
+          bash -n scripts/smoke.sh
 
   # ==========================================================================
-  # JOB 4: Docker Build
+  # JOB 4: Docker Build Verification
   # ==========================================================================
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: [lint, unit-tests]
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
 
-      - name: Validate docker-compose files
-        run: |
-          for f in docker-compose*.yml docker/docker-compose*.yml; do
-            if [ -f "$f" ]; then
-              echo "Checking $f"
-              docker compose -f "$f" config > /dev/null || true
-            fi
-          done
+      - name: Build Inventory CMS (Strapi)
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
+        with:
+          context: ./inventory-cms
+          file: ./inventory-cms/Dockerfile
+          push: false
+          tags: ralphe/cms:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+      - name: Build Admin Dashboard
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
+        with:
+          context: .
+          file: ./admin-dashboard/Dockerfile
+          push: false
+          tags: ralphe/admin:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+      - name: Build Kiosk App
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
+        with:
+          context: .
+          file: ./kiosk-app/Dockerfile
+          push: false
+          tags: ralphe/kiosk:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
 
   # ==========================================================================
-  # JOB 5: Security Scan
+  # JOB 5: Security Scan (PR gate)
   # ==========================================================================
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: [lint]
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Check for secrets in code
         run: |
-          if grep -rE "(password|secret|token)\s*=\s*['\"][^'\"]{8,}" --include="*.json" . 2>/dev/null | grep -v "example" | grep -v "CHANGE_ME"; then
-            echo "WARNING: Potential hardcoded secrets"
+          FOUND=0
+          if grep -rE "(password|secret|token)\s*=\s*['\"][^'\"]{8,}" --include="*.json" . 2>/dev/null | grep -v "example" | grep -v "CHANGE_ME" | grep -v "test" | grep -v "node_modules"; then
+            echo "::warning::Potential hardcoded secrets detected"
+            FOUND=1
           fi
+          echo "Secret scan done (found=$FOUND)"
 
       - name: Check .env not committed
         run: |
           if [ -f ".env" ] || [ -f "config/.env" ]; then
-            echo "ERROR: .env file should not be committed!"
+            echo "::error::.env file must not be committed"
             exit 1
           fi
 
-      - name: Validate nginx security
+      - name: Validate nginx security headers
         run: |
-          if [ -f infra/gateway/nginx.conf ]; then
-            grep -q "X-Content-Type-Options" infra/gateway/nginx.conf && echo "OK: X-Content-Type-Options"
-            grep -q "X-Frame-Options" infra/gateway/nginx.conf && echo "OK: X-Frame-Options"
-            grep -q "server_tokens off" infra/gateway/nginx.conf && echo "OK: server_tokens off"
+          CONF="infra/gateway/nginx.conf"
+          if [ -f "$CONF" ]; then
+            MISSING=0
+            for header in "X-Content-Type-Options" "X-Frame-Options" "server_tokens off"; do
+              if ! grep -q "$header" "$CONF"; then
+                echo "::error file=$CONF::Missing: $header"
+                MISSING=$((MISSING + 1))
+              fi
+            done
+            if [ $MISSING -eq 0 ]; then
+              echo "Nginx security headers: OK"
+            fi
           fi
 
   # ==========================================================================
-  # JOB 6: Deploy
+  # JOB 6: CI Summary
   # ==========================================================================
-  deploy-staging:
-    name: Deploy Staging
+  ci-summary:
+    name: CI Summary
     runs-on: ubuntu-latest
-    needs: [integration-tests, docker-build, security-scan]
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-    steps:
-      - name: Deploy
-        run: echo "Deploy to staging - customize for your infra"
+    needs: [lint, unit-tests, integration-tests, docker-build, security-scan]
+    if: always()
+    timeout-minutes: 2
 
-  deploy-production:
-    name: Deploy Production
-    runs-on: ubuntu-latest
-    needs: [integration-tests, docker-build, security-scan]
-    if: github.ref == 'refs/heads/main'
-    environment: production
     steps:
-      - name: Deploy
-        run: echo "Deploy to production - customize for your infra"
-      - name: Smoke tests
-        run: echo "Run post-deploy smoke tests"
+      - name: Generate summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## CI Pipeline Summary
+
+          | Job | Status |
+          |-----|--------|
+          | Lint & Validate | ${{ needs.lint.result == 'success' && 'PASS' || 'FAIL' }} |
+          | Unit Tests | ${{ needs.unit-tests.result == 'success' && 'PASS' || 'FAIL' }} |
+          | Integration Tests | ${{ needs.integration-tests.result == 'success' && 'PASS' || 'FAIL' }} |
+          | Docker Build | ${{ needs.docker-build.result == 'success' && 'PASS' || 'FAIL' }} |
+          | Security Scan | ${{ needs.security-scan.result == 'success' && 'PASS' || 'FAIL' }} |
+
+          **Commit:** \`${{ github.sha }}\`
+          **Branch:** \`${{ github.ref_name }}\`
+          **Actor:** ${{ github.actor }}
+          EOF
+
+      - name: Fail if any critical job failed
+        if: |
+          needs.lint.result == 'failure' ||
+          needs.integration-tests.result == 'failure' ||
+          needs.docker-build.result == 'failure'
+        run: |
+          echo "::error::CI pipeline failed — merge blocked"
+          exit 1

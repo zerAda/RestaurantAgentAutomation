@@ -6,39 +6,65 @@ on:
   pull_request:
     branches: ["main"]
 
+concurrency:
+  group: prod-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
 
       - name: Build Inventory CMS (Strapi)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
         with:
           context: ./inventory-cms
           file: ./inventory-cms/Dockerfile
           push: false
-          tags: ralphe/cms:latest
+          tags: ralphe/cms:build-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
 
       - name: Build Admin Dashboard
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
         with:
           context: .
           file: ./admin-dashboard/Dockerfile
           push: false
-          tags: ralphe/admin:latest
+          tags: ralphe/admin:build-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
 
       - name: Build Kiosk App
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
         with:
           context: .
           file: ./kiosk-app/Dockerfile
           push: false
-          tags: ralphe/kiosk:latest
+          tags: ralphe/kiosk:build-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
 
       - name: Verify Docker Compose Config
-        run: docker compose -f docker-compose.hostinger.prod.yml config
+        run: |
+          export DOMAIN_NAME=example.com CONSOLE_SUBDOMAIN=console API_SUBDOMAIN=api
+          export SSL_EMAIL=test@example.com TRAEFIK_TRUSTED_IPS=127.0.0.1/32
+          export ADMIN_ALLOWED_IPS=127.0.0.1/32 N8N_VERSION=1.76.1 TZ=UTC
+          export WEBHOOK_SHARED_TOKEN=ci META_APP_SECRET=ci
+          export WA_SEND_URL=http://localhost/wa WA_API_TOKEN=ci
+          export IG_SEND_URL=http://localhost/ig IG_API_TOKEN=ci
+          export MSG_SEND_URL=http://localhost/msg MSG_API_TOKEN=ci
+          export STRAPI_ADMIN_JWT_SECRET=ci-test STRAPI_JWT_SECRET=ci-test
+          export STRAPI_API_TOKEN_SALT=ci-test STRAPI_TRANSFER_TOKEN_SALT=ci-test
+          export STRAPI_ENCRYPTION_KEY=ci-test STRAPI_APP_KEYS=ci-test POSTGRES_USER=n8n
+          docker compose -f docker-compose.hostinger.prod.yml config > /dev/null
+          echo "Compose validation: OK"

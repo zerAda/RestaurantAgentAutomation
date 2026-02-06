@@ -129,7 +129,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2
+        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary

@@ -1,3 +1,14 @@
+# =============================================================================
+# GitLab CI/CD Configuration - Resto Bot
+# =============================================================================
+# Diamond-level CI hardening:
+#   - All images pinned to specific versions (no :latest)
+#   - Integration tests run full migration suite (bootstrap + 26 migrations)
+#   - Compose validation provides all required env vars (no || true)
+#   - Security scan checks .env, secrets patterns, nginx headers
+#   - Schema verification after migrations
+# =============================================================================
+
 stages:
   - validate
   - test
@@ -20,10 +31,15 @@ lint-json:
   script:
     - echo "Validating JSON files..."
     - |
+      FAIL=0
       for f in workflows/*.json; do
         echo "Checking $f"
-        python3 -m json.tool "$f" > /dev/null || exit 1
+        python3 -m json.tool "$f" > /dev/null || FAIL=1
       done
+      if [ "$FAIL" -eq 1 ]; then
+        echo "ERROR: JSON validation failed"
+        exit 1
+      fi
     - echo "All JSON files valid"
 
 lint-bash:
@@ -32,17 +48,29 @@ lint-bash:
   script:
     - echo "Validating bash scripts..."
     - |
+      FAIL=0
       for f in scripts/*.sh; do
         echo "Checking $f"
-        bash -n "$f" || exit 1
+        bash -n "$f" || FAIL=1
       done
+      if [ "$FAIL" -eq 1 ]; then
+        echo "ERROR: Bash syntax check failed"
+        exit 1
+      fi
     - echo "All scripts valid"
 
 lint-nginx:
   stage: validate
-  image: nginx:alpine
+  image: nginx:1.27-alpine
   script:
-    - nginx -t -c /dev/stdin < infra/gateway/nginx.conf || true
+    - echo "Validating nginx config syntax..."
+    - |
+      if [ -f infra/gateway/nginx.conf ]; then
+        cp infra/gateway/nginx.conf /etc/nginx/nginx.conf
+        nginx -t 2>&1 || echo "WARNING: nginx -t failed (may need includes/upstreams from compose)"
+      else
+        echo "SKIP: infra/gateway/nginx.conf not found"
+      fi
   allow_failure: true
 
 # =============================================================================
@@ -50,9 +78,9 @@ lint-nginx:
 # =============================================================================
 unit-tests:
   stage: test
-  image: python:3.11
+  image: python:3.11-slim
   script:
-    - pip install jsonschema pytest
+    - pip install --no-cache-dir jsonschema pytest
     - |
       if [ -f scripts/validate_contracts.py ]; then
         python3 scripts/validate_contracts.py
@@ -77,13 +105,88 @@ integration-tests:
   before_script:
     - apk add --no-cache bash curl postgresql-client
   script:
+    # --- Wait for PostgreSQL ---
     - echo "Waiting for PostgreSQL..."
-    - until pg_isready -h postgres -U n8n; do sleep 1; done
-    - echo "Running migrations..."
+    - |
+      for i in $(seq 1 30); do
+        pg_isready -h postgres -U n8n && break
+        echo "  attempt $i/30..."
+        sleep 1
+      done
+      pg_isready -h postgres -U n8n || { echo "ERROR: PostgreSQL not ready after 30s"; exit 1; }
+
+    # --- Bootstrap ---
+    - echo "Running bootstrap..."
     - |
       if [ -f db/bootstrap.sql ]; then
-        PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -f db/bootstrap.sql
+        PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -f db/bootstrap.sql
+      else
+        echo "ERROR: db/bootstrap.sql not found"; exit 1
       fi
+
+    # --- Full migration suite ---
+    - echo "Running all migrations..."
+    - |
+      PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          id SERIAL PRIMARY KEY,
+          filename TEXT NOT NULL UNIQUE,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      "
+    - |
+      FAIL=0
+      APPLIED=0
+      for f in $(ls db/migrations/*.sql 2>/dev/null | sort); do
+        BASENAME=$(basename "$f")
+        ALREADY=$(PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -tAc \
+          "SELECT COUNT(*) FROM schema_migrations WHERE filename='$BASENAME'")
+        if [ "$ALREADY" = "0" ]; then
+          echo "  Applying: $BASENAME"
+          if PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -f "$f"; then
+            PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -c \
+              "INSERT INTO schema_migrations (filename) VALUES ('$BASENAME')"
+            APPLIED=$((APPLIED + 1))
+          else
+            echo "ERROR: Migration failed: $BASENAME"
+            FAIL=1
+            break
+          fi
+        else
+          echo "  Skip (already applied): $BASENAME"
+        fi
+      done
+      echo "Migrations applied: $APPLIED"
+      if [ "$FAIL" -eq 1 ]; then exit 1; fi
+
+    # --- Schema verification ---
+    - echo "Verifying critical tables..."
+    - |
+      PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+        DO \$\$
+        DECLARE
+          tbl TEXT;
+          missing TEXT[] := '{}';
+        BEGIN
+          FOREACH tbl IN ARRAY ARRAY[
+            'conversations','orders','inbound_messages','outbound_messages',
+            'security_events','api_clients','schema_migrations',
+            'webhook_replay_guard','admin_wa_audit_log','fraud_rules',
+            'payment_intents','faq_entries','support_tickets','delivery_zones'
+          ]
+          LOOP
+            IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
+              missing := array_append(missing, tbl);
+            END IF;
+          END LOOP;
+          IF array_length(missing, 1) > 0 THEN
+            RAISE EXCEPTION 'Missing tables: %', array_to_string(missing, ', ');
+          END IF;
+          RAISE NOTICE 'All critical tables verified';
+        END \$\$;
+      "
+
+    # --- Validate test scripts syntax ---
     - echo "Validating test scripts..."
     - bash -n scripts/test_battery.sh
     - bash -n scripts/test_e2e.sh
@@ -97,14 +200,35 @@ docker-build:
   services:
     - docker:24-dind
   script:
-    - echo "Validating docker-compose..."
+    - echo "Validating docker-compose files..."
     - |
+      # Provide required env vars for compose validation
+      export DOMAIN_NAME=example.com CONSOLE_SUBDOMAIN=console API_SUBDOMAIN=api
+      export SSL_EMAIL=test@example.com TRAEFIK_TRUSTED_IPS=127.0.0.1/32
+      export ADMIN_ALLOWED_IPS=127.0.0.1/32 N8N_VERSION=1.76.1 TZ=UTC
+      export WEBHOOK_SHARED_TOKEN=ci META_APP_SECRET=ci
+      export WA_SEND_URL=http://localhost/wa WA_API_TOKEN=ci
+      export IG_SEND_URL=http://localhost/ig IG_API_TOKEN=ci
+      export MSG_SEND_URL=http://localhost/msg MSG_API_TOKEN=ci
+      export STRAPI_ADMIN_JWT_SECRET=ci-test STRAPI_JWT_SECRET=ci-test
+      export STRAPI_API_TOKEN_SALT=ci-test STRAPI_TRANSFER_TOKEN_SALT=ci-test
+      export STRAPI_ENCRYPTION_KEY=ci-test STRAPI_APP_KEYS=ci-test POSTGRES_USER=n8n
+
+      FAIL=0
       for f in docker-compose*.yml docker/docker-compose*.yml; do
         if [ -f "$f" ]; then
           echo "Checking $f"
-          docker compose -f "$f" config > /dev/null || true
+          if ! docker compose -f "$f" config > /dev/null 2>&1; then
+            echo "ERROR: Compose validation failed for $f"
+            docker compose -f "$f" config 2>&1 || true
+            FAIL=1
+          else
+            echo "  OK"
+          fi
         fi
       done
+      if [ "$FAIL" -eq 1 ]; then exit 1; fi
+    - echo "All compose files valid"
   only:
     - main
     - develop
@@ -115,64 +239,92 @@ docker-build:
 # =============================================================================
 security-scan:
   stage: security
-  image: alpine:latest
+  image: alpine:3.21
   script:
-    - apk add --no-cache grep
-    - echo "Checking for secrets..."
-    - |
-      if grep -rE "(password|secret|token)\s*=\s*['\"][^'\"]{8,}" --include="*.json" . 2>/dev/null | grep -v "example" | grep -v "CHANGE_ME"; then
-        echo "WARNING: Potential secrets found"
-      fi
+    # --- Check .env not committed ---
     - echo "Checking .env not committed..."
     - |
       if [ -f ".env" ] || [ -f "config/.env" ]; then
-        echo "ERROR: .env committed!"
+        echo "ERROR: .env file committed to repository!"
         exit 1
       fi
+
+    # --- Check for hardcoded secrets ---
+    - apk add --no-cache grep
+    - echo "Checking for hardcoded secrets..."
+    - |
+      FINDINGS=$(grep -rE "(password|secret|token|api_key)\s*[:=]\s*['\"][^'\"]{8,}" \
+        --include="*.json" --include="*.yml" --include="*.yaml" --include="*.js" \
+        . 2>/dev/null \
+        | grep -vi "example" | grep -vi "CHANGE_ME" | grep -vi "ci-test" \
+        | grep -vi "\.env\.example" | grep -vi "placeholder" || true)
+      if [ -n "$FINDINGS" ]; then
+        echo "WARNING: Potential hardcoded secrets found:"
+        echo "$FINDINGS"
+        echo "Review the above findings before merging."
+      fi
+
+    # --- Check nginx security headers ---
     - echo "Checking nginx security headers..."
-    - grep -q "X-Content-Type-Options" infra/gateway/nginx.conf
-    - grep -q "X-Frame-Options" infra/gateway/nginx.conf
-    - grep -q "server_tokens off" infra/gateway/nginx.conf
+    - |
+      FAIL=0
+      for header in "X-Content-Type-Options" "X-Frame-Options" "server_tokens off"; do
+        if ! grep -q "$header" infra/gateway/nginx.conf 2>/dev/null; then
+          echo "ERROR: Missing nginx header/directive: $header"
+          FAIL=1
+        fi
+      done
+      if [ "$FAIL" -eq 1 ]; then exit 1; fi
+    - echo "Security checks passed"
 
 # =============================================================================
-# STAGE: Deploy
+# STAGE: Deploy (manual stubs — actual deployment via GitHub Actions cd-deploy.yml)
 # =============================================================================
+# NOTE: Production deployment uses GitHub Actions (cd-deploy.yml) with:
+#   - Release directory model (/opt/resto/releases/)
+#   - Pre-deploy database backup
+#   - Migration gating
+#   - Health checks + smoke tests
+#   - Auto-rollback on failure
+# These GitLab deploy jobs are stubs for environments that use GitLab CI/CD.
+
 deploy-staging:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.21
   environment:
     name: staging
     url: https://api.staging.example.com
   script:
-    - echo "Deploying to staging..."
-    - echo "Customize this for your infrastructure"
+    - echo "Staging deployment stub"
+    - echo "Configure with your GitLab Runner + SSH deployment or use GitHub Actions cd-deploy.yml"
   only:
     - develop
   when: manual
 
 deploy-production:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.21
   environment:
     name: production
     url: https://api.example.com
   script:
-    - echo "Deploying to production..."
-    - echo "Customize this for your infrastructure"
+    - echo "Production deployment stub"
+    - echo "Configure with your GitLab Runner + SSH deployment or use GitHub Actions cd-deploy.yml"
   only:
     - main
   when: manual
 
 # =============================================================================
-# POST-DEPLOY
+# POST-DEPLOY (manual stubs)
 # =============================================================================
 smoke-tests-staging:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.21
   needs: [deploy-staging]
   script:
     - apk add --no-cache curl bash
     - echo "Running smoke tests on staging..."
+    # Uncomment when staging is configured:
     # - API_URL=https://api.staging.example.com ./scripts/smoke.sh
   only:
     - develop
@@ -180,11 +332,12 @@ smoke-tests-staging:
 
 smoke-tests-production:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.21
   needs: [deploy-production]
   script:
     - apk add --no-cache curl bash
     - echo "Running smoke tests on production..."
+    # Uncomment when production is configured:
     # - API_URL=https://api.example.com ./scripts/smoke.sh
   only:
     - main
