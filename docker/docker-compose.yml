@@ -12,7 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
       interval: 10s
@@ -91,7 +91,7 @@ services:
 
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./schemas:/opt/resto/schemas:ro
+      - ../schemas:/opt/resto/schemas:ro
 
   # Local LLM (optional)
   ollama:
@@ -116,7 +116,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./mock-api:/app
+      - ../mock-api:/app
     command: sh -c "node server.js"
 
 volumes:

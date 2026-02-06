@@ -34,11 +34,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VPS_HOST: 72.60.190.192
-  VPS_USER: root
-  PROJECT_DIR: /docker/n8n
-  BACKUP_DIR: /local-files/backups/resto-bot
-  HEALTH_URL: https://n8n.srv1258231.hstgr.cloud/healthz
+  VPS_HOST: ${{ vars.VPS_HOST }}
+  VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
+  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
+  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/opt/resto/backups' }}
+  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  LOG_DIR: ${{ vars.LOG_DIR || '/var/log/resto-bot' }}
 
 permissions:
   contents: read
@@ -55,7 +56,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -99,7 +100,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -114,7 +115,9 @@ jobs:
           PRE_BACKUP="pre-rollback-$(date +%Y%m%d-%H%M%S)"
 
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            cd ${{ env.PROJECT_DIR }}
+            set -e
+            mkdir -p "${{ env.BACKUP_DIR }}"
+            cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }}
 
             # Config backup
             tar -czvf "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-config.tar.gz" .env secrets/ 2>/dev/null || true
@@ -134,7 +137,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -145,7 +148,7 @@ jobs:
 
       - name: Stop services
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30" || true
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }}/current 2>/dev/null && docker compose down --timeout 30 || (cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30)" || true
 
       - name: Restore database (full only)
         if: needs.validate.outputs.rollback_type == 'full'
@@ -153,14 +156,15 @@ jobs:
           BACKUP="${{ needs.validate.outputs.backup_name }}"
 
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            cd ${{ env.PROJECT_DIR }}
+            set -e
+            cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }}
 
             # Start postgres only
             docker compose up -d postgres
             sleep 15
 
             # Wait for postgres
-            for i in {1..30}; do
+            for i in \$(seq 1 30); do
               docker compose exec -T postgres pg_isready -U n8n && break
               sleep 2
             done
@@ -181,7 +185,8 @@ jobs:
           BACKUP="${{ needs.validate.outputs.backup_name }}"
 
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            cd ${{ env.PROJECT_DIR }}
+            set -e
+            cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }}
             tar -xzvf "${{ env.BACKUP_DIR }}/${BACKUP}-config.tar.gz" --overwrite
             chmod 600 .env 2>/dev/null || true
             chmod 700 secrets 2>/dev/null || true
@@ -190,7 +195,7 @@ jobs:
 
       - name: Restart services
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }} && docker compose up -d"
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }}/current 2>/dev/null && docker compose up -d --remove-orphans || (cd ${{ env.PROJECT_DIR }} && docker compose up -d --remove-orphans)"
           sleep 20
 
       - name: Health check
@@ -218,7 +223,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -230,8 +235,8 @@ jobs:
       - name: Record rollback
         run: |
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
-            mkdir -p /var/log/resto-bot
-            cat >> /var/log/resto-bot/rollbacks.log << EOF
+            mkdir -p ${{ env.LOG_DIR }}
+            cat >> ${{ env.LOG_DIR }}/rollbacks.log << EOF
 
           ================================================================================
           ROLLBACK: $(date -u +%Y-%m-%dT%H:%M:%SZ)

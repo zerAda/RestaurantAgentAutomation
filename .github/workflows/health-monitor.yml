@@ -24,10 +24,10 @@ env:
   # CRITICAL: Must be the API gateway URL, not the console URL
   # Gateway: api.<domain>/healthz (public, no auth)
   # Console: n8n.<domain> or console.<domain> (IP-protected, will fail)
-  HEALTH_URL: ${{ vars.HEALTH_URL || 'https://api.srv1258231.hstgr.cloud/healthz' }}
-  VPS_HOST: ${{ vars.VPS_HOST || '72.60.190.192' }}
+  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  VPS_HOST: ${{ vars.VPS_HOST }}
   VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
-  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/docker/n8n' }}
+  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
 
 jobs:
   # =========================================================================
@@ -129,7 +129,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -151,7 +151,7 @@ jobs:
           set +e  # Don't exit on error
 
           echo "=== 1. Docker Status ==="
-          cd ${{ env.PROJECT_DIR }} 2>/dev/null || cd /docker/n8n 2>/dev/null || { echo "PROJECT_DIR not found"; exit 1; }
+          cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }} 2>/dev/null || { echo "PROJECT_DIR not found"; exit 1; }
 
           # Check if docker compose file exists
           if [ -f "docker-compose.hostinger.prod.yml" ]; then

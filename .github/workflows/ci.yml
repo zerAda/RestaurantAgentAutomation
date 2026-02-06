@@ -118,7 +118,8 @@ jobs:
           for f in docker/docker-compose*.yml; do
             if [ -f "$f" ]; then
               echo "Validating $f..."
-              docker compose -f "$f" config > /dev/null
+              docker compose --project-directory . -f "$f" config > /dev/null 2>&1 || \
+                docker compose -f "$f" config > /dev/null
               echo "$f: OK"
             fi
           done

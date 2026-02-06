@@ -103,7 +103,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -216,7 +216,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -297,7 +297,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -599,7 +599,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -671,7 +671,7 @@ jobs:
     steps:
       - name: Install SSH Key
         if: needs.deploy.result == 'failure'
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary

@@ -34,10 +34,10 @@ on:
         default: false
 
 env:
-  VPS_HOST: ${{ vars.VPS_HOST || '72.60.190.192' }}
+  VPS_HOST: ${{ vars.VPS_HOST }}
   VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
-  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/docker/n8n' }}
-  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/local-files/backups/resto-bot' }}
+  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
+  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/opt/resto/backups' }}
   DAILY_RETENTION: 7
   WEEKLY_RETENTION: 4
   MIN_DISK_GB: 1
@@ -86,7 +86,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
@@ -109,11 +109,14 @@ jobs:
           set -e
 
           # --- Check 1: Project directory exists ---
-          if [ ! -d "${{ env.PROJECT_DIR }}" ]; then
+          if [ -d "${{ env.PROJECT_DIR }}/current" ]; then
+            cd "${{ env.PROJECT_DIR }}/current"
+          elif [ -d "${{ env.PROJECT_DIR }}" ]; then
+            cd "${{ env.PROJECT_DIR }}"
+          else
             echo "FAIL:PROJECT_DIR_NOT_FOUND"
             exit 1
           fi
-          cd "${{ env.PROJECT_DIR }}"
 
           # --- Check 2: Docker compose file exists ---
           if [ -f "docker-compose.hostinger.prod.yml" ]; then
@@ -230,7 +233,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4edd73f0d39a7b61bdc263e9c7ff829e3ff0979 # v2.7.0
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
         with:
           key: ${{ secrets.VPS_SSH_KEY }}
           known_hosts: unnecessary
