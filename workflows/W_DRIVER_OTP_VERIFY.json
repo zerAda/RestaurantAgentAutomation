@@ -1,0 +1,646 @@
+{
+    "name": "W_DRIVER_OTP_VERIFY",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "driver/otp-verify",
+                "options": {}
+            },
+            "name": "OTP Input",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nconst isOtp = /^\\d{4}$/.test(text);\n\nreturn { json: { phone, otp: text, isOtp } };"
+            },
+            "name": "Parse OTP",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.isOtp }}",
+                            "operation": "equal",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Is Valid OTP Format?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $json.phone }}&filters[delivery_status][$eq]=OUT_FOR_DELIVERY&pagination[limit]=1&populate=driver",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Active Order",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ ($json.data || []).length }}",
+                            "operation": "larger",
+                            "value2": 0
+                        }
+                    ]
+                }
+            },
+            "name": "Has Active Order?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                900,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const crypto = require('crypto');\n\nconst order = $json.data[0];\nconst attr = order.attributes || order;\nconst orderId = order.id;\nconst phone = $node['Parse OTP'].json.phone;\nconst inputOtp = $node['Parse OTP'].json.otp;\n\nconst maxAttempts = parseInt($env.DRIVER_OTP_MAX_ATTEMPTS || '3', 10);\nconst currentAttempts = attr.otp_attempts || 0;\nconst otpHash = attr.otp_hash || '';\nconst otpExpiresAt = attr.otp_expires_at ? new Date(attr.otp_expires_at) : null;\nconst totalAmount = attr.total_amount || 0;\nconst driverId = attr.driver?.data?.id || attr.driver?.id || null;\n\n// Check attempts exceeded\nif (currentAttempts >= maxAttempts) {\n  return { json: { phone, orderId, status: 'BLOCKED', message: '🔒 *Code bloqué*\\n\\nTrop de tentatives. Contactez le support.' } };\n}\n\n// Check expiry\nif (otpExpiresAt && otpExpiresAt < new Date()) {\n  return { json: { phone, orderId, status: 'EXPIRED', message: '⏰ *Code expiré*\\n\\nLe code OTP a expiré. Demandez un nouveau code au support.' } };\n}\n\n// Hash input and compare\nconst inputHash = crypto.createHash('sha256').update(inputOtp).digest('hex');\n\nif (inputHash !== otpHash) {\n  const newAttempts = currentAttempts + 1;\n  const remaining = maxAttempts - newAttempts;\n  return {\n    json: {\n      phone,\n      orderId,\n      status: 'MISMATCH',\n      newAttempts,\n      message: `❌ *Code incorrect*\\n\\nTentative ${newAttempts}/${maxAttempts}.${remaining > 0 ? ` Il vous reste ${remaining} essai(s).` : ' Code bloqué.'}`\n    }\n  };\n}\n\n// OTP matches!\nreturn {\n  json: {\n    phone,\n    orderId,\n    driverId,\n    totalAmount,\n    status: 'MATCH'\n  }\n};"
+            },
+            "name": "Verify OTP Hash",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "values": [
+                        {
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.status }}",
+                                        "rightValue": "MATCH",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": "Match"
+                        },
+                        {
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.status }}",
+                                        "rightValue": "MISMATCH",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": "Mismatch"
+                        }
+                    ],
+                    "fallbackOutput": "extra"
+                },
+                "options": {}
+            },
+            "name": "OTP Result",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                1300,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { delivery_status: 'DELIVERED', delivered_at: new Date().toISOString(), otp_hash: null, otp_expires_at: null, otp_attempts: 0 } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Mark Delivered",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1500,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $node['Verify OTP Hash'].json.driverId }}",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Get Driver Stats",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1700,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const driver = $json.data;\nconst attr = driver?.attributes || driver || {};\nconst phone = $node['Verify OTP Hash'].json.phone;\nconst totalAmount = $node['Verify OTP Hash'].json.totalAmount;\nconst driverId = $node['Verify OTP Hash'].json.driverId;\nconst currentDeliveries = (attr.total_deliveries || 0) + 1;\nconst totalDa = Number(totalAmount).toFixed(0);\n\nreturn {\n  json: {\n    phone,\n    driverId,\n    currentDeliveries,\n    successMessage: `🎉 *Livraison confirmée !*\\n\\n✅ Commande remise avec succès.\\n💰 Montant : ${totalDa} DA\\n📊 Total livraisons : ${currentDeliveries}\\n\\nMerci et bonne continuation ! 🚀`\n  }\n};"
+            },
+            "name": "Build Success",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1900,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $json.driverId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { total_deliveries: $json.currentDeliveries } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Update Driver Stats",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2100,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: $json.successMessage } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Success",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2300,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { otp_attempts: $json.newAttempts } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Increment Attempts",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1500,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $node['Verify OTP Hash'].json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: $node['Verify OTP Hash'].json.message } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Mismatch",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: $json.message } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Blocked/Expired",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1500,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $node['Parse OTP'].json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: '📭 *Pas de commande en cours*\\n\\nVous n\\'avez pas de livraison active en ce moment.' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send No Active Order",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1100,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: '⚠️ Format invalide. Envoyez un code à 4 chiffres.' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Invalid Format",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "OTP Input": {
+            "main": [
+                [
+                    {
+                        "node": "Parse OTP",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse OTP": {
+            "main": [
+                [
+                    {
+                        "node": "Is Valid OTP Format?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Valid OTP Format?": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Active Order",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Invalid Format",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Active Order": {
+            "main": [
+                [
+                    {
+                        "node": "Has Active Order?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Active Order?": {
+            "main": [
+                [
+                    {
+                        "node": "Verify OTP Hash",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send No Active Order",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verify OTP Hash": {
+            "main": [
+                [
+                    {
+                        "node": "OTP Result",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OTP Result": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Delivered",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Increment Attempts",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Blocked/Expired",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Mark Delivered": {
+            "main": [
+                [
+                    {
+                        "node": "Get Driver Stats",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Driver Stats": {
+            "main": [
+                [
+                    {
+                        "node": "Build Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Success": {
+            "main": [
+                [
+                    {
+                        "node": "Update Driver Stats",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Driver Stats": {
+            "main": [
+                [
+                    {
+                        "node": "Send Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Increment Attempts": {
+            "main": [
+                [
+                    {
+                        "node": "Send Mismatch",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

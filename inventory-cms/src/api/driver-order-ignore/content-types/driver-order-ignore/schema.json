@@ -1,0 +1,28 @@
+{
+    "kind": "collectionType",
+    "collectionName": "driver_order_ignores",
+    "info": {
+        "singularName": "driver-order-ignore",
+        "pluralName": "driver-order-ignores",
+        "displayName": "Driver Order Ignore",
+        "description": "Tracks which orders a driver has chosen to ignore"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "driver_phone": {
+            "type": "string",
+            "required": true
+        },
+        "order": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::order.order"
+        },
+        "ignored_at": {
+            "type": "datetime"
+        }
+    }
+}

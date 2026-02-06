@@ -359,3 +359,53 @@ See individual agent files for specific rollback instructions. Quick rollback:
 - P0-OPS-03: Added idempotency headers and duplicate handling for outbox sends.
 - Meta webhook verify workflow added; W1 inbound signature + legacy kill switch enforced by flags.
 - Cleanup: removed *.patched source-of-truth duplication; updated integrity gate accordingly.
+
+## Phase 6 — Diamond Driver WhatsApp (2026-02-05)
+
+### P0-D6-01 — Strapi Models
+
+- **Modified**: `driver` schema — enum uppercase (INVITED/ACTIVE/SUSPENDED), removed broken `restaurant` relation, replaced `current_order` with `assigned_orders` (oneToMany), added `last_seen_at`
+- **Modified**: `order` schema — added `delivery_status` enum (READY_FOR_DELIVERY/OUT_FOR_DELIVERY/DELIVERED), `driver` relation (manyToOne), `otp_hash`, `otp_expires_at`, `otp_attempts`, `delivered_at`, `delivery_commune`, `delivery_wilaya`, `delivery_address`
+- **Created**: `driver-order-ignore` collection (driver_phone + order + ignored_at)
+
+### P0-D6-02 — W_DRIVER_ONBOARDING
+
+- Added `is_active` gate (inactive drivers skipped)
+- Enum value updated: `invited` → `INVITED`
+- Button ID changed to `MENU` for dashboard entry
+
+### P0-D6-03 — W_DRIVER_ROUTER
+
+- Full rewrite: anti-spam validation, `is_active` filter on driver lookup, `last_seen_at` update
+- Buttons renamed: `📦 Livrables` / `🚚 En cours` / `🕘 Historique`
+- Added "Not Registered" message for unknown phones
+
+### P0-D6-04 — W_DRIVER_AVAILABLE_LIST
+
+- Renamed from `W_DRIVER_AVAILABLE_ORDERS`
+- Ignore filter via `driver-order-ignores` query
+- 1 order = 1 WhatsApp message (SplitInBatches)
+- Per-card buttons: `✅ Prendre` / `🙈 Ignorer` (max 2, within WA 3-button limit)
+- Footer message with `🔄 Actualiser` / `📋 Menu`
+
+### P0-D6-05 — W_DRIVER_ACTIONS + OTP Verify + History
+
+- **Actions**: Full rewrite with Switch node routing (claim/ignore/delivered_prompt/fallback)
+- **Claim**: Race condition protection (re-fetch + status check), OTP hashed SHA-256, expiry 30min, auto-activate INVITED → ACTIVE on first claim
+- **Ignore**: Creates `driver-order-ignore` record, sends confirmation
+- **OTP Verify**: Hash-based verification (never queries plaintext OTP), max 3 attempts, expiry check, per-attempt feedback
+- **History**: Updated query to use `delivery_status` + `driver` relation instead of `driver_phone` string
+
+### P0-D6-06 — Config + Tests
+
+- Added env vars: `DRIVER_ENABLED`, `DRIVER_OTP_EXPIRY_MINUTES`, `DRIVER_OTP_MAX_ATTEMPTS`, `DRIVER_ANTI_SPAM_MS`
+- Created `scripts/smoke/test_driver_phase6.sh` (webhook + Strapi + JSON validation tests)
+
+### Security Notes
+
+- OTP stored as SHA-256 hash only — plaintext never persisted
+- OTP expires after configurable window (default 30min)
+- Max 3 OTP attempts before lockout
+- Race condition on claim prevented by re-fetch + status validation
+- Driver must be `is_active=true` to use any endpoint
+- All Strapi calls use Bearer token auth

@@ -1,0 +1,417 @@
+{
+    "name": "W_DRIVER_AVAILABLE_LIST",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "driver/available",
+                "options": {}
+            },
+            "name": "Available Request",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nreturn { json: { phone } };"
+            },
+            "name": "Parse Phone",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/driver-order-ignores?filters[driver_phone][$eq]={{ $json.phone }}&populate=order&pagination[limit]=100",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Ignored",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const ignores = ($json.data || []);\nconst ignoredIds = new Set(ignores.map(i => {\n  const attr = i.attributes || i;\n  const orderId = attr.order?.data?.id || attr.order?.id || attr.order;\n  return orderId;\n}).filter(Boolean));\n\nconst phone = $node['Parse Phone'].json.phone;\n\nreturn { json: { phone, ignoredIds: Array.from(ignoredIds) } };"
+            },
+            "name": "Collect Ignored IDs",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders?filters[delivery_status][$eq]=READY_FOR_DELIVERY&filters[driver][$null]=true&sort=createdAt:asc&pagination[limit]=10&populate=*",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Available Orders",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const phone = $node['Collect Ignored IDs'].json.phone;\nconst ignoredIds = new Set($node['Collect Ignored IDs'].json.ignoredIds.map(String));\nconst allOrders = ($json.data || []);\n\n// Filter out ignored orders\nconst orders = allOrders.filter(o => !ignoredIds.has(String(o.id)));\n\nif (orders.length === 0) {\n  return {\n    json: {\n      phone,\n      hasOrders: false,\n      orders: [],\n      emptyMessage: '📦 *Aucune commande disponible*\\n\\nIl n\\'y a pas de livraisons en attente pour le moment.'\n    }\n  };\n}\n\n// Prepare individual order cards\nconst orderCards = orders.map(o => {\n  const attr = o.attributes || o;\n  const total = attr.total_amount ? Number(attr.total_amount).toFixed(0) : '?';\n  const commune = attr.delivery_commune || '-';\n  const wilaya = attr.delivery_wilaya || '-';\n  const createdAt = attr.createdAt ? new Date(attr.createdAt) : new Date();\n  const minutesAgo = Math.floor((Date.now() - createdAt.getTime()) / 60000);\n  const timeLabel = minutesAgo < 60 ? `${minutesAgo}min` : `${Math.floor(minutesAgo/60)}h${minutesAgo%60}min`;\n\n  return {\n    orderId: o.id,\n    text: `📦 *Commande #${o.id}*\\n📍 ${commune}, ${wilaya}\\n💰 ${total} DA\\n🕐 Il y a ${timeLabel}`,\n    claimButtonId: `CLAIM_${o.id}`,\n    ignoreButtonId: `IGNORE_${o.id}`\n  };\n});\n\nreturn { json: { phone, hasOrders: true, orders: orderCards } };"
+            },
+            "name": "Filter & Format",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.hasOrders }}",
+                            "operation": "equal",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Has Orders?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Split orders into individual items for SplitInBatches\nconst phone = $json.phone;\nconst orders = $json.orders;\n\nreturn orders.map(order => ({\n  json: {\n    phone,\n    ...order\n  }\n}));"
+            },
+            "name": "Prepare Cards",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "batchSize": 1,
+                "options": {}
+            },
+            "name": "SplitInBatches",
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 3,
+            "position": [
+                1700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={{ { type: 'button', body: { text: $json.text }, action: { buttons: [{ type: 'reply', reply: { id: $json.claimButtonId, title: '✅ Prendre' } }, { type: 'reply', reply: { id: $json.ignoreButtonId, title: '🙈 Ignorer' } }] } } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Order Card",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1900,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// After all cards sent, prepare footer with Actualiser + Menu\nconst phone = $json.phone || $node['Parse Phone'].json.phone;\n\nreturn {\n  json: {\n    phone,\n    footerText: '👆 Choisis une commande ci-dessus, ou :'\n  }\n};"
+            },
+            "name": "Build Footer",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                2100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={{ { type: 'button', body: { text: $json.footerText }, action: { buttons: [{ type: 'reply', reply: { id: 'REFRESH_AVAILABLE', title: '🔄 Actualiser' } }, { type: 'reply', reply: { id: 'MENU', title: '📋 Menu' } }] } } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Footer",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2300,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={{ { type: 'button', body: { text: $json.emptyMessage }, action: { buttons: [{ type: 'reply', reply: { id: 'REFRESH_AVAILABLE', title: '🔄 Actualiser' } }, { type: 'reply', reply: { id: 'MENU', title: '📋 Menu' } }] } } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Empty",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1500,
+                500
+            ]
+        }
+    ],
+    "connections": {
+        "Available Request": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Phone",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Phone": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Ignored",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Ignored": {
+            "main": [
+                [
+                    {
+                        "node": "Collect Ignored IDs",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Collect Ignored IDs": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Available Orders",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Available Orders": {
+            "main": [
+                [
+                    {
+                        "node": "Filter & Format",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Filter & Format": {
+            "main": [
+                [
+                    {
+                        "node": "Has Orders?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Orders?": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Cards",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Empty",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Cards": {
+            "main": [
+                [
+                    {
+                        "node": "SplitInBatches",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "SplitInBatches": {
+            "main": [
+                [
+                    {
+                        "node": "Send Order Card",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Build Footer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Order Card": {
+            "main": [
+                [
+                    {
+                        "node": "SplitInBatches",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Footer": {
+            "main": [
+                [
+                    {
+                        "node": "Send Footer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

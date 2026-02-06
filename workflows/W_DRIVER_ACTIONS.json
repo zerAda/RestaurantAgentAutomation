@@ -1,0 +1,772 @@
+{
+    "name": "W_DRIVER_ACTIONS",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "driver/action",
+                "options": {}
+            },
+            "name": "Driver Action",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst buttonId = (input.button_id || input.interactive?.button_reply?.id || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nlet action = 'unknown';\nlet orderId = null;\nlet targetPhone = null;\n\nif (buttonId.startsWith('CLAIM_')) {\n  action = 'claim';\n  orderId = buttonId.replace('CLAIM_', '');\n} else if (buttonId.startsWith('IGNORE_')) {\n  action = 'ignore';\n  orderId = buttonId.replace('IGNORE_', '');\n} else if (buttonId.startsWith('DELIVERED_')) {\n  action = 'delivered_prompt';\n  orderId = buttonId.replace('DELIVERED_', '');\n} else if (buttonId === 'REFRESH_AVAILABLE') {\n  action = 'refresh';\n} else if (buttonId === 'MENU') {\n  action = 'menu';\n} else if (buttonId.startsWith('CALL_')) {\n  action = 'call';\n  targetPhone = buttonId.replace('CALL_', '');\n} else if (/^\\d{4}$/.test(text)) {\n  action = 'otp_verify';\n}\n\nreturn { json: { phone, buttonId, text, action, orderId, targetPhone } };"
+            },
+            "name": "Parse Action",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "values": [
+                        {
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.action }}",
+                                        "rightValue": "claim",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": "Claim"
+                        },
+                        {
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.action }}",
+                                        "rightValue": "ignore",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": "Ignore"
+                        },
+                        {
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.action }}",
+                                        "rightValue": "delivered_prompt",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": "Delivered"
+                        }
+                    ],
+                    "fallbackOutput": "extra"
+                },
+                "options": {}
+            },
+            "name": "Route Action",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}?populate=driver",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Re-fetch Order",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const order = $json.data;\nconst attr = order?.attributes || order || {};\nconst phone = $node['Parse Action'].json.phone;\nconst orderId = $node['Parse Action'].json.orderId;\n\n// Race condition check\nconst isAvailable = attr.delivery_status === 'READY_FOR_DELIVERY' &&\n  (!attr.driver || !attr.driver?.data);\n\nreturn {\n  json: {\n    phone,\n    orderId,\n    isAvailable,\n    customerPhone: attr.customer_phone || '',\n    totalAmount: attr.total_amount || 0,\n    deliveryCommune: attr.delivery_commune || '',\n    deliveryWilaya: attr.delivery_wilaya || '',\n    deliveryAddress: attr.delivery_address || ''\n  }\n};"
+            },
+            "name": "Check Availability",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                900,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.isAvailable }}",
+                            "operation": "equal",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Still Available?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const crypto = require('crypto');\n\n// Generate 4-digit OTP\nconst otp = String(Math.floor(1000 + Math.random() * 9000));\nconst otpHash = crypto.createHash('sha256').update(otp).digest('hex');\n\n// Expiry: 30 minutes from now\nconst expiryMinutes = parseInt($env.DRIVER_OTP_EXPIRY_MINUTES || '30', 10);\nconst otpExpiresAt = new Date(Date.now() + expiryMinutes * 60000).toISOString();\n\nreturn {\n  json: {\n    ...($json),\n    otp,\n    otpHash,\n    otpExpiresAt\n  }\n};"
+            },
+            "name": "Generate & Hash OTP",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers?filters[phone_number][$eq]={{ $json.phone }}&filters[is_active][$eq]=true",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Get Driver for Claim",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1500,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const driver = ($json.data || [])[0];\nconst attr = driver?.attributes || driver || {};\nconst driverId = driver?.id;\nconst prevData = $node['Generate & Hash OTP'].json;\n\nconst needsActivation = attr.onboarding_status === 'INVITED';\n\nreturn {\n  json: {\n    ...prevData,\n    driverId,\n    needsActivation\n  }\n};"
+            },
+            "name": "Prepare Claim Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1700,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { delivery_status: 'OUT_FOR_DELIVERY', driver: $json.driverId, otp_hash: $json.otpHash, otp_expires_at: $json.otpExpiresAt, otp_attempts: 0 } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Assign Order to Driver",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1900,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const d = $node['Prepare Claim Data'].json;\nconst address = [d.deliveryAddress, d.deliveryCommune, d.deliveryWilaya].filter(Boolean).join(', ');\nconst mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;\n\n// Activate driver if first delivery\nconst activateDriver = d.needsActivation;\n\nreturn {\n  json: {\n    phone: d.phone,\n    customerPhone: d.customerPhone,\n    otp: d.otp,\n    orderId: d.orderId,\n    driverId: d.driverId,\n    activateDriver,\n    totalAmount: d.totalAmount,\n    address,\n    mapsUrl,\n    customerMessage: `🛵 *Bonne nouvelle !*\\n\\nVotre commande est en route !\\n\\n📍 Livreur en chemin...\\n\\n🔐 *Code de vérification* : *${d.otp}*\\n\\nDonnez ce code au livreur à la réception.`,\n    driverMessage: `✅ *Commande acceptée !*\\n\\n📍 *Adresse* : ${address}\\n\\n🗺️ Itinéraire : ${mapsUrl}\\n\\n📞 Client : ${d.customerPhone}\\n\\nBonne route ! 🚀`\n  }\n};"
+            },
+            "name": "Build Claim Messages",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                2100,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.customerPhone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: $json.customerMessage } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send OTP to Customer",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2300,
+                -100
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={{ { type: 'button', body: { text: $json.driverMessage }, action: { buttons: [{ type: 'reply', reply: { id: `DELIVERED_${$json.orderId}`, title: '✅ Livré' } }, { type: 'reply', reply: { id: `CALL_${$json.customerPhone}`, title: '📞 Appeler' } }] } } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Confirmation to Driver",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2300,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.activateDriver }}",
+                            "operation": "equal",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Needs Activation?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                2500,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $json.driverId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { onboarding_status: 'ACTIVE' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Activate Driver",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2700,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $node['Parse Action'].json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: '⚠️ *Commande déjà prise*\\n\\nCette commande a été réclamée par un autre livreur. Consultez les commandes disponibles.' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Already Taken",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1300,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/driver-order-ignores",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { driver_phone: $json.phone, order: parseInt($json.orderId), ignored_at: new Date().toISOString() } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Create Ignore Record",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $node['Parse Action'].json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: '🙈 Commande ignorée.' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Ignore Confirmation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $node['Parse Action'].json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: '📝 *Livraison en cours*\\n\\nEnvoyez le code OTP à 4 chiffres que le client vous donnera pour confirmer la livraison.' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send OTP Prompt",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Redirect refresh/menu/otp_verify actions to appropriate workflows\nconst action = $json.action;\nconst phone = $json.phone;\nconst text = $json.text || '';\n\nlet targetPath = '';\nlet payload = { from: phone, phone };\n\nif (action === 'refresh') {\n  targetPath = '/webhook/driver/available';\n} else if (action === 'menu') {\n  targetPath = '/webhook/driver/menu';\n} else if (action === 'otp_verify') {\n  targetPath = '/webhook/driver/otp-verify';\n  payload.text = text;\n}\n\nreturn { json: { phone, action, targetPath, payload } };"
+            },
+            "name": "Prepare Redirect",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                800
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ ($env.N8N_WEBHOOK_BASE_URL || 'http://n8n-main:5678') + $json.targetPath }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "from",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "phone",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ $json.payload.text || '' }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Execute Redirect",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                800
+            ]
+        }
+    ],
+    "connections": {
+        "Driver Action": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Action": {
+            "main": [
+                [
+                    {
+                        "node": "Route Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Route Action": {
+            "main": [
+                [
+                    {
+                        "node": "Re-fetch Order",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Create Ignore Record",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send OTP Prompt",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Prepare Redirect",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Re-fetch Order": {
+            "main": [
+                [
+                    {
+                        "node": "Check Availability",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Availability": {
+            "main": [
+                [
+                    {
+                        "node": "Still Available?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Still Available?": {
+            "main": [
+                [
+                    {
+                        "node": "Generate & Hash OTP",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Already Taken",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate & Hash OTP": {
+            "main": [
+                [
+                    {
+                        "node": "Get Driver for Claim",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Driver for Claim": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Claim Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Claim Data": {
+            "main": [
+                [
+                    {
+                        "node": "Assign Order to Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Assign Order to Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Build Claim Messages",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Claim Messages": {
+            "main": [
+                [
+                    {
+                        "node": "Send OTP to Customer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send OTP to Customer": {
+            "main": [
+                [
+                    {
+                        "node": "Send Confirmation to Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Confirmation to Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Needs Activation?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Needs Activation?": {
+            "main": [
+                [
+                    {
+                        "node": "Activate Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Prepare Redirect": {
+            "main": [
+                [
+                    {
+                        "node": "Execute Redirect",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Ignore Record": {
+            "main": [
+                [
+                    {
+                        "node": "Send Ignore Confirmation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

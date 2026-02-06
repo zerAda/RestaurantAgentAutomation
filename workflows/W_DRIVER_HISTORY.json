@@ -1,0 +1,152 @@
+{
+    "name": "W_DRIVER_HISTORY",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "driver/history",
+                "options": {}
+            },
+            "name": "History Request",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nreturn { json: { phone } };"
+            },
+            "name": "Parse Phone",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $json.phone }}&filters[delivery_status][$eq]=DELIVERED&sort=delivered_at:desc&pagination[limit]=5",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch History",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const phone = $node['Parse Phone'].json.phone;\nconst orders = ($json.data || []);\n\nif (orders.length === 0) {\n  return {\n    json: {\n      phone,\n      messageText: '📜 *Historique vide*\\n\\nTu n\\'as pas encore de livraisons enregistrées.'\n    }\n  };\n}\n\nlet totalEarnings = 0;\nconst lines = orders.map((o, i) => {\n  const attr = o.attributes || o;\n  const total = attr.total_amount ? Number(attr.total_amount) : 0;\n  totalEarnings += total;\n  const date = attr.delivered_at ? new Date(attr.delivered_at).toLocaleDateString('fr-FR') : '-';\n  const commune = attr.delivery_commune || '-';\n  return `${i+1}. 📍 ${commune} | ${total.toFixed(0)} DA | ${date}`;\n}).join('\\n');\n\nconst messageText = `📜 *Mes 5 dernières livraisons*\\n\\n${lines}\\n\\n💰 Total : ${totalEarnings.toFixed(0)} DA`;\n\nreturn { json: { phone, messageText } };"
+            },
+            "name": "Format History",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: $json.messageText } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send History",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "History Request": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Phone",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Phone": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch History",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch History": {
+            "main": [
+                [
+                    {
+                        "node": "Format History",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format History": {
+            "main": [
+                [
+                    {
+                        "node": "Send History",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -45,6 +45,43 @@
                 "online"
             ],
             "default": "cash"
+        },
+        "delivery_status": {
+            "type": "enumeration",
+            "enum": [
+                "READY_FOR_DELIVERY",
+                "OUT_FOR_DELIVERY",
+                "DELIVERED"
+            ]
+        },
+        "driver": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::driver.driver",
+            "inversedBy": "assigned_orders"
+        },
+        "otp_hash": {
+            "type": "string",
+            "description": "SHA-256 hash of OTP code — never store plaintext"
+        },
+        "otp_expires_at": {
+            "type": "datetime"
+        },
+        "otp_attempts": {
+            "type": "integer",
+            "default": 0
+        },
+        "delivered_at": {
+            "type": "datetime"
+        },
+        "delivery_commune": {
+            "type": "string"
+        },
+        "delivery_wilaya": {
+            "type": "string"
+        },
+        "delivery_address": {
+            "type": "string"
         }
     }
 }

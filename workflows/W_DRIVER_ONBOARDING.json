@@ -1,0 +1,178 @@
+{
+    "name": "W_DRIVER_ONBOARDING",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "strapi/driver-created",
+                "options": {}
+            },
+            "name": "Strapi Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const driver = $input.first().json.entry || $input.first().json;\n\nconst phone = (driver.phone_number || '').toString().trim();\nconst firstName = (driver.first_name || '').toString().trim();\nconst lastName = (driver.last_name || '').toString().trim();\nconst driverId = driver.id;\nconst isActive = driver.is_active !== false;\n\nif (!phone) {\n  return { json: { error: 'PHONE_MISSING', skip: true } };\n}\n\nreturn {\n  json: {\n    driverId,\n    phone,\n    isActive,\n    fullName: `${firstName} ${lastName}`.trim(),\n    welcomeText: `Salut ${firstName} ! 👋\\n\\nTu as été ajouté comme livreur. Clique ci-dessous pour accéder à ton tableau de bord.`\n  }\n};"
+            },
+            "name": "Parse Driver",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.isActive }}",
+                            "operation": "equal",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Is Active?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "recipient_type",
+                            "value": "individual"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={{ { type: 'button', body: { text: $json.welcomeText }, action: { buttons: [{ type: 'reply', reply: { id: 'MENU', title: '📦 Mon Dashboard' } }] } } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "name": "Send WA Invitation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $node['Parse Driver'].json.driverId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { onboarding_status: 'INVITED' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Update Strapi Status",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Strapi Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Is Active?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Active?": {
+            "main": [
+                [
+                    {
+                        "node": "Send WA Invitation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Send WA Invitation": {
+            "main": [
+                [
+                    {
+                        "node": "Update Strapi Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
