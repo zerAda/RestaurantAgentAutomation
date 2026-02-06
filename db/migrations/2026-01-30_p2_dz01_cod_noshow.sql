@@ -562,11 +562,29 @@ ON CONFLICT (template_key, locale, tenant_id) DO UPDATE SET
 
 -- 12. Event types for order management
 -- =============================================================================
+-- Register event types used by this migration
+INSERT INTO ops.security_event_types(code, description) VALUES
+  ('ORDER_NO_SHOW', 'Order marked as no-show by admin'),
+  ('ORDER_DELIVERED', 'Order marked as delivered by admin'),
+  ('CUSTOMER_BLACKLISTED', 'Customer manually blacklisted by admin')
+ON CONFLICT (code) DO NOTHING;
+
+-- Add to enum if it exists
 DO $$
+DECLARE
+  v_code TEXT;
 BEGIN
-  -- Add new event types if security_events uses an enum
-  -- If it's just text, this is not needed
-  NULL;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'security_event_type_enum') THEN
+    FOR v_code IN SELECT code FROM ops.security_event_types WHERE code IN (
+      'ORDER_NO_SHOW', 'ORDER_DELIVERED', 'CUSTOMER_BLACKLISTED'
+    ) LOOP
+      BEGIN
+        EXECUTE format('ALTER TYPE security_event_type_enum ADD VALUE %L', v_code);
+      EXCEPTION WHEN duplicate_object THEN
+        NULL;
+      END;
+    END LOOP;
+  END IF;
 END $$;
 
 COMMENT ON FUNCTION mark_order_noshow IS 'P2-DZ-01: Mark order as no-show, decrease customer trust score by 20, auto-blacklist after 2 no-shows';

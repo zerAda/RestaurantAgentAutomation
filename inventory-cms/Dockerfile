@@ -12,6 +12,18 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+
+# Build-time placeholders: strapi build loads config which reads env vars.
+# .dockerignore excludes .env, so we provide safe defaults for the build stage only.
+# Real values are injected at runtime via environment/secrets.
+ENV APP_KEYS=build-placeholder-key-1,build-placeholder-key-2
+ENV ADMIN_JWT_SECRET=build-placeholder-jwt
+ENV API_TOKEN_SALT=build-placeholder-salt
+ENV TRANSFER_TOKEN_SALT=build-placeholder-salt
+ENV ENCRYPTION_KEY=build-placeholder-encryption
+ENV JWT_SECRET=build-placeholder-jwt
+ENV DATABASE_CLIENT=sqlite
+
 RUN npm run build
 
 # ── Production stage ────────────────────────────────────────

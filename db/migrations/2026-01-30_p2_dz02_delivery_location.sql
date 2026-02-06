@@ -96,9 +96,11 @@ CREATE TABLE IF NOT EXISTS public.commune_reference (
   name_ar        text NOT NULL DEFAULT '',
   name_latin_alt text[] NOT NULL DEFAULT '{}',
   center_lat     numeric(9,6),
-  center_lng     numeric(9,6),
-  UNIQUE(wilaya_code, lower(name_fr))
+  center_lng     numeric(9,6)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_commune_ref_wilaya_name
+  ON public.commune_reference(wilaya_code, lower(name_fr));
 
 -- Insert common Alger communes as sample (expandable)
 INSERT INTO public.commune_reference (wilaya_code, name_fr, name_ar, name_latin_alt, center_lat, center_lng)

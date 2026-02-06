@@ -136,7 +136,7 @@ $$;
 -- 6. Function to get DLQ messages
 CREATE OR REPLACE FUNCTION public.get_dlq_messages(p_limit int DEFAULT 20, p_offset int DEFAULT 0)
 RETURNS TABLE (
-  outbound_id bigint,
+  outbound_id uuid,
   channel text,
   user_id text,
   restaurant_id uuid,
@@ -169,7 +169,7 @@ END;
 $$;
 
 -- 7. Function to replay DLQ message
-CREATE OR REPLACE FUNCTION public.replay_dlq_message(p_outbound_id bigint, p_actor text)
+CREATE OR REPLACE FUNCTION public.replay_dlq_message(p_outbound_id uuid, p_actor text)
 RETURNS jsonb
 LANGUAGE plpgsql
 AS $$
@@ -214,7 +214,7 @@ END;
 $$;
 
 -- 8. Function to drop DLQ message
-CREATE OR REPLACE FUNCTION public.drop_dlq_message(p_outbound_id bigint, p_actor text)
+CREATE OR REPLACE FUNCTION public.drop_dlq_message(p_outbound_id uuid, p_actor text)
 RETURNS jsonb
 LANGUAGE plpgsql
 AS $$

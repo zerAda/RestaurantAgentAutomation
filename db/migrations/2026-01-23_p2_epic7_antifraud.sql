@@ -33,16 +33,11 @@ DECLARE
   r RECORD;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'security_event_type_enum') THEN
-    -- if the P1 migration wasn't applied, create a minimal enum then extend
-    EXECUTE 'CREATE TYPE security_event_type_enum AS ENUM (\'AUTH_DENY\')';
+    EXECUTE 'CREATE TYPE security_event_type_enum AS ENUM (''AUTH_DENY'')';
   END IF;
 
   FOR r IN SELECT code FROM ops.security_event_types ORDER BY code LOOP
-    BEGIN
-      EXECUTE format('ALTER TYPE security_event_type_enum ADD VALUE %L', r.code);
-    EXCEPTION WHEN duplicate_object THEN
-      NULL;
-    END;
+    EXECUTE format('ALTER TYPE security_event_type_enum ADD VALUE IF NOT EXISTS %L', r.code);
   END LOOP;
 END $$;
 

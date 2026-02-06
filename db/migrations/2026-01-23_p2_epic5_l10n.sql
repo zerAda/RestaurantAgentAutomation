@@ -4,13 +4,13 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.message_templates (
   tenant_id text NOT NULL DEFAULT '_GLOBAL',
-  key text NOT NULL,
+  template_key text NOT NULL,
   locale text NOT NULL,
   content text NOT NULL,
   variables jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (tenant_id, key, locale)
+  PRIMARY KEY (tenant_id, template_key, locale)
 );
 
 -- Ensure variables is a JSON array
@@ -21,7 +21,7 @@ ALTER TABLE public.message_templates
   CHECK (jsonb_typeof(variables) = 'array');
 
 CREATE INDEX IF NOT EXISTS idx_message_templates_lookup
-  ON public.message_templates(tenant_id, key, locale);
+  ON public.message_templates(tenant_id, template_key, locale);
 
 CREATE TABLE IF NOT EXISTS public.customer_preferences (
   tenant_id text NOT NULL,
@@ -57,7 +57,7 @@ BEGIN
 END $$;
 
 -- Seed CORE templates (GLOBAL only). Do not overwrite tenant overrides.
-INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)
+INSERT INTO public.message_templates(tenant_id, template_key, locale, content, variables)
 VALUES
   ('_GLOBAL','CORE_CLARIFY','fr','Je n’ai pas bien compris. Tu peux préciser ? (ex: “menu”, “2 tacos”, “checkout”)','[]'::jsonb),
   ('_GLOBAL','CORE_CLARIFY','ar','لم أفهم جيداً. هل يمكنك التوضيح؟ (مثال: “menu”، “2 tacos”، “checkout”)','[]'::jsonb),
@@ -65,10 +65,10 @@ VALUES
   ('_GLOBAL','CORE_MENU_HEADER','ar','📋 القائمة (استخدم المعرفات في رسالتك)\n','[]'::jsonb),
   ('_GLOBAL','CORE_LANG_SET_FR','fr','✅ Langue définie sur Français. Tape “menu” pour voir la carte.','[]'::jsonb),
   ('_GLOBAL','CORE_LANG_SET_AR','ar','✅ تم تغيير اللغة إلى العربية. اكتب “menu” لعرض القائمة.','[]'::jsonb)
-ON CONFLICT (tenant_id, key, locale) DO NOTHING;
+ON CONFLICT (template_key, locale, tenant_id) DO NOTHING;
 
 -- Seed WA tracking templates (GLOBAL)
-INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)
+INSERT INTO public.message_templates(tenant_id, template_key, locale, content, variables)
 VALUES
   ('_GLOBAL','WA_ORDER_STATUS_CONFIRMED','fr','✅ Commande confirmée (#{{order_id}}).{{eta}}','["order_id","eta"]'::jsonb),
   ('_GLOBAL','WA_ORDER_STATUS_PREPARING','fr','👨‍🍳 Votre commande est en préparation (#{{order_id}}).{{eta}}','["order_id","eta"]'::jsonb),
@@ -83,7 +83,7 @@ VALUES
   ('_GLOBAL','WA_ORDER_STATUS_OUT_FOR_DELIVERY','ar','🛵 طلبك في الطريق للتوصيل (#{{order_id}}).{{eta}}','["order_id","eta"]'::jsonb),
   ('_GLOBAL','WA_ORDER_STATUS_DELIVERED','ar','🎉 تم تسليم/إنهاء الطلب (#{{order_id}}). شكراً لك!','["order_id"]'::jsonb),
   ('_GLOBAL','WA_ORDER_STATUS_CANCELLED','ar','❌ تم إلغاء الطلب (#{{order_id}}).','["order_id"]'::jsonb)
-ON CONFLICT (tenant_id, key, locale) DO NOTHING;
+ON CONFLICT (template_key, locale, tenant_id) DO NOTHING;
 
 -- Patch wa_order_status_text: try DB template first (GLOBAL), fallback to legacy strings.
 CREATE OR REPLACE FUNCTION public.wa_order_status_text(
@@ -117,7 +117,7 @@ BEGIN
 
   SELECT content INTO tmpl
   FROM public.message_templates
-  WHERE tenant_id = '_GLOBAL' AND key = k AND locale = loc
+  WHERE tenant_id = '_GLOBAL' AND template_key = k AND locale = loc
   LIMIT 1;
 
   IF tmpl IS NOT NULL THEN

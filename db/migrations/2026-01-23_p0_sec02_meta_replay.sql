@@ -116,10 +116,15 @@ COMMENT ON FUNCTION check_replay_guard IS
 -- =============================================================================
 -- 5. Grant permissions
 -- =============================================================================
-GRANT SELECT, INSERT, DELETE ON webhook_replay_guard TO n8n;
-GRANT USAGE, SELECT ON SEQUENCE webhook_replay_guard_id_seq TO n8n;
-GRANT EXECUTE ON FUNCTION cleanup_replay_guard TO n8n;
-GRANT EXECUTE ON FUNCTION check_replay_guard TO n8n;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN
+    EXECUTE 'GRANT SELECT, INSERT, DELETE ON webhook_replay_guard TO n8n';
+    EXECUTE 'GRANT USAGE, SELECT ON SEQUENCE webhook_replay_guard_id_seq TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION cleanup_replay_guard TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION check_replay_guard TO n8n';
+  END IF;
+END $$;
 
 COMMIT;
 

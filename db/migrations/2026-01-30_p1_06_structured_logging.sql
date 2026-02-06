@@ -133,7 +133,7 @@ WHERE correlation_id IS NOT NULL
 UNION ALL
 SELECT
   correlation_id,
-  created_at,
+  received_at,
   'inbound_message' AS source,
   'INFO' AS level,
   'INBOUND_RECEIVED' AS event_type,

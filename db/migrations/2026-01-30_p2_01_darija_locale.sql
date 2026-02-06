@@ -33,7 +33,7 @@ BEGIN
 END $$;
 
 -- 3. Seed Darija templates (GLOBAL only)
-INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)
+INSERT INTO public.message_templates(tenant_id, template_key, locale, content, variables)
 VALUES
   -- Core messages
   ('_GLOBAL','CORE_CLARIFY','darija','Ma fhemtekch mezyan. 3awdha lik? (ex: "menu", "2 tacos", "checkout")','[]'::jsonb),
@@ -63,7 +63,7 @@ VALUES
   ('_GLOBAL','DELIVERY_ADDRESS_PROMPT','darija','📍 Bash nlivriwlek, 3tini: Wilaya, Commune, Adresse, Tel.\n\nFormat:\nWilaya: <...>\nCommune: <...>\nAdresse: <...>\nTel: <...>','[]'::jsonb),
   ('_GLOBAL','DELIVERY_MISSING_FIELDS','darija','Na9s: {{fields}}. 3awdha b format: Wilaya/Commune/Adresse/Tel.','["fields"]'::jsonb),
   ('_GLOBAL','DELIVERY_HANDOFF','darija','Ma9dertch nfhem l''adresse. Ghadi n3ytlek chi wahd.','[]'::jsonb)
-ON CONFLICT (tenant_id, key, locale) DO NOTHING;
+ON CONFLICT (template_key, locale, tenant_id) DO NOTHING;
 
 -- 4. Add Darija keyword patterns table for detection
 CREATE TABLE IF NOT EXISTS public.darija_patterns (

@@ -288,7 +288,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.create_payment_intent(
     p_tenant_id UUID,
     p_restaurant_id UUID,
-    p_order_id BIGINT,
+    p_order_id UUID,
     p_conversation_key TEXT,
     p_user_id TEXT,
     p_total_amount INTEGER,
@@ -402,8 +402,8 @@ BEGIN
         UPDATE public.orders
         SET status = 'CONFIRMED',
             updated_at = NOW()
-        WHERE id = v_intent.order_id
-          AND status = 'PLACED';
+        WHERE order_id = v_intent.order_id
+          AND status IN ('NEW','ACCEPTED');
     END IF;
     
     RETURN true;
@@ -447,9 +447,9 @@ BEGIN
     -- Mark order as delivered
     IF v_intent.order_id IS NOT NULL THEN
         UPDATE public.orders
-        SET status = 'DELIVERED',
+        SET status = 'DONE',
             updated_at = NOW()
-        WHERE id = v_intent.order_id;
+        WHERE order_id = v_intent.order_id;
     END IF;
     
     RETURN true;
@@ -541,16 +541,21 @@ ON CONFLICT DO NOTHING;
 -- =============================================================================
 -- 9. Grants
 -- =============================================================================
-GRANT SELECT, INSERT, UPDATE ON public.payment_intents TO n8n;
-GRANT SELECT, INSERT ON public.payment_history TO n8n;
-GRANT SELECT, INSERT, UPDATE ON public.customer_payment_profiles TO n8n;
-GRANT SELECT, INSERT, UPDATE ON public.restaurant_payment_config TO n8n;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO n8n;
-GRANT EXECUTE ON FUNCTION public.calculate_deposit TO n8n;
-GRANT EXECUTE ON FUNCTION public.create_payment_intent TO n8n;
-GRANT EXECUTE ON FUNCTION public.confirm_deposit_payment TO n8n;
-GRANT EXECUTE ON FUNCTION public.collect_cod_payment TO n8n;
-GRANT EXECUTE ON FUNCTION public.update_customer_payment_profile TO n8n;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE ON public.payment_intents TO n8n';
+    EXECUTE 'GRANT SELECT, INSERT ON public.payment_history TO n8n';
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE ON public.customer_payment_profiles TO n8n';
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE ON public.restaurant_payment_config TO n8n';
+    EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.calculate_deposit TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.create_payment_intent TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.confirm_deposit_payment TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.collect_cod_payment TO n8n';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.update_customer_payment_profile TO n8n';
+  END IF;
+END $$;
 
 COMMIT;
 

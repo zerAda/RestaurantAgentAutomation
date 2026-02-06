@@ -123,13 +123,13 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema='public' AND table_name='message_templates'
   ) THEN
-    INSERT INTO public.message_templates(tenant_id, key, locale, content, variables)
+    INSERT INTO public.message_templates(tenant_id, template_key, locale, content, variables)
     VALUES
       ('_GLOBAL','SUPPORT_HANDOFF_ACK','fr','🧑‍💬 Merci. Un agent va vous contacter rapidement.','[]'::jsonb),
       ('_GLOBAL','SUPPORT_HANDOFF_ACK','ar','🧑‍💬 شكراً. سيتواصل معك أحد الموظفين قريباً.','[]'::jsonb),
-      ('_GLOBAL','FAQ_NO_MATCH','fr','Je n’ai pas trouvé de réponse. Je te mets en relation avec un agent.','[]'::jsonb),
+      ('_GLOBAL','FAQ_NO_MATCH','fr','Je n'ai pas trouvé de réponse. Je te mets en relation avec un agent.','[]'::jsonb),
       ('_GLOBAL','FAQ_NO_MATCH','ar','لم أجد إجابة. سأحوّلك إلى موظف.','[]'::jsonb)
-    ON CONFLICT (tenant_id, key, locale) DO NOTHING;
+    ON CONFLICT (template_key, locale, tenant_id) DO NOTHING;
   END IF;
 END $$;
 
