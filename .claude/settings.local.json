@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Read(//c/Users/mon pc/Desktop/ralphé_final_patch/project/inventory-cms/src/**)",
+      "Bash(for f in workflows/W_DRIVER_*.json)",
+      "Bash(do echo -n \"$f: \")",
+      "Bash(python -c:*)",
+      "Bash(node -e \"JSON.parse\\(require\\(''fs''\\).readFileSync\\(''$f'',''utf8''\\)\\); console.log\\(''OK''\\)\")",
+      "Bash(done)"
     ]
   }
 }
