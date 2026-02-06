@@ -11,7 +11,7 @@ export default {
    * An asynchronous bootstrap function that runs before
    * your application gets started.
    */
-  async bootstrap(/* { strapi }: { strapi: Core.Strapi } */) {
+  async bootstrap({ strapi }: { strapi: Core.Strapi }) {
     // SECURITY HARDENING: Verify Public Permissions at startup
     try {
       // Note: We use the generic query method to avoid depending on specific types if not strict yet
