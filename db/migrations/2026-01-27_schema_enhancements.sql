@@ -257,7 +257,7 @@ END $$;
 
 -- Add partition key column (for future use)
 ALTER TABLE public.inbound_messages
-  ADD COLUMN IF NOT EXISTS partition_key DATE GENERATED ALWAYS AS (DATE(received_at)) STORED;
+  ADD COLUMN IF NOT EXISTS partition_key DATE GENERATED ALWAYS AS (CAST(received_at AT TIME ZONE 'UTC' AS DATE)) STORED;
 
 -- Index for partition-like queries
 CREATE INDEX IF NOT EXISTS idx_inbound_messages_partition

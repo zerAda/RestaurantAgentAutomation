@@ -386,6 +386,25 @@ VALUES
   ('00000000-0000-0000-0000-000000000000','B01','R02','Sans oignons','remove',0)
 ON CONFLICT DO NOTHING;
 -- =========================
+-- Message Templates (used by multiple epics)
+-- =========================
+CREATE TABLE IF NOT EXISTS message_templates (
+  id              bigserial PRIMARY KEY,
+  template_key    text NOT NULL,
+  locale          text NOT NULL DEFAULT 'fr',
+  content         text NOT NULL DEFAULT '',
+  variables       jsonb DEFAULT '[]'::jsonb,
+  tenant_id       text NOT NULL DEFAULT '_GLOBAL',
+  restaurant_id   uuid NULL,
+  version         int NOT NULL DEFAULT 1,
+  is_active       boolean NOT NULL DEFAULT true,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_message_templates_key_locale_tenant
+  ON message_templates (template_key, locale, tenant_id);
+
+-- =========================
 -- PERF INDEXES (added 2026-01-05)
 -- =========================
 

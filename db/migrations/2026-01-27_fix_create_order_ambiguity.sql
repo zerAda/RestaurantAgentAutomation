@@ -100,6 +100,9 @@ BEGIN
 END;
 $$;
 
+-- Must DROP first: return type may differ from bootstrap version
+DROP FUNCTION IF EXISTS public.create_order(text);
+
 CREATE OR REPLACE FUNCTION public.create_order(p_conversation_key text)
 RETURNS TABLE(
   order_id uuid,

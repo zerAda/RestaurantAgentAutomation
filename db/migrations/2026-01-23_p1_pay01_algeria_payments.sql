@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS public.payment_intents (
     -- Context
     tenant_id           UUID NOT NULL,
     restaurant_id       UUID NOT NULL,
-    order_id            BIGINT REFERENCES public.orders(id),
+    order_id            UUID REFERENCES public.orders(order_id),
     conversation_key    TEXT NOT NULL,
     user_id             TEXT NOT NULL,
     
@@ -515,7 +515,7 @@ $$;
 -- =============================================================================
 -- 8. Message templates for payments (FR/AR)
 -- =============================================================================
-INSERT INTO public.message_templates(key, locale, content, variables, tenant_id)
+INSERT INTO public.message_templates(template_key, locale, content, variables, tenant_id)
 VALUES
     -- Deposit request
     ('PAYMENT_DEPOSIT_REQUIRED','fr','💳 Un acompte de {{amount}} DA est requis pour confirmer ta commande. Tu peux payer par:\n• BaridiMob: {{baridimob_code}}\n• Virement: voir détails ci-dessous\n\nDélai: {{minutes}} min','["amount","baridimob_code","minutes"]'::jsonb,'_GLOBAL'),

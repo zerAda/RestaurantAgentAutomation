@@ -555,11 +555,10 @@ VALUES
   ('HIGH_RISK_WARNING', 'ar',
    '⚠️ *التحقق مطلوب*\n\nلتأكيد طلبكم بقيمة {{total}} دج:\n1. أكد رقمك: {{phone}}\n2. أكد عنوان التوصيل\n\nأرسل *تأكيد* للمتابعة.',
    '["total", "phone"]', 1, true)
-ON CONFLICT (template_key, locale) DO UPDATE SET
+ON CONFLICT (template_key, locale, tenant_id) DO UPDATE SET
   content = EXCLUDED.content,
   variables = EXCLUDED.variables,
-  version = message_templates.version + 1,
-  updated_at = now();
+  version = message_templates.version + 1;
 
 -- 12. Event types for order management
 -- =============================================================================

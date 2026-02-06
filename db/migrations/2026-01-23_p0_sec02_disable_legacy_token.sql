@@ -62,26 +62,15 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_log_hash_time
   ON token_usage_log(token_hash, created_at DESC);
 
 -- ========================================
--- 3. Add security event types for token tracking
+-- 3. Register security event types for token tracking
 -- ========================================
+-- Add enum values for token-related events (safe outside subtransaction)
 DO $$
 BEGIN
-  -- Insert new event types if not exists
-  INSERT INTO security_events (event_type, severity, payload_json)
-  SELECT 'LEGACY_TOKEN_ATTEMPT', 'HIGH', '{"note":"Migration marker - delete after verification"}'::jsonb
-  WHERE NOT EXISTS (
-    SELECT 1 FROM security_events WHERE event_type = 'LEGACY_TOKEN_ATTEMPT' LIMIT 1
-  );
-  
-  INSERT INTO security_events (event_type, severity, payload_json)
-  SELECT 'TOKEN_ROTATED', 'LOW', '{"note":"Migration marker - delete after verification"}'::jsonb
-  WHERE NOT EXISTS (
-    SELECT 1 FROM security_events WHERE event_type = 'TOKEN_ROTATED' LIMIT 1
-  );
-  
-  -- Clean up migration markers
-  DELETE FROM security_events 
-  WHERE payload_json->>'note' = 'Migration marker - delete after verification';
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'security_event_type_enum') THEN
+    BEGIN EXECUTE 'ALTER TYPE security_event_type_enum ADD VALUE IF NOT EXISTS ''LEGACY_TOKEN_ATTEMPT'''; EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN EXECUTE 'ALTER TYPE security_event_type_enum ADD VALUE IF NOT EXISTS ''TOKEN_ROTATED'''; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
 END$$;
 
 -- ========================================
@@ -115,7 +104,7 @@ $$;
 UPDATE api_clients 
 SET legacy_migrated_at = now() 
 WHERE legacy_migrated_at IS NULL 
-  AND active = true;
+  AND is_active = true;
 
 -- ========================================
 -- 6. Retention for token_usage_log (keep 90 days)

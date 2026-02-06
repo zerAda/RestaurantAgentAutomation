@@ -38,17 +38,16 @@ CREATE INDEX IF NOT EXISTS idx_replay_guard_message_id
 DO $$
 BEGIN
     -- Add signature-related event types
-    INSERT INTO ops.security_event_types (event_type, description, severity)
-    VALUES 
-        ('WA_SIGNATURE_INVALID', 'WhatsApp webhook signature validation failed', 'HIGH'),
-        ('WA_SIGNATURE_MISSING', 'WhatsApp webhook missing X-Hub-Signature-256 header', 'MEDIUM'),
-        ('WA_REPLAY_DETECTED', 'Duplicate webhook message detected (replay attack)', 'HIGH'),
-        ('WA_REPLAY_BLOCKED', 'Replay attack blocked', 'HIGH'),
-        ('LEGACY_TOKEN_BLOCKED', 'Legacy shared token usage blocked', 'HIGH'),
-        ('LEGACY_TOKEN_USED', 'Legacy shared token used (deprecated)', 'MEDIUM')
-    ON CONFLICT (event_type) DO UPDATE SET
-        description = EXCLUDED.description,
-        severity = EXCLUDED.severity;
+    INSERT INTO ops.security_event_types (code, description)
+    VALUES
+        ('WA_SIGNATURE_INVALID', 'WhatsApp webhook signature validation failed'),
+        ('WA_SIGNATURE_MISSING', 'WhatsApp webhook missing X-Hub-Signature-256 header'),
+        ('WA_REPLAY_DETECTED', 'Duplicate webhook message detected (replay attack)'),
+        ('WA_REPLAY_BLOCKED', 'Replay attack blocked'),
+        ('LEGACY_TOKEN_BLOCKED', 'Legacy shared token usage blocked'),
+        ('LEGACY_TOKEN_USED', 'Legacy shared token used (deprecated)')
+    ON CONFLICT (code) DO UPDATE SET
+        description = EXCLUDED.description;
 EXCEPTION
     WHEN undefined_table THEN
         -- ops.security_event_types might not exist in all environments

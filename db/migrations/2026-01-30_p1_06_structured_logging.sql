@@ -123,7 +123,7 @@ SELECT
   created_at,
   'security_event' AS source,
   severity AS level,
-  event_type,
+  event_type::text,
   NULL AS message,
   NULL AS workflow_name,
   NULL AS node_name,

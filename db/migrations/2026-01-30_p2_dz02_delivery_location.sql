@@ -541,7 +541,7 @@ $$;
 -- 7) Message Templates for Location Requests
 -- =============================================================================
 
-INSERT INTO public.message_templates (tenant_id, restaurant_id, template_key, lang, body)
+INSERT INTO public.message_templates (tenant_id, restaurant_id, template_key, locale, content)
 VALUES
   ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000',
    'delivery_location_request', 'fr',
@@ -561,9 +561,8 @@ VALUES
   ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000',
    'delivery_zone_not_found', 'ar',
    'عذراً، لا نقوم بالتوصيل إلى منطقتك بعد ({wilaya}).\nيرجى اختيار "استلام من المحل" أو الاتصال بالمطعم.')
-ON CONFLICT (tenant_id, restaurant_id, template_key, lang) DO UPDATE SET
-  body = EXCLUDED.body,
-  updated_at = now();
+ON CONFLICT (template_key, locale, tenant_id) DO UPDATE SET
+  content = EXCLUDED.content;
 
 -- =============================================================================
 -- 8) Security Event Types

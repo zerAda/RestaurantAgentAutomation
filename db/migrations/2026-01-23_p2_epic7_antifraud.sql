@@ -427,7 +427,7 @@ $$;
 -- =========================
 -- 7) Message templates (FR/AR)
 -- =========================
-INSERT INTO public.message_templates(key, locale, content, variables, tenant_id)
+INSERT INTO public.message_templates(template_key, locale, content, variables, tenant_id)
 VALUES
   ('FRAUD_CONFIRM_REQUIRED','fr','⚠️ Montant élevé détecté. Pour confirmer, réponds : CONFIRM {{code}} (valable {{minutes}} min).','["code","minutes"]'::jsonb,'_GLOBAL'),
   ('FRAUD_CONFIRM_REQUIRED','ar','⚠️ تم اكتشاف مبلغ مرتفع. للتأكيد أرسل: CONFIRM {{code}} (صالحة لمدة {{minutes}} دقيقة).','["code","minutes"]'::jsonb,'_GLOBAL'),

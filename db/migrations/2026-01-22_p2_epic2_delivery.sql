@@ -385,6 +385,9 @@ $$;
 -- 7) Update create_order to persist delivery info (from conversation_state.state_json)
 -- =========================
 
+-- Must DROP first: return type changes from (uuid, int, text) to include delivery columns
+DROP FUNCTION IF EXISTS public.create_order(text);
+
 CREATE OR REPLACE FUNCTION public.create_order(p_conversation_key text)
 RETURNS TABLE(
   order_id uuid,
