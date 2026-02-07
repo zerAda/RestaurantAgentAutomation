@@ -31,12 +31,16 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache vips-dev
+# Install runtime deps + temporary build tools for native module compilation
+RUN apk add --no-cache vips-dev python3 make g++
 
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
+
+# Remove build tools after npm ci (keep runtime-only packages)
+RUN apk del python3 make g++
 
 # Copy built admin panel + source
 COPY --from=build /app/dist ./dist
@@ -48,6 +52,12 @@ RUN rm -rf node_modules/.cache src/admin/app.example.tsx
 # Entrypoint reads DATABASE_PASSWORD from mounted secret file
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
+
+# Security: run as non-root user
+RUN addgroup -g 1001 -S strapi && \
+    adduser -S strapi -u 1001 -G strapi && \
+    chown -R strapi:strapi /app
+USER strapi
 
 EXPOSE 1337
 

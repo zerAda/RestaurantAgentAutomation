@@ -233,6 +233,12 @@ services:
       - "traefik.http.middlewares.adminer-headers.headers.browserXSSFilter=true"
       - "traefik.http.middlewares.adminer-headers.headers.contentTypeNosniff=true"
       - "traefik.http.middlewares.adminer-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.adminer-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.adminer-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.adminer-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.adminer-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.adminer-headers.headers.referrerPolicy=no-referrer"
+      - "traefik.http.middlewares.adminer-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=()"
       - "traefik.http.middlewares.adminer-chain.chain.middlewares=adminer-allowlist,adminer-auth,adminer-headers"
     logging:
       driver: "json-file"
@@ -278,6 +284,7 @@ services:
       - TRANSFER_TOKEN_SALT=${STRAPI_TRANSFER_TOKEN_SALT:?STRAPI_TRANSFER_TOKEN_SALT must be set}
       - ENCRYPTION_KEY=${STRAPI_ENCRYPTION_KEY:?STRAPI_ENCRYPTION_KEY must be set}
       - APP_KEYS=${STRAPI_APP_KEYS:?STRAPI_APP_KEYS must be set}
+      - CORS_ORIGINS=https://admin.${DOMAIN_NAME},https://kiosk.${DOMAIN_NAME},https://cms.${DOMAIN_NAME}
     volumes:
       - cms_uploads:/app/public/uploads
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
@@ -295,6 +302,11 @@ services:
       - "traefik.http.middlewares.cms-headers.headers.browserXSSFilter=true"
       - "traefik.http.middlewares.cms-headers.headers.contentTypeNosniff=true"
       - "traefik.http.middlewares.cms-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.cms-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.cms-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.cms-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.cms-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.cms-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
       - "traefik.http.middlewares.cms-chain.chain.middlewares=cms-allowlist,cms-headers"
     logging:
       driver: "json-file"
@@ -336,6 +348,11 @@ services:
       - "traefik.http.middlewares.admin-dash-headers.headers.browserXSSFilter=true"
       - "traefik.http.middlewares.admin-dash-headers.headers.contentTypeNosniff=true"
       - "traefik.http.middlewares.admin-dash-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.admin-dash-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.admin-dash-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.admin-dash-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.admin-dash-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.admin-dash-headers.headers.referrerPolicy=no-referrer"
       - "traefik.http.middlewares.admin-dash-chain.chain.middlewares=admin-dash-allowlist,admin-dash-auth,admin-dash-headers"
     logging:
       driver: "json-file"
@@ -377,6 +394,11 @@ services:
       - "traefik.http.middlewares.kiosk-headers.headers.browserXSSFilter=true"
       - "traefik.http.middlewares.kiosk-headers.headers.contentTypeNosniff=true"
       - "traefik.http.middlewares.kiosk-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.kiosk-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.kiosk-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.kiosk-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.kiosk-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.kiosk-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
       - "traefik.http.middlewares.kiosk-chain.chain.middlewares=kiosk-ratelimit,kiosk-headers"
     logging:
       driver: "json-file"
