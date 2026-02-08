@@ -1,4 +1,4 @@
-import { Product } from '../services/menuService';
+import type { Product } from '../services/menuService';
 
 interface CartProps {
     items: { product: Product; qty: number }[];

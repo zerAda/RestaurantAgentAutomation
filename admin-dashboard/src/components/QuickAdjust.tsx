@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
-import { StockItem, stockService } from '../services/stockService';
+import type { StockItem } from '../services/stockService';
+import { stockService } from '../services/stockService';
 
 export function QuickAdjust() {
     const [items, setItems] = useState<StockItem[]>([]);
     const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        loadData();
-    }, []);
 
     const loadData = async () => {
         setLoading(true);
@@ -15,6 +12,10 @@ export function QuickAdjust() {
         setItems(data);
         setLoading(false);
     };
+
+    useEffect(() => {
+        loadData();
+    }, []);
 
     const handleAdjust = async (id: string, delta: number) => {
         const updated = await stockService.updateStock(id, delta);

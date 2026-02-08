@@ -1,21 +1,22 @@
 import { useState, useEffect } from 'react';
 import { MenuGrid } from './components/MenuGrid';
 import { Cart } from './components/Cart';
-import { menuService, CATEGORIES, Product } from './services/menuService';
+import type { Product } from './services/menuService';
+import { menuService, CATEGORIES } from './services/menuService';
 
 function App() {
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0]);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
 
-  useEffect(() => {
-    loadProducts();
-  }, [activeCategory]);
-
   const loadProducts = async () => {
     const data = await menuService.getProducts(activeCategory);
     setProducts(data);
   };
+
+  useEffect(() => {
+    loadProducts();
+  }, [activeCategory]);
 
   const addToCart = (product: Product) => {
     setCart(prev => {
