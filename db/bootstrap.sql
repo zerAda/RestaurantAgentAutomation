@@ -26,7 +26,7 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status_enum') THEN
     CREATE TYPE payment_status_enum AS ENUM (
-      'PENDING', 'AUTHORIZED', 'CAPTURED', 'FAILED', 'REFUNDED', 'EXPIRED'
+      'PENDING', 'DEPOSIT_REQUESTED', 'AUTHORIZED', 'CAPTURED', 'FAILED', 'REFUNDED', 'EXPIRED'
     );
   END IF;
 END $$;
