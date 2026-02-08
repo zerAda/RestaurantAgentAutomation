@@ -44,9 +44,14 @@ export function Cart({ items, onRemove, onClear }: CartProps) {
                     <span>Total</span>
                     <span>{total} DA</span>
                 </div>
-                <button className="w-full btn-primary text-xl">
-                    Commander
-                </button>
+                <div className="flex gap-3">
+                    <button onClick={onClear} className="flex-1 py-4 px-6 rounded-xl border border-gray-300 text-gray-600 font-bold hover:bg-gray-100 transition-colors">
+                        Vider
+                    </button>
+                    <button className="flex-[2] btn-primary text-xl">
+                        Commander
+                    </button>
+                </div>
             </div>
         </div>
     );
