@@ -1,9 +1,9 @@
 import path from 'path';
 
-export default ({ env }) => {
-  const client = env('DATABASE_CLIENT', 'postgres');
+export default ({ env }: { env: any }) => {
+  const client: string = env('DATABASE_CLIENT', 'postgres');
 
-  const connections = {
+  const connections: Record<string, any> = {
     mysql: {
       connection: {
         host: env('DATABASE_HOST', 'localhost'),
