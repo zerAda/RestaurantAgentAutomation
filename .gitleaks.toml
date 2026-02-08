@@ -62,11 +62,20 @@ paths = [
   '''PIPELINE_GUIDE\.md$''',
   '''CHANGELOG\.md$''',
   '''PATCHLOG\.md$''',
+  '''PATCH\.diff$''',
+  '''patches/.*''',
   '''docs/RUNBOOK_HOSTINGER\.md$''',
   '''docs/DEVOPS\.md$''',
   '''db/seed.*\.sql$''',
   '''scripts/test_.*\.sh$''',
+  '''scripts/smoke.*\.sh$''',
   '''workflows/.*\.json$''',
+  '''docker-compose.*\.yml$''',
+  '''docker/docker-compose.*\.yml$''',
+  '''\.gitlab-ci\.yml$''',
+  '''\.github/workflows/.*\.yml$''',
+  '''infra/.*''',
+  '''mock-api/.*''',
 ]
 
 regexes = [
