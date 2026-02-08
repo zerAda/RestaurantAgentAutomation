@@ -430,6 +430,136 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiCreativeAssetCreativeAsset
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'creative_assets';
+  info: {
+    description: 'Stores marketing visuals and AI enhanced versions';
+    displayName: 'Creative Asset';
+    pluralName: 'creative-assets';
+    singularName: 'creative-asset';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    aesthetic_style: Schema.Attribute.Enumeration<
+      [
+        'luxury_minimalist',
+        'warm_rustic',
+        'neon_streetfood',
+        'bright_brunch',
+        'dark_moody',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'luxury_minimalist'>;
+    ai_prompt_used: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    enhanced_media: Schema.Attribute.Media<'images' | 'videos'>;
+    generated_caption: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::creative-asset.creative-asset'
+    > &
+      Schema.Attribute.Private;
+    original_media: Schema.Attribute.Media<'images' | 'videos'> &
+      Schema.Attribute.Required;
+    parent_product: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::product.product'
+    >;
+    performance_score: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    platform_format: Schema.Attribute.Enumeration<
+      ['square', 'vertical', 'landscape']
+    > &
+      Schema.Attribute.DefaultTo<'vertical'>;
+    publishedAt: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<
+      ['draft', 'processing', 'approved', 'published']
+    > &
+      Schema.Attribute.DefaultTo<'draft'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiDriverOrderIgnoreDriverOrderIgnore
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'driver_order_ignores';
+  info: {
+    description: 'Tracks which orders a driver has chosen to ignore';
+    displayName: 'Driver Order Ignore';
+    pluralName: 'driver-order-ignores';
+    singularName: 'driver-order-ignore';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    driver_phone: Schema.Attribute.String & Schema.Attribute.Required;
+    ignored_at: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::driver-order-ignore.driver-order-ignore'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Relation<'manyToOne', 'api::order.order'>;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiDriverDriver extends Struct.CollectionTypeSchema {
+  collectionName: 'drivers';
+  info: {
+    description: 'Delivery drivers managed by the restaurant owner';
+    displayName: 'Driver';
+    pluralName: 'drivers';
+    singularName: 'driver';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    assigned_orders: Schema.Attribute.Relation<'oneToMany', 'api::order.order'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    first_name: Schema.Attribute.String & Schema.Attribute.Required;
+    is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    last_name: Schema.Attribute.String & Schema.Attribute.Required;
+    last_seen_at: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::driver.driver'
+    > &
+      Schema.Attribute.Private;
+    onboarding_status: Schema.Attribute.Enumeration<
+      ['INVITED', 'ACTIVE', 'SUSPENDED']
+    > &
+      Schema.Attribute.DefaultTo<'INVITED'>;
+    phone_number: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    publishedAt: Schema.Attribute.DateTime;
+    total_deliveries: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiIngredientIngredient extends Struct.CollectionTypeSchema {
   collectionName: 'ingredients';
   info: {
@@ -465,6 +595,145 @@ export interface ApiIngredientIngredient extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiMarketingCampaignMarketingCampaign
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'marketing_campaigns';
+  info: {
+    description: 'Manages promotional campaigns and ROI tracking';
+    displayName: 'Marketing Campaign';
+    pluralName: 'marketing-campaigns';
+    singularName: 'marketing-campaign';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    ai_brief: Schema.Attribute.Text;
+    channels: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    kpi_metrics: Schema.Attribute.JSON &
+      Schema.Attribute.DefaultTo<{
+        click_count: 0;
+        conversion_count: 0;
+        revenue_generated: 0;
+        sent_count: 0;
+      }>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::marketing-campaign.marketing-campaign'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    promotional_rules: Schema.Attribute.JSON;
+    publishedAt: Schema.Attribute.DateTime;
+    sceduled_at: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<
+      ['draft', 'scheduled', 'active', 'completed']
+    > &
+      Schema.Attribute.DefaultTo<'draft'>;
+    target_segment: Schema.Attribute.Enumeration<
+      ['all_clients', 'big_spenders', 'dormant', 'vip']
+    > &
+      Schema.Attribute.DefaultTo<'all_clients'>;
+    tracking_code: Schema.Attribute.UID<'name'> & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
+  collectionName: 'orders';
+  info: {
+    description: 'Sales history for ROI calculations';
+    displayName: 'Order';
+    pluralName: 'orders';
+    singularName: 'order';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    attributed_campaign: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    customer_phone: Schema.Attribute.String;
+    delivered_at: Schema.Attribute.DateTime;
+    delivery_address: Schema.Attribute.String;
+    delivery_commune: Schema.Attribute.String;
+    delivery_status: Schema.Attribute.Enumeration<
+      ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED']
+    >;
+    delivery_wilaya: Schema.Attribute.String;
+    driver: Schema.Attribute.Relation<'manyToOne', 'api::driver.driver'>;
+    items_summary: Schema.Attribute.JSON;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::order.order'> &
+      Schema.Attribute.Private;
+    otp_attempts: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    otp_expires_at: Schema.Attribute.DateTime;
+    otp_hash: Schema.Attribute.String;
+    payment_method: Schema.Attribute.Enumeration<['cash', 'card', 'online']> &
+      Schema.Attribute.DefaultTo<'cash'>;
+    publishedAt: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<
+      ['pending', 'confirmed', 'delivered', 'cancelled']
+    > &
+      Schema.Attribute.DefaultTo<'pending'>;
+    total_amount: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiPaymentPayment extends Struct.CollectionTypeSchema {
+  collectionName: 'payments';
+  info: {
+    description: 'Payment tracking for orders';
+    displayName: 'Payment';
+    pluralName: 'payments';
+    singularName: 'payment';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    amount: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currency: Schema.Attribute.String & Schema.Attribute.DefaultTo<'DZD'>;
+    external_id: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::payment.payment'
+    > &
+      Schema.Attribute.Private;
+    metadata: Schema.Attribute.JSON;
+    method: Schema.Attribute.Enumeration<
+      ['cod', 'chargily', 'baridimob', 'ccp']
+    > &
+      Schema.Attribute.DefaultTo<'cod'>;
+    order: Schema.Attribute.Relation<'oneToOne', 'api::order.order'>;
+    paid_at: Schema.Attribute.DateTime;
+    payment_url: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<
+      ['pending', 'awaiting_payment', 'paid', 'failed', 'refunded']
+    > &
+      Schema.Attribute.DefaultTo<'pending'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiProductProduct extends Struct.CollectionTypeSchema {
   collectionName: 'products';
   info: {
@@ -477,10 +746,32 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
+    aliases: Schema.Attribute.JSON;
+    category: Schema.Attribute.Enumeration<
+      [
+        'burgers',
+        'pizzas',
+        'tacos',
+        'salades',
+        'boissons',
+        'desserts',
+        'specials',
+      ]
+    >;
     code: Schema.Attribute.UID<'name'> & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    creative_assets: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::creative-asset.creative-asset'
+    >;
+    description_multilang: Schema.Attribute.JSON &
+      Schema.Attribute.DefaultTo<{
+        ar: '';
+        dz: '';
+        fr: '';
+      }>;
     ingredients: Schema.Attribute.Relation<
       'manyToMany',
       'api::ingredient.ingredient'
@@ -491,6 +782,7 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
       'api::product.product'
     > &
       Schema.Attribute.Private;
+    marketing_name: Schema.Attribute.String;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     price: Schema.Attribute.Decimal;
     publishedAt: Schema.Attribute.DateTime;
@@ -498,6 +790,67 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+  };
+}
+
+export interface ApiRestaurantBrandRestaurantBrand
+  extends Struct.SingleTypeSchema {
+  collectionName: 'restaurant_brand';
+  info: {
+    description: 'Brand identity configuration for AI personalisation';
+    displayName: 'Restaurant Brand';
+    pluralName: 'restaurant-brands';
+    singularName: 'restaurant-brand';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    brand_story: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localization: Schema.Attribute.JSON &
+      Schema.Attribute.DefaultTo<{
+        auto_detect: true;
+        cultural_notes: 'March\u00E9 alg\u00E9rien - Code-switching FR/Darija courant';
+        darija_expressions: ['sahit', 'bsaha', 'chhal', 'wesh rak'];
+        primary_language: 'fr';
+        supported_languages: ['fr', 'ar', 'dz'];
+      }>;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::restaurant-brand.restaurant-brand'
+    > &
+      Schema.Attribute.Private;
+    prohibited_terms: Schema.Attribute.JSON;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurant_name: Schema.Attribute.String & Schema.Attribute.Required;
+    signature_phrases: Schema.Attribute.JSON;
+    target_audience: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'Jeunes urbains 18-35 ans'>;
+    unique_selling_points: Schema.Attribute.JSON;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    visual_identity: Schema.Attribute.JSON &
+      Schema.Attribute.DefaultTo<{
+        logo_url: '';
+        preferred_aesthetic: 'luxury_minimalist';
+        primary_color: '#000000';
+        secondary_color: '#FFFFFF';
+      }>;
+    voice_tone: Schema.Attribute.Enumeration<
+      [
+        'professional_elegant',
+        'friendly_casual',
+        'bold_streetfood',
+        'warm_family',
+        'trendy_genz',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'friendly_casual'>;
   };
 }
 
@@ -1046,8 +1399,15 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::creative-asset.creative-asset': ApiCreativeAssetCreativeAsset;
+      'api::driver-order-ignore.driver-order-ignore': ApiDriverOrderIgnoreDriverOrderIgnore;
+      'api::driver.driver': ApiDriverDriver;
       'api::ingredient.ingredient': ApiIngredientIngredient;
+      'api::marketing-campaign.marketing-campaign': ApiMarketingCampaignMarketingCampaign;
+      'api::order.order': ApiOrderOrder;
+      'api::payment.payment': ApiPaymentPayment;
       'api::product.product': ApiProductProduct;
+      'api::restaurant-brand.restaurant-brand': ApiRestaurantBrandRestaurantBrand;
       'api::supplier.supplier': ApiSupplierSupplier;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
