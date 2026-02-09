@@ -253,8 +253,7 @@ services:
   # Inventory CMS (Strapi 5) - Menu & Inventory Management
   # ===========================================================================
   cms:
-    build:
-      context: ./inventory-cms
+    image: ${CMS_IMAGE:-ghcr.io/${GITHUB_REPOSITORY_OWNER}/resto-bot-cms:latest}
     restart: unless-stopped
     deploy:
       resources:
@@ -321,9 +320,7 @@ services:
   # Admin Dashboard - React SPA
   # ===========================================================================
   admin-dashboard:
-    build:
-      context: .
-      dockerfile: admin-dashboard/Dockerfile
+    image: ${ADMIN_IMAGE:-ghcr.io/${GITHUB_REPOSITORY_OWNER}/resto-bot-admin:latest}
     restart: unless-stopped
     deploy:
       resources:
@@ -345,7 +342,7 @@ services:
       - "traefik.http.routers.admin-dash.entrypoints=websecure"
       - "traefik.http.routers.admin-dash.tls=true"
       - "traefik.http.routers.admin-dash.tls.certresolver=mytlschallenge"
-      - "traefik.http.services.admin-dash.loadbalancer.server.port=80"
+      - "traefik.http.services.admin-dash.loadbalancer.server.port=8080"
       # Security: IP Allowlist + Basic Auth
       - "traefik.http.routers.admin-dash.middlewares=admin-dash-chain@docker"
       - "traefik.http.middlewares.admin-dash-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
@@ -367,9 +364,7 @@ services:
   # Kiosk App - Customer-facing React SPA
   # ===========================================================================
   kiosk-app:
-    build:
-      context: .
-      dockerfile: kiosk-app/Dockerfile
+    image: ${KIOSK_IMAGE:-ghcr.io/${GITHUB_REPOSITORY_OWNER}/resto-bot-kiosk:latest}
     restart: unless-stopped
     deploy:
       resources:
@@ -391,7 +386,7 @@ services:
       - "traefik.http.routers.kiosk.entrypoints=websecure"
       - "traefik.http.routers.kiosk.tls=true"
       - "traefik.http.routers.kiosk.tls.certresolver=mytlschallenge"
-      - "traefik.http.services.kiosk.loadbalancer.server.port=80"
+      - "traefik.http.services.kiosk.loadbalancer.server.port=8080"
       # Public-facing – rate limit + security headers only (no IP allowlist)
       - "traefik.http.routers.kiosk.middlewares=kiosk-chain@docker"
       - "traefik.http.middlewares.kiosk-ratelimit.ratelimit.average=30"
@@ -530,6 +525,7 @@ services:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_DIAGNOSTICS_ENABLED=false
       - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_BLOCK_JS_LIB_IMPORT=true
 
       # Secrets
       - N8N_ENCRYPTION_KEY_FILE=/run/secrets/n8n_encryption_key
@@ -658,6 +654,7 @@ services:
       - GENERIC_TIMEZONE=${TZ:-Europe/Paris}
       - NODE_ENV=production
       - N8N_ENCRYPTION_KEY_FILE=/run/secrets/n8n_encryption_key
+      - N8N_BLOCK_JS_LIB_IMPORT=true
 
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres

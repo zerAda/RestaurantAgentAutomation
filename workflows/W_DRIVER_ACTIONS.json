@@ -65,7 +65,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const input = $json.body || $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst buttonId = (input.button_id || input.interactive?.button_reply?.id || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nlet action = 'unknown';\nlet orderId = null;\nlet targetPhone = null;\n\nif (buttonId.startsWith('CLAIM_')) {\n  action = 'claim';\n  orderId = buttonId.replace('CLAIM_', '');\n} else if (buttonId.startsWith('IGNORE_')) {\n  action = 'ignore';\n  orderId = buttonId.replace('IGNORE_', '');\n} else if (buttonId.startsWith('DELIVERED_')) {\n  action = 'delivered_prompt';\n  orderId = buttonId.replace('DELIVERED_', '');\n} else if (buttonId === 'REFRESH_AVAILABLE') {\n  action = 'refresh';\n} else if (buttonId === 'MENU') {\n  action = 'menu';\n} else if (buttonId.startsWith('CALL_')) {\n  action = 'call';\n  targetPhone = buttonId.replace('CALL_', '');\n} else if (/^\\d{4}$/.test(text)) {\n  action = 'otp_verify';\n}\n\nreturn { json: { phone, buttonId, text, action, orderId, targetPhone } };"
+                "jsCode": "const input = $json.body || $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst buttonId = (input.button_id || input.interactive?.button_reply?.id || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nlet action = 'unknown';\nlet orderId = null;\nlet targetPhone = null;\n\nif (buttonId.startsWith('CLAIM_')) {\n  action = 'claim';\n  orderId = buttonId.replace('CLAIM_', '');\n} else if (buttonId.startsWith('IGNORE_')) {\n  action = 'ignore';\n  orderId = buttonId.replace('IGNORE_', '');\n} else if (buttonId.startsWith('DELIVERED_')) {\n  action = 'delivered_prompt';\n  orderId = buttonId.replace('DELIVERED_', '');\n} else if (buttonId === 'REFRESH_AVAILABLE') {\n  action = 'refresh';\n} else if (buttonId === 'MENU') {\n  action = 'menu';\n} else if (buttonId.startsWith('CALL_')) {\n  action = 'call';\n  targetPhone = buttonId.replace('CALL_', '');\n} else if (/^\\d{6}$/.test(text)) {\n  action = 'otp_verify';\n}\n\nreturn { json: { phone, buttonId, text, action, orderId, targetPhone } };"
             },
             "name": "Parse Action",
             "type": "n8n-nodes-base.code",
@@ -193,7 +193,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const crypto = require('crypto');\n\n// Generate 4-digit OTP\nconst otp = String(Math.floor(1000 + Math.random() * 9000));\nconst otpHash = crypto.createHash('sha256').update(otp).digest('hex');\n\n// Expiry: 30 minutes from now\nconst expiryMinutes = parseInt($env.DRIVER_OTP_EXPIRY_MINUTES || '30', 10);\nconst otpExpiresAt = new Date(Date.now() + expiryMinutes * 60000).toISOString();\n\nreturn {\n  json: {\n    ...($json),\n    otp,\n    otpHash,\n    otpExpiresAt\n  }\n};"
+                "jsCode": "const crypto = require('crypto');\n\n// Generate 4-digit OTP\nconst otp = String(Math.floor(100000 + Math.random() * 900000));\nconst otpHash = crypto.createHash('sha256').update(otp).digest('hex');\n\n// Expiry: 30 minutes from now\nconst expiryMinutes = parseInt($env.DRIVER_OTP_EXPIRY_MINUTES || '30', 10);\nconst otpExpiresAt = new Date(Date.now() + expiryMinutes * 60000).toISOString();\n\nreturn {\n  json: {\n    ...($json),\n    otp,\n    otpHash,\n    otpExpiresAt\n  }\n};"
             },
             "name": "Generate & Hash OTP",
             "type": "n8n-nodes-base.code",
@@ -547,7 +547,7 @@
                         },
                         {
                             "name": "text",
-                            "value": "={{ { body: '📝 *Livraison en cours*\\n\\nEnvoyez le code OTP à 4 chiffres que le client vous donnera pour confirmer la livraison.' } }}"
+                            "value": "={{ { body: '📝 *Livraison en cours*\\n\\nEnvoyez le code OTP à 6 chiffres que le client vous donnera pour confirmer la livraison.' } }}"
                         }
                     ]
                 },

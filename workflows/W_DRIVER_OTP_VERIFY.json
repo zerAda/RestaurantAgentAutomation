@@ -17,7 +17,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nconst isOtp = /^\\d{4}$/.test(text);\n\nreturn { json: { phone, otp: text, isOtp } };"
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nconst isOtp = /^\\d{6}$/.test(text);\n\nreturn { json: { phone, otp: text, isOtp } };"
             },
             "name": "Parse OTP",
             "type": "n8n-nodes-base.code",
@@ -473,7 +473,7 @@
                         },
                         {
                             "name": "text",
-                            "value": "={{ { body: '⚠️ Format invalide. Envoyez un code à 4 chiffres.' } }}"
+                            "value": "={{ { body: '⚠️ Format invalide. Envoyez un code à 6 chiffres.' } }}"
                         }
                     ]
                 },
