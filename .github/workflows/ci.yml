@@ -208,7 +208,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: python-test-results
           path: test-results/results.xml
@@ -495,7 +495,7 @@ jobs:
 
       - name: Upload scan report
         if: always()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: trivy-scan-${{ matrix.image.name }}
           path: trivy-*.sarif
@@ -579,7 +579,7 @@ jobs:
 
       - name: Upload SARIF report
         if: always()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: gitleaks-sarif
           path: gitleaks-report.sarif
@@ -637,7 +637,7 @@ jobs:
 
       - name: Upload failure artifacts
         if: failure()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: test-harness-logs
           path: test-harness-logs/
