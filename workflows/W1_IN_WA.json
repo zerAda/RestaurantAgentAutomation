@@ -435,20 +435,53 @@
     },
     {
       "parameters": {
+        "language": "javascript",
+        "jsCode": "// =============================================================================\n// SECURITY FIX: Admin WA Console Access Control (P0-CRITICAL)\n// =============================================================================\n// Previous vulnerability: Any user could access admin console by sending '!command'\n// New security: Requires explicit phone number allowlist AND '!' prefix\n//\n// Environment variables:\n// - ADMIN_WA_CONSOLE_ENABLED: Master switch (true/false)\n// - ADMIN_WA_PHONE_ALLOWLIST: Comma-separated list of authorized phone numbers\n//   Example: \"212612345678,212698765432,33612345678\"\n//\n// Authorization logic:\n// 1. Admin console must be enabled globally\n// 2. User's phone number must be in the allowlist\n// 3. Message must start with '!' prefix\n// All three conditions must be true for access.\n// =============================================================================\n\nconst enabled = ($env.ADMIN_WA_CONSOLE_ENABLED || 'false').toString().toLowerCase() === 'true';\nconst messageText = ($json.message?.text || '').toString().trim();\nconst userId = ($json.userId || '').toString().trim();\n\n// Parse phone allowlist\nconst allowlistRaw = ($env.ADMIN_WA_PHONE_ALLOWLIST || '').toString().trim();\nconst allowlist = allowlistRaw ? allowlistRaw.split(',').map(p => p.trim()).filter(p => p.length > 0) : [];\n\n// Security checks\nconst hasCommandPrefix = messageText.startsWith('!');\nconst isPhoneAuthorized = allowlist.length > 0 && allowlist.includes(userId);\nconst isAuthorized = enabled && hasCommandPrefix && isPhoneAuthorized;\n\n// Audit log data\nconst auditData = {\n  userId,\n  enabled,\n  hasCommandPrefix,\n  isPhoneAuthorized,\n  allowlistSize: allowlist.length,\n  allowlistConfigured: allowlistRaw.length > 0,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    ...$json,\n    _adminConsoleCheck: {\n      isAuthorized,\n      audit: auditData,\n      securityLevel: 'phone_allowlist_enforced'\n    }\n  }\n}];\n"
+      },
+      "id": "admin-access-validator",
+      "name": "B1a - Admin Access Validator (SECURED)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3300, -650]
+    },
+    {
+      "parameters": {
         "conditions": {
           "boolean": [
             {
-              "value1": "={{(($env.ADMIN_WA_CONSOLE_ENABLED||'false').toString().toLowerCase()==='true') && (($json.message?.text||'').toString().trim().startsWith('!'))}}",
+              "value1": "={{$json._adminConsoleCheck?.isAuthorized || false}}",
               "operation": "isTrue"
             }
           ]
         }
       },
-      "id": "175878db-624a-45bd-ba96-4b57ba9bcb69",
-      "name": "B1a - Admin WA Console?",
+      "id": "175878db-624a-45bd-ba96-4b57ba9bcb69-gate",
+      "name": "B1a - Admin WA Console Gate?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [3300, -650]
+      "position": [3550, -650]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1, $2, $3, $4, $5, 'ADMIN_CONSOLE_ACCESS_ATTEMPT', CASE WHEN $6::boolean THEN 'INFO' ELSE 'HIGH' END, $7::jsonb) RETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId || null, $json.restaurantId || null, $json.conversationKey || '', $json.channel || 'whatsapp', $json.userId || 'unknown', $json._adminConsoleCheck?.isAuthorized || false, JSON.stringify($json._adminConsoleCheck?.audit || {})]}}"
+        }
+      },
+      "id": "admin-access-audit-log",
+      "name": "B1a - Log Admin Access Attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3800, -650],
+      "alwaysOutputData": true,
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "postgres-main",
+          "name": "postgres-main"
+        }
+      }
     },
     {
       "parameters": {
