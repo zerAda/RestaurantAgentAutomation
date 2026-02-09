@@ -149,6 +149,20 @@
         },
         {
             "parameters": {
+                "amount": 3,
+                "unit": "seconds"
+            },
+            "name": "Brute Force Delay",
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1,
+            "position": [
+                1400,
+                300
+            ],
+            "notes": "SECURITY: Anti brute-force delay"
+        },
+        {
+            "parameters": {
                 "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
                 "method": "PUT",
                 "sendBody": true,
@@ -573,7 +587,7 @@
                 ],
                 [
                     {
-                        "node": "Increment Attempts",
+                        "node": "Brute Force Delay",
                         "type": "main",
                         "index": 0
                     }
@@ -636,6 +650,17 @@
                 [
                     {
                         "node": "Send Mismatch",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Brute Force Delay": {
+            "main": [
+                [
+                    {
+                        "node": "Increment Attempts",
                         "type": "main",
                         "index": 0
                     }

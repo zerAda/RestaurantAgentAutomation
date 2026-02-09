@@ -16,10 +16,10 @@ echo "\n[2/8] Secret scan (forbidden placeholder CHANGE_ME)"
 # .env.example (template), .env (gitignored local), gitleaks/gitlab configs (references)
 CHANGE_ME_EXCLUDES=(
   --exclude-dir=docs --exclude-dir=patches --exclude-dir=releases --exclude-dir=node_modules
-  --exclude-dir=.github --exclude-dir=.gitlab-ci.yml
+  --exclude-dir=.github --exclude=.gitlab-ci.yml
   --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md
   --exclude=integrity_gate.sh --exclude='*.example' --exclude=.env
-  --exclude=.gitleaks.toml --exclude=.gitlab-ci.yml
+  --exclude=.gitleaks.toml
 )
 if grep -R --line-number --fixed-string "CHANGE_ME" \
   "${CHANGE_ME_EXCLUDES[@]}" -- . >/dev/null 2>&1; then
@@ -35,7 +35,7 @@ for wf in workflows/*.json; do
     || fail "Invalid workflow JSON: $wf"
 
   base="$(basename "$wf")"
-  # inbound parse nodes must gate query tokens + enforce scopes
+  # Inbound parse nodes must gate query tokens + enforce scopes
   if [[ "$base" == "W1_IN_WA.json" || "$base" == "W2_IN_IG.json" || "$base" == "W3_IN_MSG.json" ]]; then
     code="$(jq -r '.nodes[] | select(.name=="B0 - Parse & Canonicalize") | .parameters.jsCode' "$wf")"
     echo "$code" | grep -q "ALLOW_QUERY_TOKEN" || fail "$wf: ALLOW_QUERY_TOKEN gating missing"
@@ -54,6 +54,25 @@ for wf in workflows/*.json; do
     jq -e '.nodes[] | select(.name=="IN - Webhook" and .parameters.responseMode=="responseNode")' "$wf" >/dev/null \
       || fail "$wf: webhook responseMode must be responseNode"
   fi
+
+  # P0 Security: Admin WA Console Gate - must use VALIDATOR (v3.3.0)
+  if [[ "$base" == "W1_IN_WA.json" ]]; then
+    jq -e '.nodes[] | select(.name=="B1a - Admin Access Validator (SECURED)")' "$wf" >/dev/null \
+      || fail "$wf: missing mandatory B1a - Admin Access Validator (SECURED) node"
+    
+    # Ensure gateway bypass is removed (no direct route from media fetch to console without validator)
+    jq -e '.connections["B1 - Has Media to Fetch?"]?.main[0][] | select(.node=="B1a - Admin Access Validator (SECURED)")' "$wf" >/dev/null \
+      || fail "$wf: bypass detected in B1 - Has Media to Fetch? route"
+  fi
+
+  # P0 Security: Tenant Isolation - ensure restaurant_id/tenant_id filters use authenticated context
+  # Check all Strapi nodes
+  STRAPI_NODES=$(jq -r '.nodes[] | select(.type=="n8n-nodes-base.strapi") | .name' "$wf")
+  for node in $STRAPI_NODES; do
+    [[ -z "$node" ]] && continue
+    jq -e ".nodes[] | select(.name==\"$node\") | .parameters.filters.restaurant_id.\"\$eq\" | contains(\"tenant_context\")" "$wf" >/dev/null \
+      || fail "$wf [$node]: Strapi filter MUST use tenant_context for restaurant_id isolation"
+  done
 
 done
 

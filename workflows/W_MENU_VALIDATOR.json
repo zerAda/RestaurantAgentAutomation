@@ -20,7 +20,7 @@
                         "$notNull": true
                     },
                     "restaurant_id": {
-                        "$eq": "={{$json.restaurantId || $json.restaurant_id}}"
+                        "$eq": "={{$json.tenant_context?.restaurant_id || $json.restaurantId}}"
                     }
                 },
                 "limit": 100

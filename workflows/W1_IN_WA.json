@@ -20,7 +20,10 @@
       "name": "IN - Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [-2400, 0]
+      "position": [
+        -2400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -31,7 +34,10 @@
       "name": "B0 - Parse & Canonicalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-2150, 0]
+      "position": [
+        -2150,
+        0
+      ]
     },
     {
       "parameters": {
@@ -48,7 +54,10 @@
       "name": "B0 - Signature OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-1950, 0]
+      "position": [
+        -1950,
+        0
+      ]
     },
     {
       "parameters": {
@@ -60,7 +69,10 @@
       "name": "RESP - 200 ACK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [-1750, -100]
+      "position": [
+        -1750,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -72,7 +84,10 @@
       "name": "RESP - 401 Signature",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [-1750, 100]
+      "position": [
+        -1750,
+        100
+      ]
     },
     {
       "parameters": {
@@ -89,7 +104,10 @@
       "name": "B0 - Contract Valid?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [-1550, -100]
+      "position": [
+        -1550,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -103,7 +121,10 @@
       "name": "B0 - Log Contract Reject (DB)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [-1350, 50]
+      "position": [
+        -1350,
+        50
+      ]
     },
     {
       "parameters": {
@@ -117,7 +138,10 @@
       "name": "B0 - Resolve Client (DB)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [-1350, -200]
+      "position": [
+        -1350,
+        -200
+      ]
     },
     {
       "parameters": {
@@ -128,7 +152,10 @@
       "name": "B0 - Apply Auth Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-1100, -200]
+      "position": [
+        -1100,
+        -200
+      ]
     },
     {
       "parameters": {
@@ -139,7 +166,10 @@
       "name": "B0 - Seal Tenant Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-850, -200]
+      "position": [
+        -850,
+        -200
+      ]
     },
     {
       "parameters": {
@@ -160,7 +190,10 @@
       "name": "B0 - Token OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-600, -200]
+      "position": [
+        -600,
+        -200
+      ]
     },
     {
       "parameters": {
@@ -174,7 +207,10 @@
       "name": "B0 - Log Deny (DB)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [-400, -50]
+      "position": [
+        -400,
+        -50
+      ]
     },
     {
       "parameters": {
@@ -185,7 +221,10 @@
       "name": "B0 - Prepare Dedupe Key",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-400, -350]
+      "position": [
+        -400,
+        -350
+      ]
     },
     {
       "parameters": {
@@ -196,7 +235,10 @@
       "name": "B0 - Redis Dedupe GET",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-150, -350],
+      "position": [
+        -150,
+        -350
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -214,7 +256,10 @@
       "name": "B0 - Parse Dedupe Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [100, -350]
+      "position": [
+        100,
+        -350
+      ]
     },
     {
       "parameters": {
@@ -231,7 +276,10 @@
       "name": "B0 - Is New (Redis)?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [350, -350]
+      "position": [
+        350,
+        -350
+      ]
     },
     {
       "parameters": {
@@ -245,7 +293,10 @@
       "name": "B0 - Redis Dedupe SET",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [600, -450],
+      "position": [
+        600,
+        -450
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -266,9 +317,12 @@
       "name": "B0 - Idempotency (DB)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [850, -450]
+      "position": [
+        850,
+        -450
+      ]
     },
-        {
+    {
       "parameters": {
         "operation": "executeQuery",
         "query": "WITH ins AS (\n      INSERT INTO inbound_messages (conversation_key, msg_id, channel, message_type, text_hash, meta_json)\n      VALUES ($1, $2, $3, $4, $5, $6::jsonb)\n      ON CONFLICT DO NOTHING\n      RETURNING 1\n    )\n    SELECT COUNT(*)::int AS cnt_30s\n    FROM inbound_messages\n    WHERE conversation_key = $1\n      AND received_at > (now() - interval '30 seconds');",
@@ -280,7 +334,10 @@
       "name": "B0 - RateLimit + Log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [300, -450]
+      "position": [
+        300,
+        -450
+      ]
     },
     {
       "parameters": {
@@ -291,7 +348,10 @@
       "name": "B0 - RateLimit Flag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [550, -450]
+      "position": [
+        550,
+        -450
+      ]
     },
     {
       "parameters": {
@@ -308,7 +368,10 @@
       "name": "B0 - Rate OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [800, -450]
+      "position": [
+        800,
+        -450
+      ]
     },
     {
       "parameters": {
@@ -322,7 +385,10 @@
       "name": "B0 - Quarantine Check",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [1050, -550]
+      "position": [
+        1050,
+        -550
+      ]
     },
     {
       "parameters": {
@@ -333,7 +399,10 @@
       "name": "B0 - Quarantine Flag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, -550]
+      "position": [
+        1300,
+        -550
+      ]
     },
     {
       "parameters": {
@@ -350,7 +419,10 @@
       "name": "B0 - Not Quarantined?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1550, -550]
+      "position": [
+        1550,
+        -550
+      ]
     },
     {
       "parameters": {
@@ -361,7 +433,10 @@
       "name": "B0 - Verify Tenant Context Seal",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1800, -650]
+      "position": [
+        1800,
+        -650
+      ]
     },
     {
       "parameters": {
@@ -372,7 +447,10 @@
       "name": "B1 - Prepare Media Queue",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2050, -650]
+      "position": [
+        2050,
+        -650
+      ]
     },
     {
       "parameters": {
@@ -390,7 +468,10 @@
       "name": "B1 - Has Media to Fetch?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2300, -650]
+      "position": [
+        2300,
+        -650
+      ]
     },
     {
       "parameters": {
@@ -401,7 +482,10 @@
       "name": "B1 - Split Media Entries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2550, -750]
+      "position": [
+        2550,
+        -750
+      ]
     },
     {
       "parameters": {
@@ -413,7 +497,10 @@
       "name": "B1 - LPUSH Media Queue",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [2800, -750],
+      "position": [
+        2800,
+        -750
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -431,7 +518,10 @@
       "name": "B1 - Restore Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3050, -750]
+      "position": [
+        3050,
+        -750
+      ]
     },
     {
       "parameters": {
@@ -442,7 +532,10 @@
       "name": "B1a - Admin Access Validator (SECURED)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3300, -650]
+      "position": [
+        3300,
+        -650
+      ]
     },
     {
       "parameters": {
@@ -459,7 +552,10 @@
       "name": "B1a - Admin WA Console Gate?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [3550, -650]
+      "position": [
+        3550,
+        -650
+      ]
     },
     {
       "parameters": {
@@ -473,7 +569,10 @@
       "name": "B1a - Log Admin Access Attempt",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [3800, -650],
+      "position": [
+        3800,
+        -650
+      ],
       "alwaysOutputData": true,
       "continueOnFail": true,
       "credentials": {
@@ -499,7 +598,10 @@
       "name": "B1b - Execute ADMIN_WA_CONSOLE",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 2,
-      "position": [3550, -750]
+      "position": [
+        3550,
+        -750
+      ]
     },
     {
       "parameters": {
@@ -512,7 +614,10 @@
       "name": "B1 - Execute CORE_AGENT",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
-      "position": [3550, -550]
+      "position": [
+        3550,
+        -550
+      ]
     },
     {
       "parameters": {
@@ -523,7 +628,10 @@
       "name": "END - Drop/Done",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3800, -350]
+      "position": [
+        3800,
+        -350
+      ]
     },
     {
       "parameters": {
@@ -535,7 +643,10 @@
       "name": "B0 - Redis Quarantine Push",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [1050, -350],
+      "position": [
+        1050,
+        -350
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -556,7 +667,10 @@
       "name": "B0 - DB Quarantine Insert",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [1300, -350]
+      "position": [
+        1300,
+        -350
+      ]
     },
     {
       "parameters": {
@@ -567,7 +681,10 @@
       "name": "B0 - Prepare Replay Key",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-1350, -300]
+      "position": [
+        -1350,
+        -300
+      ]
     },
     {
       "parameters": {
@@ -578,7 +695,10 @@
       "name": "B0 - Replay Check GET",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-1150, -300],
+      "position": [
+        -1150,
+        -300
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -596,7 +716,10 @@
       "name": "B0 - Parse Replay Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-950, -300]
+      "position": [
+        -950,
+        -300
+      ]
     },
     {
       "parameters": {
@@ -613,7 +736,10 @@
       "name": "B0 - Is New (Replay)?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-750, -300]
+      "position": [
+        -750,
+        -300
+      ]
     },
     {
       "parameters": {
@@ -627,7 +753,10 @@
       "name": "B0 - Replay SET",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-550, -400],
+      "position": [
+        -550,
+        -400
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -645,7 +774,10 @@
       "name": "B0 - Replay Detected",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-550, -200]
+      "position": [
+        -550,
+        -200
+      ]
     }
   ],
   "connections": {
@@ -1077,7 +1209,7 @@
         ],
         [
           {
-            "node": "B1a - Admin WA Console?",
+            "node": "B1a - Admin Access Validator (SECURED)",
             "type": "main",
             "index": 0
           }
@@ -1110,14 +1242,25 @@
       "main": [
         [
           {
-            "node": "B1a - Admin WA Console?",
+            "node": "B1a - Admin Access Validator (SECURED)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B1a - Admin WA Console?": {
+    "B1a - Admin Access Validator (SECURED)": {
+      "main": [
+        [
+          {
+            "node": "B1a - Admin WA Console Gate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1a - Admin WA Console Gate?": {
       "main": [
         [
           {

@@ -30,7 +30,6 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - traefik_data:/letsencrypt
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./secrets/traefik_usersfile:/run/secrets/traefik_usersfile:ro
     networks: [ proxy ]
     logging:
@@ -52,8 +51,8 @@ services:
       TZ: ${TZ:-Europe/Paris}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./secrets/strapi_db_password:/run/secrets/strapi_db_password:ro
       # DB initialization (runs only on fresh install)
       - ./db/bootstrap.sql:/docker-entrypoint-initdb.d/00_bootstrap.sql:ro
       - ./db/init/01_apply_migrations.sh:/docker-entrypoint-initdb.d/01_apply_migrations.sh:ro
