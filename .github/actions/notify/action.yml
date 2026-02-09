@@ -1,0 +1,93 @@
+# =============================================================================
+# Composite Action: Slack Notification (Block Kit)
+# =============================================================================
+# Sends rich Slack notifications with color-coded status, version info,
+# and deployment details.
+# =============================================================================
+
+name: Notify
+description: Send Slack Block Kit notification
+
+inputs:
+  webhook-url:
+    description: Slack webhook URL
+    required: true
+  status:
+    description: 'Deployment status: success, failure, warning'
+    required: true
+  title:
+    description: Notification title
+    required: true
+  version:
+    description: Application version
+    required: false
+    default: ''
+  environment:
+    description: Target environment
+    required: false
+    default: ''
+  details:
+    description: Additional details text
+    required: false
+    default: ''
+  commit-sha:
+    description: Git commit SHA
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Send notification
+      shell: bash
+      run: |
+        WEBHOOK_URL="${{ inputs.webhook-url }}"
+        if [ -z "$WEBHOOK_URL" ]; then
+          echo "::notice::No webhook URL provided - skipping notification"
+          exit 0
+        fi
+
+        STATUS="${{ inputs.status }}"
+        case "$STATUS" in
+          success) COLOR="#36a64f"; EMOJI="white_check_mark" ;;
+          failure) COLOR="#dc3545"; EMOJI="x" ;;
+          warning) COLOR="#ffc107"; EMOJI="warning" ;;
+          *)       COLOR="#6c757d"; EMOJI="information_source" ;;
+        esac
+
+        VERSION="${{ inputs.version }}"
+        ENVIRONMENT="${{ inputs.environment }}"
+        DETAILS="${{ inputs.details }}"
+        COMMIT="${{ inputs.commit-sha }}"
+        SHORT_COMMIT="${COMMIT:0:7}"
+
+        # Build fields array
+        FIELDS="[]"
+        [ -n "$VERSION" ] && FIELDS=$(echo "$FIELDS" | jq --arg v "$VERSION" '. + [{"title":"Version","value":$v,"short":true}]')
+        [ -n "$ENVIRONMENT" ] && FIELDS=$(echo "$FIELDS" | jq --arg v "$ENVIRONMENT" '. + [{"title":"Environment","value":$v,"short":true}]')
+        [ -n "$SHORT_COMMIT" ] && FIELDS=$(echo "$FIELDS" | jq --arg v "$SHORT_COMMIT" '. + [{"title":"Commit","value":$v,"short":true}]')
+        [ -n "$STATUS" ] && FIELDS=$(echo "$FIELDS" | jq --arg v "$STATUS" '. + [{"title":"Status","value":$v,"short":true}]')
+
+        PAYLOAD=$(jq -n \
+          --arg title "${{ inputs.title }}" \
+          --arg color "$COLOR" \
+          --arg details "$DETAILS" \
+          --argjson fields "$FIELDS" \
+          '{
+            "text": $title,
+            "attachments": [{
+              "color": $color,
+              "blocks": [{
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": ("*" + $title + "*" + (if $details != "" then "\n" + $details else "" end))
+                }
+              }],
+              "fields": $fields
+            }]
+          }')
+
+        curl -sf -X POST "$WEBHOOK_URL" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" || echo "::warning::Notification delivery failed"

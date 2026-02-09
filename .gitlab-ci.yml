@@ -2,14 +2,19 @@
 # GitLab CI/CD Configuration - Resto Bot
 # =============================================================================
 # Diamond-level CI hardening:
+#   - Integrity gate runs first (10-point quality check)
 #   - All images pinned to specific versions (no :latest)
-#   - Integration tests run full migration suite (bootstrap + 26 migrations)
+#   - Python contract/L10N/template tests in dedicated job
+#   - Integration tests run bootstrap schema (consolidated from 26 migrations)
+#   - Migration validation with idempotence & destructive-op checks
+#   - Incremental migrations from db/migrations/ applied if present
 #   - Compose validation provides all required env vars (no || true)
 #   - Security scan checks .env, secrets patterns, nginx headers
 #   - Schema verification after migrations
 # =============================================================================
 
 stages:
+  - integrity
   - validate
   - test
   - build
@@ -23,11 +28,24 @@ variables:
   REDIS_URL: redis://redis:6379
 
 # =============================================================================
+# STAGE: Integrity
+# =============================================================================
+integrity-gate:
+  stage: integrity
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq jq bash > /dev/null
+    - pip install --no-cache-dir jsonschema pyyaml
+  script:
+    - bash scripts/integrity_gate.sh
+
+# =============================================================================
 # STAGE: Validate
 # =============================================================================
 lint-json:
   stage: validate
   image: python:3.11-alpine
+  needs: [integrity-gate]
   script:
     - echo "Validating JSON files..."
     - |
@@ -45,6 +63,7 @@ lint-json:
 lint-bash:
   stage: validate
   image: bash:5
+  needs: [integrity-gate]
   script:
     - echo "Validating bash scripts..."
     - |
@@ -79,6 +98,7 @@ lint-nginx:
 unit-tests:
   stage: test
   image: python:3.11-slim
+  needs: [integrity-gate]
   script:
     - pip install --no-cache-dir jsonschema pytest
     - |
@@ -169,8 +189,9 @@ integration-tests:
           missing TEXT[] := '{}';
         BEGIN
           FOREACH tbl IN ARRAY ARRAY[
-            'conversations','orders','inbound_messages','outbound_messages',
-            'security_events','api_clients','schema_migrations',
+            'tenants','restaurants','api_clients','menu_items',
+            'orders','inbound_messages','outbound_messages',
+            'security_events','schema_migrations','conversation_state',
             'webhook_replay_guard','admin_wa_audit_log','fraud_rules',
             'payment_intents','faq_entries','support_tickets','delivery_zones'
           ]
@@ -190,6 +211,57 @@ integration-tests:
     - echo "Validating test scripts..."
     - bash -n scripts/test_battery.sh
     - bash -n scripts/test_e2e.sh
+
+python-tests:
+  stage: test
+  image: python:3.11-slim
+  needs: [integrity-gate]
+  script:
+    - pip install --no-cache-dir jsonschema pytest pyyaml
+    - python3 scripts/validate_contracts.py
+    - python3 scripts/test_darja_intents.py
+    - python3 scripts/test_template_render.py
+    - python3 scripts/test_l10n_script_detection.py
+
+migration-validate:
+  stage: test
+  image: docker:24
+  services:
+    - name: postgres:15-alpine
+      alias: postgres
+    - name: postgres:16-alpine
+      alias: postgres16
+  variables:
+    POSTGRES_USER: n8n
+    POSTGRES_PASSWORD: n8npass
+    POSTGRES_DB: n8n
+  before_script:
+    - apk add --no-cache bash postgresql-client
+  script:
+    - echo "Validating migrations on PG15..."
+    - PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -f db/bootstrap.sql
+    - |
+      for f in $(ls db/migrations/*.sql 2>/dev/null | sort); do
+        echo "  Applying: $(basename $f)"
+        PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -f "$f"
+      done
+    - echo "Testing idempotence..."
+    - |
+      for f in $(ls db/migrations/*.sql 2>/dev/null | sort); do
+        PGPASSWORD=n8npass psql -h postgres -U n8n -d n8n -v ON_ERROR_STOP=1 -f "$f" 2>/dev/null || {
+          echo "ERROR: Migration not idempotent: $(basename $f)"; exit 1;
+        }
+      done
+    - echo "Checking for destructive operations..."
+    - |
+      if grep -lE 'DROP TABLE|DROP COLUMN|TRUNCATE' db/migrations/*.sql 2>/dev/null; then
+        echo "WARNING: Destructive operations detected in migrations"
+      fi
+  only:
+    changes:
+      - db/migrations/**/*
+      - db/bootstrap.sql
+  allow_failure: false
 
 # =============================================================================
 # STAGE: Build

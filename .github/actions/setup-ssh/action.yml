@@ -1,0 +1,33 @@
+# =============================================================================
+# Composite Action: Setup SSH Connection
+# =============================================================================
+# Eliminates SSH key + known_hosts duplication across cd-deploy, health-monitor,
+# rollback, and scheduled-backup workflows.
+# =============================================================================
+
+name: Setup SSH
+description: Install SSH key and add VPS host to known_hosts
+
+inputs:
+  ssh-key:
+    description: SSH private key for VPS connection
+    required: true
+  vps-host:
+    description: VPS hostname or IP
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install SSH Key
+      uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+      with:
+        key: ${{ inputs.ssh-key }}
+        known_hosts: unnecessary
+        if_key_exists: replace
+
+    - name: Add known hosts
+      shell: bash
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ inputs.vps-host }} >> ~/.ssh/known_hosts 2>/dev/null || true

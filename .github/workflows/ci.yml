@@ -1,11 +1,22 @@
 # =============================================================================
-# CI Pipeline - Resto Bot (Diamond Level)
+# CI Pipeline - Resto Bot (Industrial Grade)
 # =============================================================================
-# Fast PR pipeline: lint + unit tests + integration tests + compose validate
-# Merge pipeline: triggers CD workflow for staging/production
+# Dependency graph:
+#   integrity-gate ──┬──► lint-validate
+#                    ├──► python-tests
+#                    ├──► integration-tests [matrix: pg15, pg16]
+#                    ├──► docker-build [matrix: cms, admin, kiosk] (main/release only)
+#                    ├──► security-scan
+#                    ├──► frontend-lint [matrix: admin-dashboard, kiosk-app]
+#                    └──► test-harness (main/release only, needs: integration-tests)
+#                              │
+#                         ci-summary (needs: all, if: always())
+#
+# PR: integrity-gate, lint, python-tests, integration-tests (PG15), security-scan, frontend-lint
+# main: all + test-harness, docker-build, matrix PG15+16
+# release/*: like main + 90-day artifact retention
 # =============================================================================
 # Actions pinned to SHA for supply-chain security.
-# To update: verify new SHA at https://github.com/<owner>/<repo>/releases
 # =============================================================================
 
 name: CI Pipeline
@@ -26,17 +37,44 @@ permissions:
 
 env:
   NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
   POSTGRES_USER: n8n
   POSTGRES_PASSWORD: n8npass
   POSTGRES_DB: n8n
 
 jobs:
   # ==========================================================================
-  # JOB 1: Lint & Validate (fast gate — blocks everything else)
+  # JOB 1: Integrity Gate (blocking — all other jobs depend on this)
   # ==========================================================================
-  lint:
+  integrity-gate:
+    name: Integrity Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install jsonschema pyyaml
+
+      - name: Run integrity gate (10-point quality check)
+        run: |
+          chmod +x scripts/integrity_gate.sh
+          bash scripts/integrity_gate.sh
+
+  # ==========================================================================
+  # JOB 2: Lint & Validate
+  # ==========================================================================
+  lint-validate:
     name: Lint & Validate
     runs-on: ubuntu-latest
+    needs: [integrity-gate]
     timeout-minutes: 5
 
     steps:
@@ -58,11 +96,22 @@ jobs:
               ERRORS=$((ERRORS + 1))
             fi
           done
-          echo "Checked $(ls workflows/*.json | wc -l) JSON files"
+          COUNT=$(ls workflows/*.json | wc -l)
+          echo "Checked $COUNT JSON files"
           if [ $ERRORS -gt 0 ]; then
             echo "::error::$ERRORS JSON files are invalid"
             exit 1
           fi
+
+      - name: Validate workflow naming convention
+        run: |
+          ERRORS=0
+          for f in workflows/*.json; do
+            BASE=$(basename "$f")
+            if ! echo "$BASE" | grep -qE '^W[0-9]+_.*\.json$'; then
+              echo "::warning file=$f::Does not follow W<N>_*.json naming convention"
+            fi
+          done
 
       - name: Check for placeholder values
         run: |
@@ -125,11 +174,12 @@ jobs:
           done
 
   # ==========================================================================
-  # JOB 2: Unit Tests
+  # JOB 3: Python Tests
   # ==========================================================================
-  unit-tests:
-    name: Unit Tests
+  python-tests:
+    name: Python Tests
     runs-on: ubuntu-latest
+    needs: [integrity-gate]
     timeout-minutes: 10
 
     steps:
@@ -139,41 +189,59 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Python dependencies
-        run: pip install jsonschema pytest
+      - name: Cache pip
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('scripts/requirements-ci.txt') }}
+          restore-keys: pip-
 
-      - name: Run contract validation
+      - name: Install dependencies
+        run: pip install -r scripts/requirements-ci.txt
+
+      - name: Run tests with JUnit output
         run: |
-          if [ -f scripts/validate_contracts.py ]; then
-            python3 scripts/validate_contracts.py
-          fi
+          chmod +x scripts/ci_test_runner.sh
+          bash scripts/ci_test_runner.sh
 
-      - name: Run localization tests
-        run: |
-          if [ -f scripts/test_l10n_script_detection.py ]; then
-            python3 scripts/test_l10n_script_detection.py
-          fi
-
-      - name: Run template render tests
-        run: |
-          if [ -f scripts/test_template_render.py ]; then
-            python3 scripts/test_template_render.py
-          fi
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        with:
+          name: python-test-results
+          path: test-results/results.xml
+          retention-days: ${{ startsWith(github.ref, 'refs/heads/release/') && 90 || 30 }}
 
   # ==========================================================================
-  # JOB 3: Integration Tests (DB + migrations)
+  # JOB 4: Integration Tests (PostgreSQL matrix)
   # ==========================================================================
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (PG ${{ matrix.postgres }})
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: [integrity-gate]
     timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['15-alpine']
+        include:
+          - postgres: '15-alpine'
+            pg_major: '15'
+          - postgres: '16-alpine'
+            pg_major: '16'
+        # PG16 only on main/release branches
+        exclude:
+          - postgres: '16-alpine'
+    # Re-include PG16 conditionally
+    # Note: Matrix exclude/include cannot be conditional in GHA, so we use a
+    # separate approach: always define both, skip PG16 via job-level if
 
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: n8n
           POSTGRES_PASSWORD: n8npass
@@ -205,13 +273,12 @@ jobs:
           PGPASSWORD: n8npass
         run: |
           psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 -f db/bootstrap.sql
-          echo "Bootstrap schema applied"
+          echo "Bootstrap schema applied (PG ${{ matrix.pg_major }})"
 
       - name: Apply all migrations
         env:
           PGPASSWORD: n8npass
         run: |
-          # Create migration tracking table (same as compose db-migrate service)
           psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 <<'EOSQL'
           CREATE TABLE IF NOT EXISTS schema_migrations (
             id          serial PRIMARY KEY,
@@ -240,12 +307,25 @@ jobs:
             exit 1
           fi
 
+      - name: Test migration idempotence
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "Re-applying all migrations (idempotence check)..."
+          for migration in $(ls -1 db/migrations/*.sql 2>/dev/null | sort); do
+            filename=$(basename "$migration")
+            if ! psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 < "$migration" 2>/dev/null; then
+              echo "::error::Migration not idempotent: $filename"
+              exit 1
+            fi
+          done
+          echo "All migrations are idempotent"
+
       - name: Verify schema integrity
         env:
           PGPASSWORD: n8npass
         run: |
-          # Verify critical tables exist
-          EXPECTED_TABLES="tenants restaurants orders menu_items api_clients inbound_messages outbound_messages schema_migrations"
+          EXPECTED_TABLES="tenants restaurants api_clients menu_items orders inbound_messages outbound_messages security_events schema_migrations conversation_state webhook_replay_guard admin_wa_audit_log fraud_rules payment_intents faq_entries support_tickets delivery_zones"
           MISSING=0
           for table in $EXPECTED_TABLES; do
             EXISTS=$(psql -h localhost -U n8n -d n8n -t -c "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='$table';" | tr -d ' ')
@@ -256,7 +336,7 @@ jobs:
           done
 
           TOTAL=$(psql -h localhost -U n8n -d n8n -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" | tr -d ' ')
-          echo "Total tables: $TOTAL"
+          echo "::notice::PG${{ matrix.pg_major }}: $TOTAL total tables, $(echo $EXPECTED_TABLES | wc -w) critical verified"
           echo "Migration records: $(psql -h localhost -U n8n -d n8n -t -c "SELECT COUNT(*) FROM schema_migrations;" | tr -d ' ')"
 
           if [ $MISSING -gt 0 ]; then
@@ -264,80 +344,247 @@ jobs:
             exit 1
           fi
 
-      - name: Validate test scripts
-        run: |
-          chmod +x scripts/*.sh
-          bash -n scripts/test_battery.sh
-          bash -n scripts/test_e2e.sh
-          bash -n scripts/smoke.sh
-
-  # ==========================================================================
-  # JOB 4: Docker Build Verification
-  # ==========================================================================
-  docker-build:
-    name: Docker Build
+  # PG16 matrix entry (only on main/release branches)
+  integration-tests-pg16:
+    name: Integration Tests (PG 16)
     runs-on: ubuntu-latest
-    needs: [lint, unit-tests]
-    timeout-minutes: 20
+    needs: [integrity-gate]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+      - name: Apply bootstrap schema
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 -f db/bootstrap.sql
+          echo "Bootstrap schema applied (PG 16)"
 
-      - name: Build Inventory CMS (Strapi)
-        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
-        with:
-          context: ./inventory-cms
-          file: ./inventory-cms/Dockerfile
-          push: false
-          tags: ralphe/cms:ci-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=min
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 <<'EOSQL'
+          CREATE TABLE IF NOT EXISTS schema_migrations (
+            id          serial PRIMARY KEY,
+            filename    text NOT NULL UNIQUE,
+            applied_at  timestamptz NOT NULL DEFAULT now(),
+            checksum    text NULL
+          );
+          EOSQL
 
-      - name: Build Admin Dashboard
-        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
-        with:
-          context: .
-          file: ./admin-dashboard/Dockerfile
-          push: false
-          tags: ralphe/admin:ci-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=min
+          APPLIED=0
+          FAILED=0
+          for migration in $(ls -1 db/migrations/*.sql 2>/dev/null | sort); do
+            filename=$(basename "$migration")
+            echo "Applying: $filename"
+            if psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 < "$migration"; then
+              psql -h localhost -U n8n -d n8n -c "INSERT INTO schema_migrations (filename) VALUES ('$filename') ON CONFLICT (filename) DO NOTHING;"
+              APPLIED=$((APPLIED + 1))
+            else
+              echo "::error::Migration failed: $filename"
+              FAILED=$((FAILED + 1))
+            fi
+          done
 
-      - name: Build Kiosk App
-        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
-        with:
-          context: .
-          file: ./kiosk-app/Dockerfile
-          push: false
-          tags: ralphe/kiosk:ci-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=min
+          echo "Migrations applied: $APPLIED, failed: $FAILED"
+          if [ $FAILED -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Test migration idempotence
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "Re-applying all migrations (idempotence check)..."
+          for migration in $(ls -1 db/migrations/*.sql 2>/dev/null | sort); do
+            filename=$(basename "$migration")
+            if ! psql -h localhost -U n8n -d n8n -v ON_ERROR_STOP=1 < "$migration" 2>/dev/null; then
+              echo "::error::Migration not idempotent: $filename"
+              exit 1
+            fi
+          done
+          echo "All migrations are idempotent"
+
+      - name: Verify schema integrity
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          EXPECTED_TABLES="tenants restaurants api_clients menu_items orders inbound_messages outbound_messages security_events schema_migrations conversation_state webhook_replay_guard admin_wa_audit_log fraud_rules payment_intents faq_entries support_tickets delivery_zones"
+          MISSING=0
+          for table in $EXPECTED_TABLES; do
+            EXISTS=$(psql -h localhost -U n8n -d n8n -t -c "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='$table';" | tr -d ' ')
+            if [ "$EXISTS" != "1" ]; then
+              echo "::error::Missing table: $table"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          TOTAL=$(psql -h localhost -U n8n -d n8n -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" | tr -d ' ')
+          echo "::notice::PG16: $TOTAL total tables, $(echo $EXPECTED_TABLES | wc -w) critical verified"
+
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING critical tables missing"
+            exit 1
+          fi
 
   # ==========================================================================
-  # JOB 5: Security Scan (PR gate)
+  # JOB 5: Docker Build (matrix — main/release only)
+  # ==========================================================================
+  docker-build:
+    name: Docker Build (${{ matrix.image.name }})
+    runs-on: ubuntu-latest
+    needs: [integrity-gate, lint-validate]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: cms
+            context: ./inventory-cms
+            dockerfile: ./inventory-cms/Dockerfile
+          - name: admin
+            context: .
+            dockerfile: ./admin-dashboard/Dockerfile
+          - name: kiosk
+            context: .
+            dockerfile: ./kiosk-app/Dockerfile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build and scan
+        uses: ./.github/actions/docker-build-scan
+        with:
+          context: ${{ matrix.image.context }}
+          dockerfile: ${{ matrix.image.dockerfile }}
+          image-name: ralphe/${{ matrix.image.name }}
+          tag-suffix: ci-${{ github.sha }}
+          scan: 'true'
+
+      - name: Upload scan report
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        with:
+          name: trivy-scan-${{ matrix.image.name }}
+          path: trivy-*.sarif
+          retention-days: ${{ startsWith(github.ref, 'refs/heads/release/') && 90 || 30 }}
+          if-no-files-found: ignore
+
+  # ==========================================================================
+  # JOB 6: Frontend Lint
+  # ==========================================================================
+  frontend-lint:
+    name: Frontend Lint (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    needs: [integrity-gate]
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [admin-dashboard, kiosk-app]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.npm
+          key: npm-${{ matrix.app }}-${{ hashFiles(format('{0}/package-lock.json', matrix.app)) }}
+          restore-keys: npm-${{ matrix.app }}-
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm ci --ignore-scripts 2>/dev/null || echo "::notice::No package-lock.json found for ${{ matrix.app }}"
+
+      - name: Lint
+        working-directory: ${{ matrix.app }}
+        run: |
+          if [ -f "package.json" ] && grep -q '"lint"' package.json; then
+            npm run lint
+          else
+            echo "::notice::No lint script found in ${{ matrix.app }}/package.json"
+          fi
+
+      - name: Build (TypeScript + Vite check)
+        working-directory: ${{ matrix.app }}
+        run: |
+          if [ -f "package.json" ] && grep -q '"build"' package.json; then
+            npm run build
+          else
+            echo "::notice::No build script found in ${{ matrix.app }}/package.json"
+          fi
+
+  # ==========================================================================
+  # JOB 7: Security Scan
   # ==========================================================================
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: [integrity-gate]
     timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
 
-      - name: Check for secrets in code
+      - name: Run Gitleaks
         run: |
-          FOUND=0
-          if grep -rE "(password|secret|token)\s*=\s*['\"][^'\"]{8,}" --include="*.json" . 2>/dev/null | grep -v "example" | grep -v "CHANGE_ME" | grep -v "test" | grep -v "node_modules"; then
-            echo "::warning::Potential hardcoded secrets detected"
-            FOUND=1
-          fi
-          echo "Secret scan done (found=$FOUND)"
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz
+          ./gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" \
+            --report-format sarif --report-path gitleaks-report.sarif --verbose || {
+            echo "::warning::Gitleaks found potential secrets - review required"
+          }
+
+      - name: Upload SARIF report
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        with:
+          name: gitleaks-sarif
+          path: gitleaks-report.sarif
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Check .env not committed
         run: |
@@ -363,39 +610,88 @@ jobs:
           fi
 
   # ==========================================================================
-  # JOB 6: CI Summary
+  # JOB 8: Test Harness (main/release only, after integration-tests)
+  # ==========================================================================
+  test-harness:
+    name: Test Harness (Full Stack)
+    runs-on: ubuntu-latest
+    needs: [integrity-gate, integration-tests]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run test harness
+        run: |
+          chmod +x scripts/test_harness.sh
+          bash scripts/test_harness.sh
+
+      - name: Upload Docker logs on failure
+        if: failure()
+        run: |
+          mkdir -p test-harness-logs
+          docker compose -f docker/docker-compose.test.yml logs --no-color > test-harness-logs/compose.log 2>&1 || true
+          docker ps -a > test-harness-logs/containers.log 2>&1 || true
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        with:
+          name: test-harness-logs
+          path: test-harness-logs/
+          retention-days: 14
+
+  # ==========================================================================
+  # JOB 9: CI Summary
   # ==========================================================================
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, unit-tests, integration-tests, docker-build, security-scan]
+    needs:
+      - integrity-gate
+      - lint-validate
+      - python-tests
+      - integration-tests
+      - integration-tests-pg16
+      - docker-build
+      - security-scan
+      - frontend-lint
+      - test-harness
     if: always()
     timeout-minutes: 2
 
     steps:
       - name: Generate summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           ## CI Pipeline Summary
 
           | Job | Status |
           |-----|--------|
-          | Lint & Validate | ${{ needs.lint.result == 'success' && 'PASS' || 'FAIL' }} |
-          | Unit Tests | ${{ needs.unit-tests.result == 'success' && 'PASS' || 'FAIL' }} |
-          | Integration Tests | ${{ needs.integration-tests.result == 'success' && 'PASS' || 'FAIL' }} |
-          | Docker Build | ${{ needs.docker-build.result == 'success' && 'PASS' || 'FAIL' }} |
-          | Security Scan | ${{ needs.security-scan.result == 'success' && 'PASS' || 'FAIL' }} |
+          | Integrity Gate | ${{ needs.integrity-gate.result == 'success' && 'PASS' || needs.integrity-gate.result }} |
+          | Lint & Validate | ${{ needs.lint-validate.result == 'success' && 'PASS' || needs.lint-validate.result }} |
+          | Python Tests | ${{ needs.python-tests.result == 'success' && 'PASS' || needs.python-tests.result }} |
+          | Integration Tests (PG15) | ${{ needs.integration-tests.result == 'success' && 'PASS' || needs.integration-tests.result }} |
+          | Integration Tests (PG16) | ${{ needs.integration-tests-pg16.result == 'success' && 'PASS' || needs.integration-tests-pg16.result }} |
+          | Docker Build | ${{ needs.docker-build.result == 'success' && 'PASS' || needs.docker-build.result }} |
+          | Security Scan | ${{ needs.security-scan.result == 'success' && 'PASS' || needs.security-scan.result }} |
+          | Frontend Lint | ${{ needs.frontend-lint.result == 'success' && 'PASS' || needs.frontend-lint.result }} |
+          | Test Harness | ${{ needs.test-harness.result == 'success' && 'PASS' || needs.test-harness.result }} |
 
-          **Commit:** \`${{ github.sha }}\`
-          **Branch:** \`${{ github.ref_name }}\`
+          **Commit:** `${{ github.sha }}`
+          **Branch:** `${{ github.ref_name }}`
           **Actor:** ${{ github.actor }}
           EOF
 
-      - name: Fail if any critical job failed
+      - name: Fail if critical jobs failed
         if: |
-          needs.lint.result == 'failure' ||
+          needs.integrity-gate.result == 'failure' ||
+          needs.lint-validate.result == 'failure' ||
           needs.integration-tests.result == 'failure' ||
+          needs.python-tests.result == 'failure' ||
           needs.docker-build.result == 'failure'
         run: |
-          echo "::error::CI pipeline failed — merge blocked"
+          echo "::error::CI pipeline failed - merge blocked"
           exit 1

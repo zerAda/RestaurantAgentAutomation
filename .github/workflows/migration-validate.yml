@@ -1,0 +1,173 @@
+# =============================================================================
+# Migration Validate - Resto Bot
+# =============================================================================
+# Validates database migrations against PostgreSQL matrix:
+# - Applies bootstrap + migrations
+# - Verifies expected schema (17 tables)
+# - Tests idempotence (apply migrations twice)
+# - Detects destructive operations in changed files
+# =============================================================================
+
+name: Migration Validate
+
+on:
+  pull_request:
+    paths:
+      - 'db/migrations/**'
+      - 'db/bootstrap.sql'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-migrations:
+    name: Validate Migrations (PG ${{ matrix.postgres }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['15-alpine', '16-alpine']
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        options: >-
+          --health-cmd "pg_isready -U n8n -d n8n"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Apply bootstrap schema
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply bootstrap.sql"
+          psql -h localhost -U n8n -d n8n -f db/bootstrap.sql
+          echo "::endgroup::"
+
+      - name: Apply migrations
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply migrations"
+          for migration in db/migrations/*.sql; do
+            if [[ -f "$migration" ]]; then
+              echo "Applying: $migration"
+              psql -h localhost -U n8n -d n8n -f "$migration"
+            fi
+          done
+          echo "::endgroup::"
+
+      - name: Verify schema (17 tables)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Schema verification"
+
+          EXPECTED_TABLES=(
+            tenants
+            restaurants
+            api_clients
+            menu_items
+            orders
+            inbound_messages
+            outbound_messages
+            security_events
+            schema_migrations
+            conversation_state
+            webhook_replay_guard
+            admin_wa_audit_log
+            fraud_rules
+            payment_intents
+            faq_entries
+            support_tickets
+            delivery_zones
+          )
+
+          ACTUAL_TABLES=$(psql -h localhost -U n8n -d n8n -t -A -c \
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;")
+
+          MISSING=0
+          for table in "${EXPECTED_TABLES[@]}"; do
+            if echo "$ACTUAL_TABLES" | grep -qw "$table"; then
+              echo "OK: $table"
+            else
+              echo "::error::Missing table: $table"
+              MISSING=1
+            fi
+          done
+
+          if [[ $MISSING -eq 1 ]]; then
+            echo "::error::Schema verification failed - missing tables"
+            exit 1
+          fi
+
+          ACTUAL_COUNT=$(echo "$ACTUAL_TABLES" | grep -c '.')
+          echo "Total tables found: $ACTUAL_COUNT (expected at least 17)"
+          echo "Schema verification passed"
+          echo "::endgroup::"
+
+      - name: Idempotence test (apply migrations twice)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Idempotence test"
+          echo "Re-applying all migrations to verify idempotence..."
+
+          for migration in db/migrations/*.sql; do
+            if [[ -f "$migration" ]]; then
+              echo "Re-applying: $migration"
+              if ! psql -h localhost -U n8n -d n8n -f "$migration" 2>&1; then
+                echo "::error file=$migration::Migration is not idempotent"
+                exit 1
+              fi
+            fi
+          done
+
+          echo "Idempotence test passed"
+          echo "::endgroup::"
+
+      - name: Detect destructive operations
+        run: |
+          echo "::group::Destructive operation detection"
+
+          # Get list of changed migration files in this PR
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} -- 'db/migrations/*.sql' 2>/dev/null || true)
+
+          if [[ -z "$CHANGED_FILES" ]]; then
+            echo "No changed migration files to check"
+            echo "::endgroup::"
+            exit 0
+          fi
+
+          FOUND_DESTRUCTIVE=0
+          while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+              MATCHES=$(grep -inE 'DROP|TRUNCATE' "$file" || true)
+              if [[ -n "$MATCHES" ]]; then
+                FOUND_DESTRUCTIVE=1
+                echo "::warning file=$file::Destructive operation detected: $MATCHES"
+              fi
+            fi
+          done <<< "$CHANGED_FILES"
+
+          if [[ $FOUND_DESTRUCTIVE -eq 1 ]]; then
+            echo "::warning::Destructive operations found in changed migration files - review carefully"
+          else
+            echo "No destructive operations found"
+          fi
+
+          echo "::endgroup::"

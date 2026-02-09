@@ -49,26 +49,26 @@ jobs:
     name: Validate Request
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm == 'ROLLBACK' }}
+    timeout-minutes: 5
 
     outputs:
       backup_name: ${{ steps.select.outputs.backup_name }}
       rollback_type: ${{ steps.select.outputs.rollback_type }}
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: List available backups
         run: |
           echo "=== Available Backups ==="
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* ${{ env.BACKUP_DIR }}/pre-rollback-* 2>/dev/null | head -30" || echo "No backups found"
 
       - name: Select backup
         id: select
@@ -94,20 +94,20 @@ jobs:
     name: Pre-rollback Backup
     runs-on: ubuntu-latest
     needs: validate
+    timeout-minutes: 15
 
     outputs:
       pre_backup: ${{ steps.backup.outputs.name }}
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Create safety backup
         id: backup
@@ -122,8 +122,9 @@ jobs:
             # Config backup
             tar -czvf "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-config.tar.gz" .env secrets/ 2>/dev/null || true
 
-            # DB backup
-            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl | gzip > "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-db.sql.gz"
+            # DB backup (custom format, consistent with cd-deploy)
+            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl -Fc \
+              > "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-n8n.dump"
 
             echo "Pre-rollback backup: ${PRE_BACKUP}"
           ENDSSH
@@ -134,17 +135,17 @@ jobs:
     name: Execute Rollback
     runs-on: ubuntu-latest
     needs: [validate, pre-rollback-backup]
+    timeout-minutes: 20
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Stop services
         run: |
@@ -169,13 +170,24 @@ jobs:
               sleep 2
             done
 
-            # Restore database
+            # Restore database (supports both custom-format .dump and legacy .sql.gz)
             echo "Restoring database..."
             docker compose exec -T postgres psql -U n8n -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'n8n' AND pid <> pg_backend_pid();" postgres || true
             docker compose exec -T postgres dropdb -U n8n --if-exists n8n || true
             docker compose exec -T postgres createdb -U n8n n8n
 
-            gunzip -c "${{ env.BACKUP_DIR }}/${BACKUP}-db.sql.gz" | docker compose exec -T postgres psql -U n8n -d n8n
+            if [ -f "${{ env.BACKUP_DIR }}/${BACKUP}-n8n.dump" ]; then
+              echo "Restoring from custom-format dump..."
+              docker compose exec -T postgres pg_restore -U n8n -d n8n --no-owner --no-acl \
+                < "${{ env.BACKUP_DIR }}/${BACKUP}-n8n.dump"
+            elif [ -f "${{ env.BACKUP_DIR }}/${BACKUP}-db.sql.gz" ]; then
+              echo "Restoring from legacy SQL dump..."
+              gunzip -c "${{ env.BACKUP_DIR }}/${BACKUP}-db.sql.gz" | docker compose exec -T postgres psql -U n8n -d n8n
+            else
+              echo "ERROR: No backup file found for ${BACKUP}"
+              ls -la "${{ env.BACKUP_DIR }}/${BACKUP}"* 2>/dev/null || true
+              exit 1
+            fi
 
             echo "Database restored"
           ENDSSH
@@ -220,17 +232,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate, pre-rollback-backup, rollback]
     if: always()
+    timeout-minutes: 5
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Record rollback
         run: |
@@ -267,6 +279,7 @@ jobs:
     name: Rejected
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm != 'ROLLBACK' }}
+    timeout-minutes: 2
 
     steps:
       - name: Reject

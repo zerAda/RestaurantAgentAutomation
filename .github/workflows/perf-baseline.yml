@@ -1,0 +1,201 @@
+# =============================================================================
+# Performance Baseline - Resto Bot
+# =============================================================================
+# Measures p50/p95/p99 response times for key endpoints:
+# - /healthz
+# - /v1/inbound/whatsapp (GET for verify)
+# - /v1/admin/ping
+# Compares against previous baseline and alerts if p95 > 2x baseline
+# =============================================================================
+
+name: Performance Baseline
+
+on:
+  workflow_run:
+    workflows: ["CD - Deploy to VPS"]
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  DOMAIN: ${{ vars.DOMAIN }}
+
+jobs:
+  perf-baseline:
+    name: Measure Performance Baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Measure response times
+        id: measure
+        run: |
+          echo "::group::Performance measurements"
+
+          # Function to measure an endpoint
+          measure_endpoint() {
+            local NAME="$1"
+            local URL="$2"
+            local TIMES_FILE="/tmp/times_${NAME}.txt"
+
+            echo "Measuring: $NAME ($URL)"
+            > "$TIMES_FILE"
+
+            for i in $(seq 1 20); do
+              TIME_MS=$(curl -s -o /dev/null -w "%{time_total}" --max-time 10 "$URL" 2>/dev/null || echo "10.000000")
+              # Convert seconds to milliseconds
+              TIME_MS=$(echo "$TIME_MS * 1000" | bc)
+              echo "$TIME_MS" >> "$TIMES_FILE"
+            done
+
+            # Sort for percentile calculation
+            sort -n "$TIMES_FILE" > "/tmp/sorted_${NAME}.txt"
+          }
+
+          # Calculate percentiles from sorted file
+          calc_percentiles() {
+            local NAME="$1"
+            local SORTED="/tmp/sorted_${NAME}.txt"
+            local COUNT=$(wc -l < "$SORTED")
+
+            local P50_IDX=$(echo "($COUNT * 50 + 99) / 100" | bc)
+            local P95_IDX=$(echo "($COUNT * 95 + 99) / 100" | bc)
+            local P99_IDX=$(echo "($COUNT * 99 + 99) / 100" | bc)
+
+            local P50=$(sed -n "${P50_IDX}p" "$SORTED")
+            local P95=$(sed -n "${P95_IDX}p" "$SORTED")
+            local P99=$(sed -n "${P99_IDX}p" "$SORTED")
+
+            echo "${NAME}_p50=${P50}" >> "$GITHUB_OUTPUT"
+            echo "${NAME}_p95=${P95}" >> "$GITHUB_OUTPUT"
+            echo "${NAME}_p99=${P99}" >> "$GITHUB_OUTPUT"
+
+            echo "$NAME: p50=${P50}ms p95=${P95}ms p99=${P99}ms"
+          }
+
+          # Measure each endpoint
+          measure_endpoint "healthz" "${HEALTH_URL:-https://${DOMAIN}/healthz}"
+          measure_endpoint "inbound_whatsapp" "https://${DOMAIN}/v1/inbound/whatsapp"
+          measure_endpoint "admin_ping" "https://${DOMAIN}/v1/admin/ping"
+
+          # Calculate percentiles
+          calc_percentiles "healthz"
+          calc_percentiles "inbound_whatsapp"
+          calc_percentiles "admin_ping"
+
+          echo "::endgroup::"
+
+      - name: Save baseline
+        run: |
+          # Create baseline JSON
+          cat > /tmp/perf-baseline.json <<BASELINE_EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "endpoints": {
+              "healthz": {
+                "p50": ${{ steps.measure.outputs.healthz_p50 }},
+                "p95": ${{ steps.measure.outputs.healthz_p95 }},
+                "p99": ${{ steps.measure.outputs.healthz_p99 }}
+              },
+              "inbound_whatsapp": {
+                "p50": ${{ steps.measure.outputs.inbound_whatsapp_p50 }},
+                "p95": ${{ steps.measure.outputs.inbound_whatsapp_p95 }},
+                "p99": ${{ steps.measure.outputs.inbound_whatsapp_p99 }}
+              },
+              "admin_ping": {
+                "p50": ${{ steps.measure.outputs.admin_ping_p50 }},
+                "p95": ${{ steps.measure.outputs.admin_ping_p95 }},
+                "p99": ${{ steps.measure.outputs.admin_ping_p99 }}
+              }
+            }
+          }
+          BASELINE_EOF
+
+          cat /tmp/perf-baseline.json
+
+      - name: Download previous baseline
+        id: previous
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: perf-baseline
+          path: /tmp/previous-baseline
+        continue-on-error: true
+
+      - name: Compare with previous baseline
+        if: steps.previous.outcome == 'success'
+        run: |
+          echo "::group::Baseline comparison"
+
+          PREV="/tmp/previous-baseline/perf-baseline.json"
+
+          if [[ ! -f "$PREV" ]]; then
+            echo "No previous baseline found - skipping comparison"
+            echo "::endgroup::"
+            exit 0
+          fi
+
+          ALERT=0
+
+          compare_endpoint() {
+            local NAME="$1"
+            local CURRENT_P95="$2"
+            local PREV_P95=$(jq -r ".endpoints.${NAME}.p95" "$PREV" 2>/dev/null || echo "0")
+
+            if [[ "$PREV_P95" == "0" || "$PREV_P95" == "null" ]]; then
+              echo "$NAME: No previous baseline - skipping"
+              return
+            fi
+
+            local THRESHOLD=$(echo "$PREV_P95 * 2" | bc)
+            local EXCEEDED=$(echo "$CURRENT_P95 > $THRESHOLD" | bc)
+
+            echo "$NAME: current p95=${CURRENT_P95}ms, previous p95=${PREV_P95}ms, threshold=${THRESHOLD}ms"
+
+            if [[ "$EXCEEDED" -eq 1 ]]; then
+              echo "::warning::$NAME p95 (${CURRENT_P95}ms) exceeds 2x baseline (${PREV_P95}ms -> threshold ${THRESHOLD}ms)"
+              ALERT=1
+            fi
+          }
+
+          compare_endpoint "healthz" "${{ steps.measure.outputs.healthz_p95 }}"
+          compare_endpoint "inbound_whatsapp" "${{ steps.measure.outputs.inbound_whatsapp_p95 }}"
+          compare_endpoint "admin_ping" "${{ steps.measure.outputs.admin_ping_p95 }}"
+
+          if [[ $ALERT -eq 1 ]]; then
+            echo "::warning::Performance regression detected - p95 exceeds 2x baseline"
+          else
+            echo "All endpoints within baseline thresholds"
+          fi
+
+          echo "::endgroup::"
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        with:
+          name: perf-baseline
+          path: /tmp/perf-baseline.json
+          retention-days: 90
+
+      - name: Generate summary
+        run: |
+          {
+            echo "## Performance Baseline Results"
+            echo ""
+            echo "| Endpoint | p50 (ms) | p95 (ms) | p99 (ms) |"
+            echo "|----------|----------|----------|----------|"
+            echo "| /healthz | ${{ steps.measure.outputs.healthz_p50 }} | ${{ steps.measure.outputs.healthz_p95 }} | ${{ steps.measure.outputs.healthz_p99 }} |"
+            echo "| /v1/inbound/whatsapp | ${{ steps.measure.outputs.inbound_whatsapp_p50 }} | ${{ steps.measure.outputs.inbound_whatsapp_p95 }} | ${{ steps.measure.outputs.inbound_whatsapp_p99 }} |"
+            echo "| /v1/admin/ping | ${{ steps.measure.outputs.admin_ping_p50 }} | ${{ steps.measure.outputs.admin_ping_p95 }} | ${{ steps.measure.outputs.admin_ping_p99 }} |"
+            echo ""
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo "**Date:** $(date -u +%Y-%m-%d)"
+          } >> "$GITHUB_STEP_SUMMARY"

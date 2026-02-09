@@ -25,8 +25,8 @@ ERRORS=0
 WARNINGS=0
 
 log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
-log_fail() { echo -e "${RED}[FAIL]${NC} $1"; ((ERRORS++)); }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; ((WARNINGS++)); }
+log_fail() { echo -e "${RED}[FAIL]${NC} $1"; ERRORS=$((ERRORS + 1)); }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 log_info() { echo -e "[INFO] $1"; }
 
 echo "=============================================="
@@ -64,8 +64,9 @@ echo "=== 2. Common Issues Check ==="
 # Check health-monitor.yml
 HEALTH_WORKFLOW="$WORKFLOWS_DIR/health-monitor.yml"
 if [ -f "$HEALTH_WORKFLOW" ]; then
-    # Check if HEALTH_URL contains 'console' or 'n8n.' (protected endpoints)
-    if grep -q "HEALTH_URL.*console\." "$HEALTH_WORKFLOW" || grep -q "HEALTH_URL.*n8n\." "$HEALTH_WORKFLOW"; then
+    # Check if HEALTH_URL assignment contains 'console' or 'n8n.' (protected endpoints)
+    # Only check non-comment lines that actually assign HEALTH_URL
+    if grep -v '^\s*#' "$HEALTH_WORKFLOW" | grep -v 'echo\|error\|warn\|notice\|blocked' | grep -qE "HEALTH_URL.*[:=].*(console\.|n8n\.)"; then
         log_warn "health-monitor.yml: HEALTH_URL may point to protected console endpoint"
     else
         log_pass "health-monitor.yml: HEALTH_URL appears to use API gateway"
@@ -78,8 +79,8 @@ if [ -f "$HEALTH_WORKFLOW" ]; then
         log_pass "health-monitor.yml: No broken secret check pattern"
     fi
 
-    # Check for secret in run block
-    if grep -q '\${{ secrets\.' "$HEALTH_WORKFLOW" | grep -v '^[[:space:]]*env:' | head -1; then
+    # Check for secret in run block (not in env: lines)
+    if grep -v '^\s*env:' "$HEALTH_WORKFLOW" | grep -v '^\s*#' | grep -q '\${{ secrets\.'; then
         log_warn "health-monitor.yml: Direct secret access in run block detected"
     fi
 else

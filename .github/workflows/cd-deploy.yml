@@ -1,18 +1,22 @@
 # =============================================================================
 # CD Pipeline - Deploy to VPS (Diamond Level)
 # =============================================================================
-# Production-grade deployment with:
+# Production-grade deployment with staging gate:
+# CI passes (main) -> deploy-staging -> smoke-battery-staging -> [approval gate]
+#   -> deploy-production -> smoke-battery-prod -> dora-metrics + notify + cleanup
 # - Release directory model (/opt/resto/releases/<id>/)
 # - Pre-deploy backup (pg_dump + config)
 # - Migration gating (fail stops deploy)
-# - Health checks + smoke tests
+# - Health checks + smoke tests (staging + production)
 # - Automatic rollback on failure
 # - Post-deploy cleanup
-# - Full observability (artifacts, summaries)
+# - DORA metrics recording
+# - Full observability (artifacts, summaries, notifications)
 # =============================================================================
 # Actions pinned to SHA for supply-chain security.
 # VPS connection uses repository variables (not hardcoded).
 # SSH user must be 'deploy' (not root) with docker group membership.
+# Composite actions: setup-ssh, health-check, notify
 # =============================================================================
 
 name: CD - Deploy to VPS
@@ -102,15 +106,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
         with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
-
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Determine environment
         id: env
@@ -172,6 +172,44 @@ jobs:
           fi
           echo "Disk space: ${DISK_FREE}GB free"
 
+      - name: Config drift detection
+        run: |
+          echo "=== Config drift detection ==="
+
+          # Extract variable names from local config/.env.example
+          LOCAL_VARS=$(grep -E '^[A-Z_][A-Z0-9_]*=' config/.env.example 2>/dev/null | cut -d= -f1 | sort)
+
+          if [ -z "$LOCAL_VARS" ]; then
+            echo "::notice::No config/.env.example found or empty - skipping drift check"
+            exit 0
+          fi
+
+          # Extract variable names from VPS shared .env
+          VPS_VARS=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "grep -E '^[A-Z_][A-Z0-9_]*=' ${{ env.PROJECT_DIR }}/shared/.env 2>/dev/null | cut -d= -f1 | sort" || echo "")
+
+          if [ -z "$VPS_VARS" ]; then
+            echo "::warning::No shared .env found on VPS at ${{ env.PROJECT_DIR }}/shared/.env - skipping drift check"
+            exit 0
+          fi
+
+          # Find vars in .env.example that are missing from VPS .env
+          MISSING_VARS=""
+          for var in $LOCAL_VARS; do
+            if ! echo "$VPS_VARS" | grep -qx "$var"; then
+              MISSING_VARS="${MISSING_VARS}${var}\n"
+            fi
+          done
+
+          if [ -n "$MISSING_VARS" ]; then
+            echo "::warning::Config drift detected - variables in config/.env.example missing from VPS shared .env:"
+            echo -e "$MISSING_VARS" | while read -r v; do
+              [ -n "$v" ] && echo "::warning::  Missing var: $v"
+            done
+          else
+            echo "No config drift detected - all .env.example vars present on VPS"
+          fi
+
   # ============================================================================
   # JOB 2: Security Gate
   # ============================================================================
@@ -202,12 +240,173 @@ jobs:
           fi
 
   # ============================================================================
-  # JOB 3: Pre-deployment backup
+  # JOB 3: Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [preflight, security-gate]
+    timeout-minutes: 20
+
+    outputs:
+      staging_status: ${{ steps.staging-smoke.outputs.status }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
+
+      - name: Create staging directory
+        run: |
+          STAGING_DIR="${{ env.PROJECT_DIR }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "mkdir -p $STAGING_DIR"
+
+      - name: Sync code to staging
+        run: |
+          STAGING_DIR="${{ env.PROJECT_DIR }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='secrets/' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.pytest_cache' \
+            --exclude='*.pyc' \
+            --exclude='.DS_Store' \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:$STAGING_DIR/
+
+      - name: Prepare and start staging services
+        run: |
+          STAGING_DIR="${{ env.PROJECT_DIR }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          PROJECT_DIR="${{ env.PROJECT_DIR }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+
+            STAGING_DIR="$STAGING_DIR"
+
+            # Link shared .env and secrets into staging release
+            if [ -f "$PROJECT_DIR/shared/.env" ]; then
+              ln -sf "$PROJECT_DIR/shared/.env" "\$STAGING_DIR/.env"
+            fi
+
+            if [ -d "$PROJECT_DIR/shared/secrets" ] && [ "\$(ls -A $PROJECT_DIR/shared/secrets 2>/dev/null)" ]; then
+              ln -sf "$PROJECT_DIR/shared/secrets" "\$STAGING_DIR/secrets"
+            fi
+
+            # Use production compose file
+            if [ -f "\$STAGING_DIR/docker-compose.hostinger.prod.yml" ]; then
+              cp "\$STAGING_DIR/docker-compose.hostinger.prod.yml" "\$STAGING_DIR/docker-compose.yml"
+            fi
+
+            cd "\$STAGING_DIR"
+
+            # Start staging with separate compose project name
+            docker compose --project-name resto-staging pull --quiet 2>/dev/null || true
+            docker compose --project-name resto-staging build --quiet 2>/dev/null || true
+            docker compose --project-name resto-staging up -d --remove-orphans
+
+            echo "Staging services started with project name: resto-staging"
+            docker compose --project-name resto-staging ps
+          ENDSSH
+
+      - name: Run staging smoke tests
+        id: staging-smoke
+        run: |
+          STAGING_DIR="${{ env.PROJECT_DIR }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            cd $STAGING_DIR
+
+            echo "=== Running scripts/smoke.sh against staging ==="
+            if [ -f "scripts/smoke.sh" ]; then
+              chmod +x scripts/smoke.sh
+              bash scripts/smoke.sh || {
+                echo "::error::Staging smoke tests failed"
+                exit 1
+              }
+            else
+              echo "::warning::scripts/smoke.sh not found - skipping staging smoke tests"
+            fi
+          ENDSSH
+
+          echo "status=passed" >> $GITHUB_OUTPUT
+
+      - name: Stop staging services
+        if: always()
+        run: |
+          STAGING_DIR="${{ env.PROJECT_DIR }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            if [ -d "$STAGING_DIR" ]; then
+              cd "$STAGING_DIR"
+              docker compose --project-name resto-staging down --remove-orphans 2>/dev/null || true
+              echo "Staging services stopped"
+            fi
+          ENDSSH
+
+  # ============================================================================
+  # JOB 4: Staging Smoke Battery
+  # ============================================================================
+  smoke-battery-staging:
+    name: Smoke Battery (Staging)
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy-staging]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
+
+      - name: Validate staging deployment result
+        run: |
+          if [ "${{ needs.deploy-staging.outputs.staging_status }}" != "passed" ]; then
+            echo "::error::Staging smoke tests did not pass"
+            exit 1
+          fi
+          echo "Staging validation confirmed: smoke tests passed"
+
+  # ============================================================================
+  # JOB 5: Production Approval Gate
+  # ============================================================================
+  approve-production:
+    name: Approve Production Deploy
+    runs-on: ubuntu-latest
+    needs: [preflight, smoke-battery-staging]
+    environment:
+      name: production
+    timeout-minutes: 60
+
+    steps:
+      - name: Approval confirmed
+        run: |
+          echo "Production deployment approved"
+          echo "Version: ${{ needs.preflight.outputs.version }}"
+          echo "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}"
+          echo "Commit: ${{ github.sha }}"
+
+  # ============================================================================
+  # JOB 6: Pre-deployment backup
   # ============================================================================
   backup:
     name: Pre-deploy Backup
     runs-on: ubuntu-latest
-    needs: [preflight, security-gate]
+    needs: [preflight, approve-production]
     if: |
       needs.preflight.outputs.is_first_deploy != 'true' &&
       github.event.inputs.skip_backup != 'true'
@@ -217,15 +416,14 @@ jobs:
       backup_name: ${{ steps.backup.outputs.name }}
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Create backup (n8n + strapi DBs)
         id: backup
@@ -276,37 +474,36 @@ jobs:
           echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
 
   # ============================================================================
-  # JOB 4: Deploy
+  # JOB 7: Deploy to Production
   # ============================================================================
-  deploy:
-    name: Deploy Application
+  deploy-production:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [preflight, security-gate, backup]
+    needs: [preflight, approve-production, backup]
     if: |
       always() &&
       needs.preflight.result == 'success' &&
-      needs.security-gate.result == 'success' &&
+      needs.approve-production.result == 'success' &&
       (needs.backup.result == 'success' || needs.backup.result == 'skipped')
-    environment:
-      name: ${{ needs.preflight.outputs.environment }}
     timeout-minutes: 20
 
     outputs:
-      status: ${{ steps.smoke.outputs.status }}
+      status: ${{ steps.health.outputs.status }}
+      deploy_start: ${{ steps.timer.outputs.start }}
 
     steps:
+      - name: Record deploy start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
         with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
-
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Create release directory
         run: |
@@ -442,104 +639,12 @@ jobs:
 
       - name: Health check
         id: health
-        run: |
-          RETRY=0
-          HEALTHY=false
-
-          while [ $RETRY -lt ${{ env.MAX_RETRIES }} ]; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              --connect-timeout 10 --max-time 30 \
-              "${{ env.HEALTH_URL }}" || echo "000")
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              HEALTHY=true
-              echo "Health check passed (HTTP 200)"
-              break
-            fi
-
-            echo "Attempt $((RETRY+1))/${{ env.MAX_RETRIES }}: HTTP $HTTP_CODE"
-            sleep ${{ env.RETRY_INTERVAL }}
-            RETRY=$((RETRY + 1))
-          done
-
-          if [ "$HEALTHY" != "true" ]; then
-            echo "status=unhealthy" >> $GITHUB_OUTPUT
-            echo "::error::Health check failed after ${{ env.MAX_RETRIES }} attempts"
-            exit 1
-          fi
-          echo "status=healthy" >> $GITHUB_OUTPUT
-
-      - name: Smoke tests
-        id: smoke
-        run: |
-          TESTS_PASSED=0
-          TESTS_TOTAL=6
-
-          # 1: Health endpoint
-          if curl -sf "${{ env.HEALTH_URL }}" > /dev/null; then
-            echo "1. Health endpoint: PASS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "1. Health endpoint: FAIL"
-          fi
-
-          # 2: HTTPS redirect
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${{ env.DOMAIN }}" || echo "000")
-          if [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "308" ]; then
-            echo "2. HTTPS redirect: PASS (HTTP $HTTP_CODE)"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "2. HTTPS redirect: FAIL (HTTP $HTTP_CODE)"
-          fi
-
-          # 3: Database connectivity
-          DB_OK=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "cd ${{ env.PROJECT_DIR }}/current && docker compose exec -T postgres pg_isready -U n8n && echo OK" || echo "FAIL")
-          if echo "$DB_OK" | grep -q "OK"; then
-            echo "3. Database: PASS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "3. Database: FAIL"
-          fi
-
-          # 4: Redis connectivity
-          REDIS_OK=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "cd ${{ env.PROJECT_DIR }}/current && docker compose exec -T redis redis-cli ping" || echo "FAIL")
-          if echo "$REDIS_OK" | grep -q "PONG"; then
-            echo "4. Redis: PASS"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "4. Redis: FAIL"
-          fi
-
-          # 5: n8n API
-          API_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ env.DOMAIN }}/rest/settings" || echo "000")
-          if [ "$API_CODE" = "200" ] || [ "$API_CODE" = "401" ]; then
-            echo "5. n8n API: PASS (HTTP $API_CODE)"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "5. n8n API: FAIL (HTTP $API_CODE)"
-          fi
-
-          # 6: Inbound webhook (Meta verify)
-          INBOUND_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://api.${{ env.DOMAIN }}/v1/inbound/whatsapp?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
-          if [ "$INBOUND_CODE" != "000" ] && [ "$INBOUND_CODE" != "502" ] && [ "$INBOUND_CODE" != "503" ]; then
-            echo "6. Inbound webhook reachable: PASS (HTTP $INBOUND_CODE)"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "6. Inbound webhook: FAIL (HTTP $INBOUND_CODE)"
-          fi
-
-          echo ""
-          echo "Smoke tests: $TESTS_PASSED/$TESTS_TOTAL passed"
-
-          if [ $TESTS_PASSED -lt 4 ]; then
-            echo "status=failed" >> $GITHUB_OUTPUT
-            echo "::error::Smoke tests failed ($TESTS_PASSED/$TESTS_TOTAL)"
-            exit 1
-          fi
-          echo "status=passed" >> $GITHUB_OUTPUT
+        uses: ./.github/actions/health-check
+        with:
+          url: ${{ env.HEALTH_URL }}
+          max-retries: ${{ env.MAX_RETRIES }}
+          retry-interval: ${{ env.RETRY_INTERVAL }}
+          expected-code: '200'
 
       - name: Collect failure artifacts
         if: failure()
@@ -590,25 +695,177 @@ jobs:
           ENDSSH
 
   # ============================================================================
-  # JOB 5: Cleanup
+  # JOB 8: Production Smoke Battery
+  # ============================================================================
+  smoke-battery-prod:
+    name: Smoke Battery (Production)
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy-production]
+    timeout-minutes: 10
+
+    outputs:
+      status: ${{ steps.smoke.outputs.status }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
+
+      - name: Execute smoke.sh on VPS
+        id: smoke-script
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            cd ${{ env.PROJECT_DIR }}/current
+
+            echo "=== Running scripts/smoke.sh against production ==="
+            if [ -f "scripts/smoke.sh" ]; then
+              chmod +x scripts/smoke.sh
+              bash scripts/smoke.sh || {
+                echo "::error::Production smoke.sh failed"
+                exit 1
+              }
+            else
+              echo "::warning::scripts/smoke.sh not found on VPS"
+            fi
+          ENDSSH
+
+      - name: Test WA/IG/MSG endpoints
+        id: smoke
+        run: |
+          TESTS_PASSED=0
+          TESTS_TOTAL=3
+
+          # 1: WhatsApp inbound endpoint
+          WA_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.${{ env.DOMAIN }}/v1/inbound/whatsapp?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
+          if [ "$WA_CODE" != "000" ] && [ "$WA_CODE" != "502" ] && [ "$WA_CODE" != "503" ]; then
+            echo "1. WhatsApp endpoint: PASS (HTTP $WA_CODE)"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "1. WhatsApp endpoint: FAIL (HTTP $WA_CODE)"
+          fi
+
+          # 2: Instagram inbound endpoint
+          IG_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.${{ env.DOMAIN }}/v1/inbound/instagram?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
+          if [ "$IG_CODE" != "000" ] && [ "$IG_CODE" != "502" ] && [ "$IG_CODE" != "503" ]; then
+            echo "2. Instagram endpoint: PASS (HTTP $IG_CODE)"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "2. Instagram endpoint: FAIL (HTTP $IG_CODE)"
+          fi
+
+          # 3: Messenger inbound endpoint
+          MSG_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.${{ env.DOMAIN }}/v1/inbound/messenger?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
+          if [ "$MSG_CODE" != "000" ] && [ "$MSG_CODE" != "502" ] && [ "$MSG_CODE" != "503" ]; then
+            echo "3. Messenger endpoint: PASS (HTTP $MSG_CODE)"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+          else
+            echo "3. Messenger endpoint: FAIL (HTTP $MSG_CODE)"
+          fi
+
+          echo ""
+          echo "Channel smoke tests: $TESTS_PASSED/$TESTS_TOTAL passed"
+
+          if [ $TESTS_PASSED -lt 2 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "::error::Channel smoke tests failed ($TESTS_PASSED/$TESTS_TOTAL)"
+            exit 1
+          fi
+          echo "status=passed" >> $GITHUB_OUTPUT
+
+  # ============================================================================
+  # JOB 9: DORA Metrics
+  # ============================================================================
+  dora-metrics:
+    name: DORA Metrics
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy-production, smoke-battery-prod]
+    if: always() && needs.deploy-production.result != 'cancelled'
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
+
+      - name: Record DORA metrics
+        run: |
+          DEPLOY_START="${{ needs.deploy-production.outputs.deploy_start }}"
+          DEPLOY_END=$(date +%s)
+          DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
+
+          # Calculate lead time (time from commit to deploy)
+          COMMIT_TS=$(git log -1 --format=%ct "${{ github.sha }}" 2>/dev/null || echo "$DEPLOY_START")
+          LEAD_TIME=$((DEPLOY_END - COMMIT_TS))
+
+          # Determine status
+          if [ "${{ needs.smoke-battery-prod.result }}" = "success" ] && [ "${{ needs.deploy-production.result }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
+          fi
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            mkdir -p ${{ env.LOG_DIR }}
+
+            # Check if scripts/dora_metrics.sh exists on VPS
+            if [ -f "${{ env.PROJECT_DIR }}/current/scripts/dora_metrics.sh" ]; then
+              cd ${{ env.PROJECT_DIR }}/current
+              chmod +x scripts/dora_metrics.sh
+              bash scripts/dora_metrics.sh \
+                --version "${{ needs.preflight.outputs.version }}" \
+                --commit "${{ github.sha }}" \
+                --status "$STATUS" \
+                --lead-time "$LEAD_TIME" \
+                --deploy-duration "$DEPLOY_DURATION"
+            else
+              # Inline DORA metrics recording
+              TIMESTAMP="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo '{"timestamp":"'\$TIMESTAMP'","version":"${{ needs.preflight.outputs.version }}","commit":"${{ github.sha }}","status":"$STATUS","lead_time_sec":'$LEAD_TIME',"deploy_duration_sec":'$DEPLOY_DURATION'}' \
+                >> ${{ env.LOG_DIR }}/dora_metrics.jsonl
+              echo "DORA metrics recorded (inline) to ${{ env.LOG_DIR }}/dora_metrics.jsonl"
+            fi
+          ENDSSH
+
+          echo "DORA Metrics:"
+          echo "  Status: $STATUS"
+          echo "  Version: ${{ needs.preflight.outputs.version }}"
+          echo "  Lead Time: ${LEAD_TIME}s"
+          echo "  Deploy Duration: ${DEPLOY_DURATION}s"
+
+  # ============================================================================
+  # JOB 10: Cleanup
   # ============================================================================
   cleanup:
     name: Post-deploy Cleanup
     runs-on: ubuntu-latest
-    needs: [preflight, deploy]
-    if: needs.deploy.result == 'success'
+    needs: [preflight, deploy-production, smoke-battery-prod]
+    if: needs.deploy-production.result == 'success'
     timeout-minutes: 10
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Cleanup old releases and Docker artifacts
         run: |
@@ -634,11 +891,18 @@ jobs:
               fi
             fi
 
-            # 2. Docker cleanup (safe)
+            # 2. Cleanup staging directory
+            STAGING_DIR="/opt/resto/staging"
+            if [ -d "$STAGING_DIR" ]; then
+              echo "Cleaning up staging directory"
+              rm -rf "$STAGING_DIR"/*
+            fi
+
+            # 3. Docker cleanup (safe)
             docker image prune -f 2>/dev/null || true
             docker builder prune -f --keep-storage 1GB 2>/dev/null || true
 
-            # 3. Old backup cleanup (keep 10 deploy backups, 7 daily, 4 weekly)
+            # 4. Old backup cleanup (keep 10 deploy backups, 7 daily, 4 weekly)
             BACKUP_DIR="/opt/resto/backups"
             if [ -d "$BACKUP_DIR" ]; then
               ls -t $BACKUP_DIR/deploy-*-n8n.dump 2>/dev/null | tail -n +11 | xargs -r rm -v
@@ -650,7 +914,7 @@ jobs:
               find $BACKUP_DIR -name "pre-rollback-*" -mtime +3 -delete 2>/dev/null || true
             fi
 
-            # 4. Journal cleanup
+            # 5. Journal cleanup
             journalctl --vacuum-time=7d 2>/dev/null || true
 
             echo "=== Disk AFTER cleanup ==="
@@ -661,30 +925,28 @@ jobs:
           ENDSSH
 
   # ============================================================================
-  # JOB 6: Post-deployment (rollback + summary)
+  # JOB 11: Post-deployment (rollback + summary + notification)
   # ============================================================================
   post-deploy:
     name: Post-deployment
     runs-on: ubuntu-latest
-    needs: [preflight, security-gate, backup, deploy, cleanup]
+    needs: [preflight, security-gate, deploy-staging, smoke-battery-staging, approve-production, backup, deploy-production, smoke-battery-prod, dora-metrics, cleanup]
     if: always()
     timeout-minutes: 10
 
     steps:
-      - name: Install SSH Key
-        if: needs.deploy.result == 'failure'
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        if: needs.deploy.result == 'failure'
-        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Auto-rollback on failure
-        if: needs.deploy.result == 'failure'
+        if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
         run: |
           echo "::warning::Deployment failed — initiating rollback"
 
@@ -722,12 +984,17 @@ jobs:
 
       - name: Deployment summary
         run: |
+          DEPLOY_STATUS="FAILED"
+          if [ "${{ needs.deploy-production.result }}" = "success" ] && [ "${{ needs.smoke-battery-prod.result }}" = "success" ]; then
+            DEPLOY_STATUS="SUCCESS"
+          fi
+
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## Deployment Summary
 
           | Property | Value |
           |----------|-------|
-          | **Status** | ${{ needs.deploy.result == 'success' && 'SUCCESS' || 'FAILED' }} |
+          | **Status** | ${DEPLOY_STATUS} |
           | **Version** | ${{ needs.preflight.outputs.version }} |
           | **Previous** | ${{ needs.preflight.outputs.current_version }} |
           | **Deploy ID** | ${{ needs.preflight.outputs.deploy_id }} |
@@ -742,27 +1009,36 @@ jobs:
           |-----|--------|
           | Preflight | ${{ needs.preflight.result }} |
           | Security Gate | ${{ needs.security-gate.result }} |
+          | Deploy Staging | ${{ needs.deploy-staging.result }} |
+          | Smoke Battery Staging | ${{ needs.smoke-battery-staging.result }} |
+          | Approve Production | ${{ needs.approve-production.result }} |
           | Backup | ${{ needs.backup.result || 'skipped' }} |
-          | Deploy | ${{ needs.deploy.result }} |
+          | Deploy Production | ${{ needs.deploy-production.result }} |
+          | Smoke Battery Prod | ${{ needs.smoke-battery-prod.result }} |
+          | DORA Metrics | ${{ needs.dora-metrics.result }} |
           | Cleanup | ${{ needs.cleanup.result || 'skipped' }} |
           EOF
 
       - name: Notify on failure
-        if: needs.deploy.result == 'failure'
-        env:
-          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
-        run: |
-          if [ -n "$ALERT_WEBHOOK_URL" ]; then
-            curl -sf -X POST "$ALERT_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"text\": \"Deployment FAILED - v${{ needs.preflight.outputs.version }} (${{ github.sha }})\",
-                \"attachments\": [{
-                  \"color\": \"danger\",
-                  \"fields\": [
-                    {\"title\": \"Version\", \"value\": \"${{ needs.preflight.outputs.version }}\", \"short\": true},
-                    {\"title\": \"Actor\", \"value\": \"${{ github.actor }}\", \"short\": true}
-                  ]
-                }]
-              }" || true
-          fi
+        if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
+        uses: ./.github/actions/notify
+        with:
+          webhook-url: ${{ secrets.ALERT_WEBHOOK_URL }}
+          status: failure
+          title: "Deployment FAILED - v${{ needs.preflight.outputs.version }}"
+          version: ${{ needs.preflight.outputs.version }}
+          environment: ${{ needs.preflight.outputs.environment }}
+          details: "Auto-rollback initiated. Actor: ${{ github.actor }}"
+          commit-sha: ${{ github.sha }}
+
+      - name: Notify on success
+        if: needs.deploy-production.result == 'success' && needs.smoke-battery-prod.result == 'success'
+        uses: ./.github/actions/notify
+        with:
+          webhook-url: ${{ secrets.ALERT_WEBHOOK_URL }}
+          status: success
+          title: "Deployment SUCCESS - v${{ needs.preflight.outputs.version }}"
+          version: ${{ needs.preflight.outputs.version }}
+          environment: ${{ needs.preflight.outputs.environment }}
+          details: "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}. All smoke tests passed."
+          commit-sha: ${{ github.sha }}

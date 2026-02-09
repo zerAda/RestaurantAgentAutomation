@@ -20,6 +20,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 env:
   # CRITICAL: Must be the API gateway URL, not the console URL
   # Gateway: api.<domain>/healthz (public, no auth)
@@ -36,6 +39,7 @@ jobs:
   check-ssh:
     name: Check SSH Configuration
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     outputs:
       ssh_available: ${{ steps.check.outputs.available }}
     steps:
@@ -128,17 +132,14 @@ jobs:
       disk_ok: ${{ steps.diag.outputs.disk_ok }}
 
     steps:
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
-        with:
-          key: ${{ secrets.VPS_SSH_KEY }}
-          known_hosts: unnecessary
-          if_key_exists: replace
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Add known hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
 
       - name: Run internal diagnostics
         id: diag
@@ -215,6 +216,7 @@ jobs:
     if: |
       always() &&
       needs.http-health-check.outputs.status != 'healthy'
+    timeout-minutes: 5
 
     steps:
       - name: Send alert webhook
@@ -249,6 +251,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [http-health-check, ssh-health-check, check-ssh]
     if: always()
+    timeout-minutes: 2
 
     steps:
       - name: Generate summary report

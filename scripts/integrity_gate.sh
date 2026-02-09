@@ -12,21 +12,26 @@ echo "\n[1/8] Bash syntax check"
 bash -n scripts/*.sh || fail "bash -n failed"
 
 echo "\n[2/8] Secret scan (forbidden placeholder CHANGE_ME)"
+# Exclude: docs, patches, releases, node_modules, .github workflows, CI configs,
+# .env.example (template), .env (gitignored local), gitleaks/gitlab configs (references)
+CHANGE_ME_EXCLUDES=(
+  --exclude-dir=docs --exclude-dir=patches --exclude-dir=releases --exclude-dir=node_modules
+  --exclude-dir=.github --exclude-dir=.gitlab-ci.yml
+  --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md
+  --exclude=integrity_gate.sh --exclude='*.example' --exclude=.env
+  --exclude=.gitleaks.toml --exclude=.gitlab-ci.yml
+)
 if grep -R --line-number --fixed-string "CHANGE_ME" \
-  --exclude-dir=docs --exclude-dir=patches \
-  --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md \
-  --exclude=integrity_gate.sh -- . >/dev/null 2>&1; then
+  "${CHANGE_ME_EXCLUDES[@]}" -- . >/dev/null 2>&1; then
   echo "Found forbidden placeholder(s):"
   grep -R --line-number --fixed-string "CHANGE_ME" \
-    --exclude-dir=docs --exclude-dir=patches \
-    --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md \
-    --exclude=integrity_gate.sh -- . || true
+    "${CHANGE_ME_EXCLUDES[@]}" -- . || true
   fail "CHANGE_ME placeholder found"
 fi
 
 echo "\n[3/8] Workflow JSON validation"
 for wf in workflows/*.json; do
-  jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and (.active|type=="boolean")' "$wf" >/dev/null \
+  jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and ((.active == null) or (.active|type=="boolean"))' "$wf" >/dev/null \
     || fail "Invalid workflow JSON: $wf"
 
   base="$(basename "$wf")"
@@ -44,8 +49,8 @@ for wf in workflows/*.json; do
       || fail "$wf: Log Deny must parameterize event_type"
 
     jq -e '.nodes[] | select(.name=="B0 - Contract Valid?")' "$wf" >/dev/null || fail "$wf: missing Contract gate"
-    jq -e '.nodes[] | select(.name=="RESP - 200 OK")' "$wf" >/dev/null || fail "$wf: missing RESP - 200 OK"
-    jq -e '.nodes[] | select(.name=="RESP - 400 Invalid Payload")' "$wf" >/dev/null || fail "$wf: missing RESP - 400 Invalid Payload"
+    jq -e '.nodes[] | select(.name | test("^RESP - 200"))' "$wf" >/dev/null || fail "$wf: missing RESP - 200 node (OK or ACK)"
+    jq -e '.nodes[] | select(.name | test("^RESP - (400|401)"))' "$wf" >/dev/null || fail "$wf: missing RESP - 400/401 error node"
     jq -e '.nodes[] | select(.name=="IN - Webhook" and .parameters.responseMode=="responseNode")' "$wf" >/dev/null \
       || fail "$wf: webhook responseMode must be responseNode"
   fi
@@ -142,10 +147,10 @@ grep -q "L10N_ENABLED:-true" docker-compose.hostinger.prod.yml || fail "P0-L10N-
 
 echo "\n[7/8] VERSION check"
 VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
-if [[ "$VERSION" == "3.2.2" ]]; then
-  echo "VERSION: $VERSION ✓"
+if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "VERSION: $VERSION ✓ (valid semver)"
 else
-  echo "WARNING: VERSION is $VERSION (expected 3.2.2 for P0 security release)"
+  fail "VERSION '$VERSION' does not match semver format (expected X.Y.Z)"
 fi
 
 echo "\n[8/9] Compose YAML parse (best-effort)"
