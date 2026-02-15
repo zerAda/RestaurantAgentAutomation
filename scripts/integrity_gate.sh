@@ -209,4 +209,4 @@ grep -q "META_SIGNATURE_REQUIRED" config/.env.example || fail ".env.example miss
 grep -q "STRICT_AR_OUT" config/.env.example || fail ".env.example missing STRICT_AR_OUT"
 grep -q "ADMIN_WA_AUDIT_ENABLED" config/.env.example || fail ".env.example missing ADMIN_WA_AUDIT_ENABLED"
 
-echo "\n✅ Integrity Gate PASS (v3.2.3 P0 Security)"
+echo "\n✅ Integrity Gate PASS (v3.3.0 P0 Security)"

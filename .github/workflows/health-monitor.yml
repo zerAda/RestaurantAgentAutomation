@@ -12,11 +12,11 @@ name: Health Monitor
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # Every 6 hours
-  workflow_dispatch:        # Manual trigger
+    - cron: "0 */6 * * *" # Every 6 hours
+  workflow_dispatch: # Manual trigger
     inputs:
       force_ssh_check:
-        description: 'Force SSH-based internal check'
+        description: "Force SSH-based internal check"
         type: boolean
         default: false
 
@@ -217,7 +217,6 @@ jobs:
       always() &&
       needs.http-health-check.outputs.status != 'healthy'
     timeout-minutes: 5
-
     steps:
       - name: Send alert webhook
         env:

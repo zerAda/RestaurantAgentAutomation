@@ -141,8 +141,8 @@ jobs:
           echo "vps_host=${{ vars.VPS_HOST }}" >> $GITHUB_OUTPUT
           echo "vps_user=${{ vars.VPS_USER || 'deploy' }}" >> $GITHUB_OUTPUT
           echo "project_dir=${{ vars.PROJECT_DIR || '/opt/resto' }}" >> $GITHUB_OUTPUT
-          echo "backup_dir=${{ vars.BACKUP_DIR || '/opt/resto/backups' }}" >> $GITHUB_OUTPUT
-          echo "log_dir=${{ vars.LOG_DIR || '/var/log/resto-bot' }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ vars['BACKUP_DIR'] || '/opt/resto/backups' }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ vars['LOG_DIR'] || '/var/log/resto-bot' }}" >> $GITHUB_OUTPUT
           echo "domain=${{ vars.DOMAIN }}" >> $GITHUB_OUTPUT
           echo "health_url=${{ vars.HEALTH_URL }}" >> $GITHUB_OUTPUT
 
@@ -336,7 +336,7 @@ jobs:
 
       - name: Verify Image Signatures
         env:
-          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          COSIGN_PUBLIC_KEY: ${{ secrets['COSIGN_PUBLIC_KEY'] }}
           REGISTRY: ghcr.io
           OWNER: ${{ github.repository_owner }}
           SHA: ${{ github.sha }}
@@ -579,6 +579,9 @@ jobs:
 
       - name: Create backup (n8n + strapi DBs)
         id: backup
+        env:
+          BACKUP_ENCRYPT: ${{ secrets['BACKUP_ENCRYPT'] }}
+          GPG_PASSPHRASE: ${{ secrets['GPG_PASSPHRASE'] }}
         run: |
           BACKUP_NAME="deploy-${{ needs.preflight.outputs.deploy_id }}"
           VERSION="${{ needs.preflight.outputs.version }}"
@@ -593,7 +596,7 @@ jobs:
             # Execute remotely by piping the script
             # Pass encryption secrets if available
             ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
-              "export BACKUP_NAME='$BACKUP_NAME' VERSION='$VERSION' COMMIT='$COMMIT' PROJECT_DIR='$PROJECT_DIR' BACKUP_DIR='$BACKUP_DIR' BACKUP_ENCRYPT='${{ secrets.BACKUP_ENCRYPT }}' GPG_PASSPHRASE='${{ secrets.GPG_PASSPHRASE }}'; bash -s" < scripts/ops/backup.sh
+              "export BACKUP_NAME='$BACKUP_NAME' VERSION='$VERSION' COMMIT='$COMMIT' PROJECT_DIR='$PROJECT_DIR' BACKUP_DIR='$BACKUP_DIR' BACKUP_ENCRYPT='$BACKUP_ENCRYPT' GPG_PASSPHRASE='$GPG_PASSPHRASE'; bash -s" < scripts/ops/backup.sh
           else
              echo "::error::scripts/ops/backup.sh not found"
              exit 1

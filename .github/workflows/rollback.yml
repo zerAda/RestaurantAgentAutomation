@@ -10,24 +10,24 @@ on:
   workflow_dispatch:
     inputs:
       backup_name:
-        description: 'Backup name (leave empty for latest)'
+        description: "Backup name (leave empty for latest)"
         required: false
-        default: ''
+        default: ""
       rollback_type:
-        description: 'Type of rollback'
+        description: "Type of rollback"
         required: true
-        default: 'config'
+        default: "config"
         type: choice
         options:
-          - config        # Only .env and secrets
-          - full          # Config + database
+          - config # Only .env and secrets
+          - full # Config + database
       confirm:
-        description: 'Type ROLLBACK to confirm'
+        description: "Type ROLLBACK to confirm"
         required: true
       reason:
-        description: 'Reason for rollback'
+        description: "Reason for rollback"
         required: true
-        default: 'Deployment issue'
+        default: "Deployment issue"
 
 concurrency:
   group: deploy-production
@@ -37,9 +37,9 @@ env:
   VPS_HOST: ${{ vars.VPS_HOST }}
   VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
   PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
-  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/opt/resto/backups' }}
+  BACKUP_DIR: ${{ vars['BACKUP_DIR'] || '/opt/resto/backups' }}
   HEALTH_URL: ${{ vars.HEALTH_URL }}
-  LOG_DIR: ${{ vars.LOG_DIR || '/var/log/resto-bot' }}
+  LOG_DIR: ${{ vars['LOG_DIR'] || '/var/log/resto-bot' }}
 
 permissions:
   contents: read
