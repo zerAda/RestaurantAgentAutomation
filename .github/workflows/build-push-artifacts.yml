@@ -73,6 +73,7 @@ jobs:
 
       # ======================= CMS =======================
       - name: Build and push CMS
+        id: build-cms
         uses: docker/build-push-action@v5
         with:
           context: ./inventory-cms
@@ -109,11 +110,12 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/resto-bot-cms
-          subject-digest: sha256:${{ github.sha }}
+          subject-digest: ${{ steps.build-cms.outputs.digest }}
           push-to-registry: true
 
       # ======================= Admin Dashboard =======================
       - name: Build and push Admin Dashboard
+        id: build-admin
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -151,11 +153,12 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/resto-bot-admin
-          subject-digest: sha256:${{ github.sha }}
+          subject-digest: ${{ steps.build-admin.outputs.digest }}
           push-to-registry: true
 
       # ======================= Kiosk App =======================
       - name: Build and push Kiosk App
+        id: build-kiosk
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -193,7 +196,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/resto-bot-kiosk
-          subject-digest: sha256:${{ github.sha }}
+          subject-digest: ${{ steps.build-kiosk.outputs.digest }}
           push-to-registry: true
 
       # ======================= Summary =======================
