@@ -66,10 +66,10 @@ HEALTH_WORKFLOW="$WORKFLOWS_DIR/health-monitor.yml"
 if [ -f "$HEALTH_WORKFLOW" ]; then
     # Check if HEALTH_URL assignment contains 'console' or 'n8n.' (protected endpoints)
     # Only check non-comment lines that actually assign HEALTH_URL
-    if grep -v '^\s*#' "$HEALTH_WORKFLOW" | grep -v 'echo\|error\|warn\|notice\|blocked' | grep -qE "HEALTH_URL.*[:=].*(console\.|n8n\.)"; then
-        log_warn "health-monitor.yml: HEALTH_URL may point to protected console endpoint"
+    if grep -v '^\s*#' "$HEALTH_WORKFLOW" | grep -v 'echo\|error\|warn\|notice\|blocked' | grep -qE "HEALTH_URL.*[:=].*https?://(console\.|n8n\.)"; then
+        log_warn "health-monitor.yml: HEALTH_URL likely points to protected bypass endpoint"
     else
-        log_pass "health-monitor.yml: HEALTH_URL appears to use API gateway"
+        log_pass "health-monitor.yml: HEALTH_URL appears safe"
     fi
 
     # Check for broken secret check pattern

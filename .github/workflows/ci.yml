@@ -41,6 +41,7 @@ env:
   POSTGRES_USER: n8n
   POSTGRES_PASSWORD: n8npass
   POSTGRES_DB: n8n
+  N8N_VERSION: "1.80.0"
 
 jobs:
   # ==========================================================================
@@ -159,6 +160,13 @@ jobs:
           export STRAPI_ENCRYPTION_KEY=ci-test-encryption-key
           export STRAPI_APP_KEYS=ci-test-app-key-1,ci-test-app-key-2
           export POSTGRES_USER=n8n
+          # P0-01 DB Migration dummy values
+          export PGPASSWORD=n8npass
+          export STRAPI_DATABASE_NAME=strapi
+          export GITHUB_REPOSITORY_OWNER=zerada
+          export CMS_IMAGE=ghcr.io/zerada/resto-bot-cms:latest
+          export ADMIN_IMAGE=ghcr.io/zerada/resto-bot-admin:latest
+          export KIOSK_IMAGE=ghcr.io/zerada/resto-bot-kiosk:latest
 
           echo "Validating docker-compose.hostinger.prod.yml..."
           docker compose -f docker-compose.hostinger.prod.yml config > /dev/null

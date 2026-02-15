@@ -97,11 +97,13 @@ docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --inpu
 docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json" || fail "import W14 admin WA console failed"
 
 # Get core ID
-core_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name='W4 - CORE Agent (State + Voice + Secure)' order by id desc limit 1;\"" | tr -d '\r')"
+core_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name like '%W4 - CORE Agent%' order by id desc limit 1;\"" | tr -d '\r' | xargs)"
+echo "Extracted CORE workflow ID: '$core_id'"
 [[ -n "$core_id" ]] || fail "CORE workflow ID not found after import"
 
 # Get W14 ID
-admin_wa_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name='W14 - ADMIN WA Support Console' order by id desc limit 1;\"" | tr -d '\r')"
+admin_wa_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name like '%W14 - ADMIN WA Support Console%' order by id desc limit 1;\"" | tr -d '\r' | xargs)"
+echo "Extracted ADMIN WA workflow ID: '$admin_wa_id'"
 [[ -n "$admin_wa_id" ]] || fail "W14 workflow ID not found after import"
 
 # Recreate n8n with CORE_WORKFLOW_ID set
