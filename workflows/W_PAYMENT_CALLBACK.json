@@ -106,7 +106,9 @@
                 "collection": "payments",
                 "filters": {
                     "external_id": "={{ $json.checkout_id }}",
-                    "restaurant_id": "={{ $json.event.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    "restaurant_id": {
+                        "$eq": "={{ $json.event.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    }
                 },
                 "fields": {
                     "status": "paid",
@@ -127,7 +129,9 @@
                 "collection": "orders",
                 "filters": {
                     "id": "={{ $json.order_id }}",
-                    "restaurant_id": "={{ $json.event?.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    "restaurant_id": {
+                        "$eq": "={{ $json.event?.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    }
                 },
                 "fields": {
                     "payment_status": "paid",
