@@ -1,0 +1,146 @@
+{
+    "name": "W_MARKETING_AUTOPILOT",
+    "nodes": [
+        {
+            "parameters": {
+                "triggerTimes": {
+                    "item": [
+                        {
+                            "hour": 10,
+                            "minute": 0
+                        }
+                    ]
+                }
+            },
+            "name": "Daily Trigger (10am)",
+            "type": "n8n-nodes-base.cron",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT user_id, count(*) as order_count, max(created_at) as last_order \nFROM orders \nWHERE created_at < NOW() - INTERVAL '30 days' \nGROUP BY user_id \nHAVING count(*) > 2;",
+                "additionalFields": {}
+            },
+            "name": "Find Churning VIPs",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "batchSize": 10,
+                "options": {}
+            },
+            "name": "Split In Batches",
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_ID }}/messages",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WHATSAPP_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.user_id }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "template"
+                        },
+                        {
+                            "name": "template",
+                            "value": "={ \"name\": \"miss_you_promo\", \"language\": { \"code\": \"fr\" } }"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Promo",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "tableName": "marketing_trigger_log",
+                "columns": "tenant_id, restaurant_id, rule_name, affected_users_count",
+                "additionalFields": {}
+            },
+            "name": "Log Campaign",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                700,
+                500
+            ]
+        }
+    ],
+    "connections": {
+        "Daily Trigger (10am)": {
+            "main": [
+                [
+                    {
+                        "node": "Find Churning VIPs",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Churning VIPs": {
+            "main": [
+                [
+                    {
+                        "node": "Split In Batches",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split In Batches": {
+            "main": [
+                [
+                    {
+                        "node": "Send Promo",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

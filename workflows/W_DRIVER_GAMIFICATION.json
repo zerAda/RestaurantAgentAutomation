@@ -1,0 +1,179 @@
+{
+    "name": "W_DRIVER_GAMIFICATION",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/driver-delivered",
+                "options": {}
+            },
+            "name": "Event: Order Delivered",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM drivers WHERE driver_id = $1;",
+                "additionalFields": {
+                    "queryParams": "={{ $json.body.driver_id }}"
+                }
+            },
+            "name": "Get Driver Stats",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Calculate XP Gained\n// Base XP = 50\n// Speed Bonus = +20 (requires real timestamps, mocked here)\n// Rain Bonus = +30 (if weather = rain)\n\nconst driver = $('Get Driver Stats').item.json;\nconst xpGained = 50 + 20;\nconst newTotalXP = (driver.total_xp || 0) + xpGained;\n\n// Calculate Level\n// Level = floor(sqrt(XP / 100))\nconst newLevel = Math.floor(Math.sqrt(newTotalXP / 100)) + 1;\nconst levelUp = newLevel > (driver.level || 1);\n\nreturn { json: { \n  driver_id: driver.driver_id, \n  xp_gained: xpGained, \n  new_total_xp: newTotalXP,\n  new_level: newLevel,\n  level_up: levelUp,\n  phone: driver.user_id\n} };"
+            },
+            "name": "Level Up Logic",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE drivers SET metadata_json = jsonb_set(metadata_json, '{xp}', $2::jsonb) WHERE driver_id = $1;",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.driver_id, $json.new_total_xp] }}"
+                }
+            },
+            "name": "Update XP in DB",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.level_up }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Did Level Up?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_ID }}/messages",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WHATSAPP_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "template"
+                        },
+                        {
+                            "name": "template",
+                            "value": "={ \"name\": \"driver_level_up\", \"language\": { \"code\": \"fr\" }, \"components\": [ { \"type\": \"body\", \"parameters\": [ { \"type\": \"text\", \"text\": \"{{ $json.new_level }}\" } ] } ] }"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Level Up GZ",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Event: Order Delivered": {
+            "main": [
+                [
+                    {
+                        "node": "Get Driver Stats",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Driver Stats": {
+            "main": [
+                [
+                    {
+                        "node": "Level Up Logic",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Level Up Logic": {
+            "main": [
+                [
+                    {
+                        "node": "Update XP in DB",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Did Level Up?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Did Level Up?": {
+            "main": [
+                [
+                    {
+                        "node": "Send Level Up GZ",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

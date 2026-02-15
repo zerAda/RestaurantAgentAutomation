@@ -1,0 +1,102 @@
+{
+    "name": "W_CMS_SYNC",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "cms/webhook",
+                "options": {}
+            },
+            "name": "Strapi Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Routes the event to the correct handler\nconst model = $json.model;\nconst event = $json.event;\nreturn { json: { model, event, data: $json.entry } };"
+            },
+            "name": "Router",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.model }}",
+                            "operation": "equal",
+                            "value2": "menu-item"
+                        }
+                    ]
+                }
+            },
+            "name": "Is Menu Item?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO menu_items (strapi_id, name, price, description, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (strapi_id) DO UPDATE SET name = EXCLUDED.name, price = EXCLUDED.price, updated_at = NOW();",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.data.id, $json.data.name, $json.data.price, $json.data.description] }}"
+                }
+            },
+            "name": "Upsert Postgres",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Strapi Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Router",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Router": {
+            "main": [
+                [
+                    {
+                        "node": "Is Menu Item?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Menu Item?": {
+            "main": [
+                [
+                    {
+                        "node": "Upsert Postgres",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

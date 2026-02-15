@@ -26,11 +26,22 @@ function calculateStatus(quantity: number, minStock: number): 'ok' | 'low' | 'cr
     return 'ok';
 }
 
+interface StrapiIngredient {
+    id: number;
+    attributes: {
+        name: string;
+        category: string;
+        current_stock: number;
+        unit: string;
+        min_stock_alert: number;
+    };
+}
+
 // Helper: Transform Strapi ingredient to StockItem
-function transformIngredient(data: any): StockItem {
-    const attr = data.attributes || data;
+function transformIngredient(data: StrapiIngredient): StockItem {
+    const attr = data.attributes;
     return {
-        id: data.id?.toString() || attr.id?.toString(),
+        id: data.id.toString(),
         name: attr.name || '',
         category: attr.category || 'Uncategorized',
         quantity: attr.current_stock || 0,

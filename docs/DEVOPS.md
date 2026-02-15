@@ -8,18 +8,20 @@ This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **n8n Console** | https://n8n.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
-| **Adminer (DB)** | https://adminer.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
-| **API Gateway** | https://api.srv1258231.hstgr.cloud | Token-based |
-| **Health Check** | https://n8n.srv1258231.hstgr.cloud/healthz | admin / RestoAdmin2026! |
+| **n8n Console** | <https://n8n.srv1258231.hstgr.cloud> | admin / [See Password Store] |
+| **Adminer (DB)** | <https://adminer.srv1258231.hstgr.cloud> | admin / [See Password Store] |
+| **API Gateway** | <https://api.srv1258231.hstgr.cloud> | Token-based |
+| **Health Check** | <https://n8n.srv1258231.hstgr.cloud/healthz> | admin / [See Password Store] |
 
 ### Adminer - Database Management
 
 **Web Access:**
+
 - URL: `https://adminer.srv1258231.hstgr.cloud`
-- BasicAuth: `admin` / `RestoAdmin2026!`
+- BasicAuth: `admin` / `[See Password Store]`
 
 **PostgreSQL Connection (inside Adminer):**
+
 - System: PostgreSQL
 - Server: `postgres`
 - Username: `n8n`
@@ -72,6 +74,7 @@ This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot
 **Trigger:** Push to main/master, Pull Requests
 
 **Jobs:**
+
 | Job | Purpose | Runs |
 |-----|---------|------|
 | `lint` | Bash, YAML, JSON validation | Parallel |
@@ -85,6 +88,7 @@ This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot
 **Trigger:** Push, PR, Weekly (Sundays)
 
 **Jobs:**
+
 | Job | Purpose |
 |-----|---------|
 | `secret-scan` | Gitleaks + custom patterns |
@@ -98,6 +102,7 @@ This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot
 **Trigger:** After CI success, Manual dispatch
 
 **Features:**
+
 - Environment selection (staging/production)
 - Concurrency lock (one deploy at a time)
 - **First deploy vs Update detection**
@@ -112,6 +117,7 @@ This document describes the CI/CD pipeline and DevSecOps practices for Resto Bot
 - Notifications (Slack/webhook)
 
 **Deployment Flow:**
+
 ```
 Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → Notify
     │                   │         │            │           │
@@ -143,6 +149,7 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 **Trigger:** Manual only (requires confirmation)
 
 **Types:**
+
 | Type | Restores |
 |------|----------|
 | `config` | .env, secrets/ |
@@ -152,10 +159,12 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 ### 5. Scheduled Backup (`scheduled-backup.yml`)
 
 **Schedule:**
+
 - Daily: 3:00 AM UTC
 - Weekly (full): Sunday 4:00 AM UTC
 
 **Retention:**
+
 - Daily backups: 7 days
 - Weekly backups: 4 weeks
 
@@ -164,6 +173,7 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 **Schedule:** Every 15 minutes
 
 **Checks:**
+
 - n8n health endpoint
 - PostgreSQL connectivity
 - Redis ping
@@ -239,6 +249,7 @@ git push origin main
 ### Alerts
 
 Configure `ALERT_WEBHOOK_URL` secret for notifications:
+
 - Deployment success/failure
 - Rollback events
 - Health check failures

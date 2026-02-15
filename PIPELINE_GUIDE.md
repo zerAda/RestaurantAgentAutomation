@@ -77,6 +77,7 @@ Si vous voulez recevoir des notifications Slack/Discord:
 **Déclencheur:** Push sur main, Pull Requests
 
 **Ce qu'il fait:**
+
 - Valide la syntaxe Bash des scripts
 - Vérifie les fichiers YAML/JSON
 - Scanne les secrets hardcodés
@@ -85,6 +86,7 @@ Si vous voulez recevoir des notifications Slack/Discord:
 - Crée un package de déploiement
 
 **Jobs parallèles:**
+
 ```
 ┌──────────┐  ┌──────────────┐  ┌─────────────┐
 │   Lint   │  │   Security   │  │   Python    │
@@ -107,6 +109,7 @@ Si vous voulez recevoir des notifications Slack/Discord:
 **Déclencheur:** Push, PR, Dimanche 2h UTC
 
 **Ce qu'il fait:**
+
 - **Gitleaks**: Détection de secrets dans le code
 - **Trivy**: Scan des images Docker (n8n, postgres, redis, nginx, traefik)
 - **SAST**: Audit des configurations Docker Compose et Nginx
@@ -120,6 +123,7 @@ Si vous voulez recevoir des notifications Slack/Discord:
 **Déclencheur:** Après CI réussi, ou manuellement
 
 **Ce qu'il fait:**
+
 1. **Preflight**: Vérifie VPS, espace disque, Docker
 2. **Détection**: Premier déploiement vs mise à jour
 3. **Backup** de la base de données et config avant déploiement
@@ -132,6 +136,7 @@ Si vous voulez recevoir des notifications Slack/Discord:
 10. **Notification** du résultat
 
 **Flux:**
+
 ```
 Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → Notify
     │                   │         │            │           │
@@ -150,6 +155,7 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 ```
 
 **Utilisation manuelle:**
+
 1. Actions > CD - Deploy to VPS > Run workflow
 2. Choisir `production` ou `staging`
 3. Options:
@@ -164,17 +170,20 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 **Déclencheur:** Manuel uniquement
 
 **Ce qu'il fait:**
+
 - Restaure une configuration précédente
 - Option: Restaurer aussi la base de données
 - Crée un backup de sécurité avant le rollback
 
 **Types de rollback:**
+
 | Type | Restaure |
 |------|----------|
 | `config` | .env + secrets/ |
 | `full` | config + base de données |
 
 **Utilisation:**
+
 1. Actions > Rollback Deployment > Run workflow
 2. Choisir le type (`config` ou `full`)
 3. Optionnel: Spécifier un backup précis
@@ -193,12 +202,14 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 | Dimanche 4h UTC | full | 4 semaines |
 
 **Ce qu'il fait:**
+
 - Dump PostgreSQL compressé
 - Backup .env et secrets
 - Vérification d'intégrité
 - Rotation automatique des vieux backups
 
 **Utilisation manuelle:**
+
 1. Actions > Scheduled Backup > Run workflow
 2. Choisir `daily` ou `full`
 
@@ -209,6 +220,7 @@ Preflight → Backup → Deploy → DB Health → Smoke Tests → Cleanup → No
 **Déclencheur:** Toutes les 15 minutes
 
 **Ce qu'il fait:**
+
 - Ping `https://n8n.srv1258231.hstgr.cloud/healthz`
 - Si échec: diagnostic sur le VPS (Docker, disque, mémoire)
 - Alerte webhook si problème
@@ -337,22 +349,24 @@ ls -lh /local-files/backups/resto-bot/
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **n8n Console** | https://n8n.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
-| **Adminer (DB)** | https://adminer.srv1258231.hstgr.cloud | admin / RestoAdmin2026! |
-| **API Gateway** | https://api.srv1258231.hstgr.cloud | Token API |
-| Health Check | https://n8n.srv1258231.hstgr.cloud/healthz | admin / RestoAdmin2026! |
-| GitHub Actions | https://github.com/[votre-repo]/actions | - |
+| **n8n Console** | <https://n8n.srv1258231.hstgr.cloud> | admin / [See Password Store] |
+| **Adminer (DB)** | <https://adminer.srv1258231.hstgr.cloud> | admin / [See Password Store] |
+| **API Gateway** | <https://api.srv1258231.hstgr.cloud> | Token API |
+| Health Check | <https://n8n.srv1258231.hstgr.cloud/healthz> | admin / [See Password Store] |
+| GitHub Actions | <https://github.com/[votre-repo]/actions> | - |
 
 ---
 
 ## Adminer - Gestion Base de Données
 
 ### Accès Web
-- **URL:** https://adminer.srv1258231.hstgr.cloud
+
+- **URL:** <https://adminer.srv1258231.hstgr.cloud>
 - **Username:** `admin`
-- **Password:** `RestoAdmin2026!`
+- **Password:** *(See `/docker/n8n/secrets/traefik_usersfile` on host)*
 
 ### Connexion PostgreSQL (dans Adminer)
+
 | Champ | Valeur |
 |-------|--------|
 | System | PostgreSQL |
@@ -362,12 +376,14 @@ ls -lh /local-files/backups/resto-bot/
 | Database | `n8n` |
 
 ### Sécurité Adminer
-- BasicAuth obligatoire (admin/RestoAdmin2026!)
+
+- BasicAuth obligatoire (admin/[See Password Store])
 - IP Allowlist configurable via `ADMIN_ALLOWED_IPS`
 - Accès HTTPS uniquement
 - Pas d'accès direct à la DB depuis l'extérieur
 
 ### Changer le mot de passe
+
 ```bash
 # Sur le VPS
 cd /docker/n8n
@@ -382,6 +398,7 @@ docker compose restart traefik
 ## Support
 
 En cas de problème:
+
 1. Vérifier les logs GitHub Actions
 2. Se connecter au VPS via SSH
 3. Consulter `/var/log/resto-bot/`

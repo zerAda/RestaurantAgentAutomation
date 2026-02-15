@@ -62,11 +62,57 @@ permissions:
 
 jobs:
   # ============================================================================
+  # JOB 0: Validate Inputs (Hardening)
+  # ============================================================================
+  validate-inputs:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 2
+    steps:
+      - name: Validate environment input
+        run: |
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          if [[ ! "$ENV" =~ ^(production|staging)$ ]]; then
+            echo "::error::Invalid environment input: '$ENV'. Must be 'production' or 'staging'."
+            exit 1
+          fi
+          echo "✅ Environment: $ENV"
+
+      - name: Validate boolean inputs
+        run: |
+          for input_pair in "skip_backup:${{ github.event.inputs.skip_backup }}" "force_full_deploy:${{ github.event.inputs.force_full_deploy }}"; do
+            NAME="${input_pair%%:*}"
+            VAL="${input_pair#*:}"
+            if [ -n "$VAL" ] && [[ ! "$VAL" =~ ^(true|false)$ ]]; then
+              echo "::error::Invalid boolean input '$NAME': '$VAL'. Must be 'true' or 'false'."
+              exit 1
+            fi
+          done
+          echo "✅ Boolean inputs valid"
+
+      - name: Validate actor and ref
+        run: |
+          # Ensure actor is not empty
+          if [ -z "${{ github.actor }}" ]; then
+            echo "::error::github.actor is empty"
+            exit 1
+          fi
+          # Ensure SHA is a valid hex string
+          SHA="${{ github.sha }}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid commit SHA format: '$SHA'"
+            exit 1
+          fi
+          echo "✅ Actor: ${{ github.actor }}, SHA: $SHA"
+
+  # ============================================================================
   # JOB 1: Pre-flight checks
   # ============================================================================
   preflight:
     name: Pre-flight Checks
     runs-on: ubuntu-latest
+    needs: validate-inputs
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 5
 
@@ -84,6 +130,7 @@ jobs:
       log_dir: ${{ steps.config.outputs.log_dir }}
       domain: ${{ steps.config.outputs.domain }}
       health_url: ${{ steps.config.outputs.health_url }}
+      nodes_matrix: ${{ steps.inventory.outputs.matrix }}
     env:
       KEEP_RELEASES: 5
 
@@ -91,13 +138,13 @@ jobs:
       - name: Resolve configuration
         id: config
         run: |
-          echo "vps_host=${{ vars['VPS_HOST'] }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ vars['VPS_USER'] || 'deploy' }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ vars['PROJECT_DIR'] || '/opt/resto' }}" >> $GITHUB_OUTPUT
-          echo "backup_dir=${{ vars['BACKUP_DIR'] || '/opt/resto/backups' }}" >> $GITHUB_OUTPUT
-          echo "log_dir=${{ vars['LOG_DIR'] || '/var/log/resto-bot' }}" >> $GITHUB_OUTPUT
-          echo "domain=${{ vars['DOMAIN'] }}" >> $GITHUB_OUTPUT
-          echo "health_url=${{ vars['HEALTH_URL'] }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ vars.VPS_HOST }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ vars.VPS_USER || 'deploy' }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ vars.PROJECT_DIR || '/opt/resto' }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ vars.BACKUP_DIR || '/opt/resto/backups' }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ vars.LOG_DIR || '/var/log/resto-bot' }}" >> $GITHUB_OUTPUT
+          echo "domain=${{ vars.DOMAIN }}" >> $GITHUB_OUTPUT
+          echo "health_url=${{ vars.HEALTH_URL }}" >> $GITHUB_OUTPUT
 
       - name: Validate required variables
         run: |
@@ -109,6 +156,57 @@ jobs:
           fi
           if [ $MISSING -gt 0 ]; then
             exit 1
+          fi
+
+          # Validate VPS_HOST format (hostname or IP)
+          HOST="${{ steps.config.outputs.vps_host }}"
+          if [[ ! "$HOST" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::VPS_HOST contains invalid characters: '$HOST'"
+            exit 1
+          fi
+
+      - name: Parse inventory and build node matrix
+        id: inventory
+        run: |
+          VPS_HOST="${{ steps.config.outputs.vps_host }}"
+          VPS_USER="${{ steps.config.outputs.vps_user }}"
+          PROJECT_DIR="${{ steps.config.outputs.project_dir }}"
+          BACKUP_DIR="${{ steps.config.outputs.backup_dir }}"
+          LOG_DIR="${{ steps.config.outputs.log_dir }}"
+
+          if [ -f "infra/inventory.json" ]; then
+            echo "Using inventory file: infra/inventory.json"
+
+            # Replace __FROM_VARS__ sentinels with actual values
+            MATRIX=$(jq -c '{
+              "include": [.nodes[] | {
+                "name": .name,
+                "host": (if .host == "__FROM_VARS__" then "'"$VPS_HOST"'" else .host end),
+                "user": (if .user == "__FROM_VARS__" then "'"$VPS_USER"'" else .user end),
+                "role": .role,
+                "project_dir": (if .project_dir == "__FROM_VARS__" then "'"$PROJECT_DIR"'" else .project_dir end),
+                "backup_dir": (if .backup_dir == "__FROM_VARS__" then "'"$BACKUP_DIR"'" else .backup_dir end),
+                "log_dir": (if .log_dir == "__FROM_VARS__" then "'"$LOG_DIR"'" else .log_dir end)
+              }]
+            }' infra/inventory.json)
+
+            echo "Generated matrix: $MATRIX"
+            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          else
+            echo "::notice::infra/inventory.json not found — falling back to single-node from vars"
+            MATRIX=$(jq -n -c '{
+              "include": [{
+                "name": "vps-primary",
+                "host": "'"$VPS_HOST"'",
+                "user": "'"$VPS_USER"'",
+                "role": "primary",
+                "project_dir": "'"$PROJECT_DIR"'",
+                "backup_dir": "'"$BACKUP_DIR"'",
+                "log_dir": "'"$LOG_DIR"'"
+              }]
+            }')
+            echo "Fallback matrix: $MATRIX"
+            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout code
@@ -130,12 +228,21 @@ jobs:
         id: version
         run: |
           VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
+          # Validate semver format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::warning::VERSION '$VERSION' is not valid semver — proceeding anyway"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Generate deployment ID
         id: deploy_id
         run: |
           DEPLOY_ID="$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          # Validate deploy_id is safe (alphanumeric + dashes only)
+          if [[ ! "$DEPLOY_ID" =~ ^[a-zA-Z0-9-]+$ ]]; then
+            echo "::error::Generated deploy_id contains unsafe characters: '$DEPLOY_ID'"
+            exit 1
+          fi
           echo "id=$DEPLOY_ID" >> $GITHUB_OUTPUT
           echo "release_dir=${{ steps.config.outputs.project_dir }}/releases/$DEPLOY_ID" >> $GITHUB_OUTPUT
 
@@ -185,44 +292,18 @@ jobs:
 
       - name: Config drift detection
         run: |
-          echo "=== Config drift detection ==="
-
-          # Extract variable names from local config/.env.example
-          LOCAL_VARS=$(grep -E '^[A-Z_][A-Z0-9_]*=' config/.env.example 2>/dev/null | cut -d= -f1 | sort)
-
-          if [ -z "$LOCAL_VARS" ]; then
-            echo "::notice::No config/.env.example found or empty - skipping drift check"
-            exit 0
-          fi
-
-          # Extract variable names from VPS shared .env
-          VPS_VARS=$(ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
-            "grep -E '^[A-Z_][A-Z0-9_]*=' ${{ steps.config.outputs.project_dir }}/shared/.env 2>/dev/null | cut -d= -f1 | sort" || echo "")
-
-          if [ -z "$VPS_VARS" ]; then
-            echo "::warning::No shared .env found on VPS at ${{ steps.config.outputs.project_dir }}/shared/.env - skipping drift check"
-            exit 0
-          fi
-
-          # Find vars in .env.example that are missing from VPS .env
-          MISSING_VARS=""
-          for var in $LOCAL_VARS; do
-            if ! echo "$VPS_VARS" | grep -qx "$var"; then
-              MISSING_VARS="${MISSING_VARS}${var}\n"
-            fi
-          done
-
-          if [ -n "$MISSING_VARS" ]; then
-            echo "::warning::Config drift detected - variables in config/.env.example missing from VPS shared .env:"
-            echo -e "$MISSING_VARS" | while read -r v; do
-              [ -n "$v" ] && echo "::warning::  Missing var: $v"
-            done
+          if [ -f "scripts/ops/check_drift.sh" ]; then
+            chmod +x scripts/ops/check_drift.sh
+            ./scripts/ops/check_drift.sh \
+              "${{ steps.config.outputs.vps_user }}" \
+              "${{ steps.config.outputs.vps_host }}" \
+              "${{ steps.config.outputs.project_dir }}"
           else
-            echo "No config drift detected - all .env.example vars present on VPS"
+            echo "::warning::scripts/ops/check_drift.sh not found - skipping drift check"
           fi
 
   # ============================================================================
-  # JOB 2: Security Gate
+  # JOB 2: Security Gate (Secrets + Signatures)
   # ============================================================================
   security-gate:
     name: Security Gate
@@ -250,6 +331,28 @@ jobs:
             exit 1
           fi
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.3.0
+
+      - name: Verify Image Signatures
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          REGISTRY: ghcr.io
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          IMAGES=("resto-bot-cms" "resto-bot-admin" "resto-bot-kiosk")
+
+          for img in "${IMAGES[@]}"; do
+            IMAGE_URI="$REGISTRY/$OWNER/$img:$SHA"
+            echo "Verifying signature for $IMAGE_URI"
+            cosign verify --key env://COSIGN_PUBLIC_KEY "$IMAGE_URI" || {
+              echo "::error::Signature verification failed for $img"
+              exit 1
+            }
+            echo "✅ $img signature verified"
+          done
+
   # ============================================================================
   # JOB 3: Deploy to Staging
   # ============================================================================
@@ -270,17 +373,17 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
-          vps-host: ${{ needs.preflight.outputs['vps_host'] }}
+          vps-host: ${{ needs.preflight.outputs.vps_host }}
 
       - name: Create staging directory
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs['project_dir'] }}/staging/${{ needs.preflight.outputs['deploy_id'] }}"
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} \
             "mkdir -p $STAGING_DIR"
 
       - name: Sync code to staging
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs['project_dir'] }}/staging/${{ needs.preflight.outputs['deploy_id'] }}"
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
           rsync -avz --delete \
             --exclude='.git' \
@@ -296,8 +399,8 @@ jobs:
 
       - name: Prepare and start staging services
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs['project_dir'] }}/staging/${{ needs.preflight.outputs['deploy_id'] }}"
-          PROJECT_DIR="${{ needs.preflight.outputs['project_dir'] }}"
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
 
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             set -e
@@ -327,7 +430,7 @@ jobs:
             export KIOSK_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-kiosk:${{ github.sha }}"
 
             # Login to GHCR on VPS
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "${{ secrets['GITHUB_TOKEN'] }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Start staging with separate compose project name
             docker compose --project-name resto-staging pull --quiet
@@ -342,7 +445,7 @@ jobs:
 
       - name: Chaos Resilience Test (Staging)
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs['project_dir'] }}/staging/${{ needs.preflight.outputs['deploy_id'] }}"
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             set -e
             cd \$STAGING_DIR
@@ -359,7 +462,7 @@ jobs:
       - name: Run staging smoke tests
         id: staging-smoke
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs['project_dir'] }}/staging/${{ needs.preflight.outputs['deploy_id'] }}"
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             set -e
@@ -382,7 +485,7 @@ jobs:
       - name: Stop staging services
         if: always()
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs['project_dir'] }}/staging/${{ needs.preflight.outputs['deploy_id'] }}"
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             if [ -d "$STAGING_DIR" ]; then
@@ -408,8 +511,8 @@ jobs:
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
         with:
-          ssh-key: ${{ secrets.VPS_SSH_KEY }}
-          vps-host: ${{ vars.VPS_HOST }}
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ needs.preflight.outputs.vps_host }}
 
       - name: Validate staging deployment result
         run: |
@@ -452,73 +555,57 @@ jobs:
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
     env:
-      BACKUP_DIR: ${{ format('{0}', needs.preflight.outputs['backup_dir']) }}
-      PROJECT_DIR: ${{ format('{0}', needs.preflight.outputs['project_dir']) }}
+      BACKUP_DIR: ${{ format('{0}', needs.preflight.outputs.backup_dir) }}
+      PROJECT_DIR: ${{ format('{0}', needs.preflight.outputs.project_dir) }}
 
     steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ needs.preflight.outputs.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ needs.preflight.outputs.log_dir }}" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
         with:
-          ssh-key: ${{ secrets.VPS_SSH_KEY }}
-          vps-host: ${{ vars.VPS_HOST }}
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
 
       - name: Create backup (n8n + strapi DBs)
         id: backup
         run: |
           BACKUP_NAME="deploy-${{ needs.preflight.outputs.deploy_id }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
+          COMMIT="${{ github.sha }}"
+          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
+          BACKUP_DIR="${{ needs.preflight.outputs.backup_dir }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
-            set -e
-            BACKUP_DIR="${BACKUP_DIR:-${{ steps.config.outputs.backup_dir }}}"
-            mkdir -p "\$BACKUP_DIR"
-            PROJECT_DIR="${PROJECT_DIR:-${{ steps.config.outputs.project_dir }}}"
-            cd "\$PROJECT_DIR/current" 2>/dev/null || cd "\$PROJECT_DIR"
+          echo "Using backup script: scripts/ops/backup.sh"
 
-            echo "=== Backup: n8n database ==="
-            docker compose exec -T postgres pg_dump -U n8n -d n8n \
-              --no-owner --no-acl -Fc \
-              > "\$BACKUP_DIR/${BACKUP_NAME}-n8n.dump"
-
-            echo "=== Backup: strapi database ==="
-            docker compose exec -T postgres pg_dump -U n8n -d strapi \
-              --no-owner --no-acl -Fc \
-              > "\$BACKUP_DIR/${BACKUP_NAME}-strapi.dump" 2>/dev/null || echo "Strapi DB not found (OK for first setup)"
-
-            echo "=== Backup: config ==="
-            tar -czf "\$BACKUP_DIR/${BACKUP_NAME}-config.tar.gz" \
-              -C "${{ steps.config.outputs.project_dir }}/current" \
-              .env secrets/ 2>/dev/null || true
-
-            # Verify n8n backup integrity
-            if [ ! -s "\$BACKUP_DIR/${BACKUP_NAME}-n8n.dump" ]; then
-              echo "::error::n8n backup is empty"
-              exit 1
-            fi
-
-            # Metadata
-            cat > "\$BACKUP_DIR/${BACKUP_NAME}-meta.json" << METAEOF
-          {
-            "timestamp": "\$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "version": "${{ needs.preflight.outputs.version }}",
-            "commit": "${{ github.sha }}",
-            "type": "pre-deploy"
-          }
-          METAEOF
-
-            ls -lh "\$BACKUP_DIR/${BACKUP_NAME}"*
-            echo "Backup complete: ${BACKUP_NAME}"
-          ENDSSH
+          if [ -f "scripts/ops/backup.sh" ]; then
+            chmod +x scripts/ops/backup.sh
+            # Execute remotely by piping the script
+            # Pass encryption secrets if available
+            ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
+              "export BACKUP_NAME='$BACKUP_NAME' VERSION='$VERSION' COMMIT='$COMMIT' PROJECT_DIR='$PROJECT_DIR' BACKUP_DIR='$BACKUP_DIR' BACKUP_ENCRYPT='${{ secrets.BACKUP_ENCRYPT }}' GPG_PASSPHRASE='${{ secrets.GPG_PASSPHRASE }}'; bash -s" < scripts/ops/backup.sh
+          else
+             echo "::error::scripts/ops/backup.sh not found"
+             exit 1
+          fi
 
           echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
 
   # ============================================================================
-  # JOB 7: Deploy to Production
+  # JOB 7: Deploy to Production (Multi-Node Matrix)
   # ============================================================================
   deploy-production:
-    name: Deploy to Production
+    name: Deploy (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [preflight, approve-production, backup]
     if: |
@@ -527,22 +614,14 @@ jobs:
       needs.approve-production.result == 'success' &&
       (needs.backup.result == 'success' || needs.backup.result == 'skipped')
     timeout-minutes: 20
+    strategy:
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+      fail-fast: true
     outputs:
       status: ${{ steps.health.outputs.status }}
       deploy_start: ${{ steps.timer.outputs.start }}
 
     steps:
-      - name: Resolve configuration
-        id: config
-        run: |
-          echo "vps_ssh_key=${{ secrets['VPS_SSH_KEY'] }}" >> $GITHUB_OUTPUT
-          echo "vps_host=${{ needs.preflight.outputs['vps_host'] }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs['vps_user'] }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs['project_dir'] }}" >> $GITHUB_OUTPUT
-          echo "backup_dir=${{ needs.preflight.outputs['backup_dir'] }}" >> $GITHUB_OUTPUT
-          echo "log_dir=${{ needs.preflight.outputs['log_dir'] }}" >> $GITHUB_OUTPUT
-          echo "health_url=${{ needs.preflight.outputs['health_url'] }}" >> $GITHUB_OUTPUT
-
       - name: Record deploy start time
         id: timer
         run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
@@ -553,18 +632,16 @@ jobs:
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
         with:
-          ssh-key: ${{ steps.config.outputs.vps_ssh_key }}
-          vps-host: ${{ steps.config.outputs.vps_host }}
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ matrix.host }}
 
-      - name: Create release directory
+      - name: Sync code to node
         run: |
-          RELEASE_DIR="${{ needs.preflight.outputs['release_dir'] }}"
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
+          RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+
+          # Create release directory on target node
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} \
             "mkdir -p $RELEASE_DIR"
-
-      - name: Sync code to release directory
-        run: |
-          RELEASE_DIR="${{ needs.preflight.outputs.release_dir }}"
 
           rsync -avz --delete \
             --exclude='.git' \
@@ -576,137 +653,39 @@ jobs:
             --exclude='*.pyc' \
             --exclude='.DS_Store' \
             -e "ssh -o StrictHostKeyChecking=no" \
-            ./ ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }}:$RELEASE_DIR/
+            ./ ${{ matrix.user }}@${{ matrix.host }}:$RELEASE_DIR/
 
-      - name: Link shared resources and activate release
+      - name: Deploy to ${{ matrix.name }} via deploy_to_node.sh
         run: |
-          RELEASE_DIR="${{ needs.preflight.outputs.release_dir }}"
-          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
-          IS_FIRST="${{ needs.preflight.outputs.is_first_deploy }}"
+          RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
-            set -e
+          if [ ! -f "scripts/ops/deploy_to_node.sh" ]; then
+            echo "::error::scripts/ops/deploy_to_node.sh not found"
+            exit 1
+          fi
 
-            # Create shared directories (persist across releases)
-            mkdir -p "$PROJECT_DIR/shared/secrets"
-            mkdir -p "$PROJECT_DIR/shared"
-            mkdir -p "$PROJECT_DIR/releases"
-            BACKUP_DIR="${{ format('{0}', needs.preflight.outputs['backup_dir']) }}"
-            LOG_DIR="${{ format('{0}', needs.preflight.outputs['log_dir']) }}"
-            mkdir -p "$BACKUP_DIR"
-            mkdir -p "$LOG_DIR"
+          chmod +x scripts/ops/deploy_to_node.sh
 
-            RELEASE_DIR="$RELEASE_DIR"
-
-            # Link shared .env and secrets into release
-            if [ -f "$PROJECT_DIR/shared/.env" ]; then
-              ln -sf "$PROJECT_DIR/shared/.env" "\$RELEASE_DIR/.env"
-            elif [ -f "$PROJECT_DIR/current/.env" ] && [ "\$IS_FIRST" != "true" ]; then
-              cp "$PROJECT_DIR/current/.env" "$PROJECT_DIR/shared/.env"
-              ln -sf "$PROJECT_DIR/shared/.env" "\$RELEASE_DIR/.env"
-            fi
-
-            if [ -d "$PROJECT_DIR/shared/secrets" ] && [ "\$(ls -A $PROJECT_DIR/shared/secrets 2>/dev/null)" ]; then
-              ln -sf "$PROJECT_DIR/shared/secrets" "\$RELEASE_DIR/secrets"
-            elif [ -d "$PROJECT_DIR/current/secrets" ] && [ "\$IS_FIRST" != "true" ]; then
-              cp -rp "$PROJECT_DIR/current/secrets/"* "$PROJECT_DIR/shared/secrets/" 2>/dev/null || true
-              ln -sf "$PROJECT_DIR/shared/secrets" "\$RELEASE_DIR/secrets"
-            fi
-
-            # Use production compose file as docker-compose.yml
-            if [ -f "\$RELEASE_DIR/docker-compose.hostinger.prod.yml" ]; then
-              cp "\$RELEASE_DIR/docker-compose.hostinger.prod.yml" "\$RELEASE_DIR/docker-compose.yml"
-            fi
-
-            # Create volumes if needed (first deploy)
-            if [ "\$IS_FIRST" = "true" ]; then
-              for vol in traefik_data n8n_data postgres_data redis_data cms_uploads ollama_data; do
-                docker volume create \$vol 2>/dev/null || true
-              done
-            fi
-
-            echo "Release prepared: \$RELEASE_DIR"
-          ENDSSH
-
-      - name: Pull images
-        run: |
-          RELEASE_DIR="${{ needs.preflight.outputs.release_dir }}"
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
-            set -e
-            cd $RELEASE_DIR
-
-            # Set image tags for GHCR
-            export GITHUB_REPOSITORY_OWNER="${{ github.repository_owner }}"
-            export CMS_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-cms:${{ github.sha }}"
-            export ADMIN_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-admin:${{ github.sha }}"
-            export KIOSK_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-kiosk:${{ github.sha }}"
-
-            # Login to GHCR on VPS
-            echo "${{ secrets['GITHUB_TOKEN'] }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            docker compose pull --quiet
-          ENDSSH
-
-      - name: Run migrations (gated)
-        id: migrate
-        run: |
-          RELEASE_DIR="${{ needs.preflight.outputs.release_dir }}"
-
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
-            set -e
-            cd $RELEASE_DIR
-
-            echo "=== Starting DB services ==="
-            docker compose up -d postgres redis
-            echo "Waiting for postgres..."
-            for i in \$(seq 1 30); do
-              if docker compose exec -T postgres pg_isready -U n8n -d n8n >/dev/null 2>&1; then
-                echo "PostgreSQL ready"
-                break
-              fi
-              sleep 2
-            done
-
-            echo "=== Running db-migrate service ==="
-            docker compose up db-migrate
-            MIGRATE_EXIT=\$(docker compose ps db-migrate --format '{{.ExitCode}}' 2>/dev/null || echo "0")
-
-            if [ "\$MIGRATE_EXIT" != "0" ] && [ "\$MIGRATE_EXIT" != "" ]; then
-              echo "::error::Migration failed (exit code: \$MIGRATE_EXIT)"
-              docker compose logs db-migrate --tail=50
-              exit 1
-            fi
-
-            echo "Migrations complete"
-          ENDSSH
-
-      - name: Activate release (symlink cutover)
-        run: |
-          RELEASE_DIR="${{ needs.preflight.outputs.release_dir }}"
-          PROJECT_DIR="${{ steps.config.outputs.project_dir }}"
-
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
-            set -e
-            cd $RELEASE_DIR
-
-            echo "=== Starting all services ==="
-            docker compose up -d --remove-orphans
-
-            echo "=== Activating release symlink ==="
-            ln -sfn "$RELEASE_DIR" "$PROJECT_DIR/current"
-
-            echo "Active release: \$(readlink $PROJECT_DIR/current)"
-            docker compose ps
-
-            echo "=== Running Deep Health Check (Production) ==="
-            bash scripts/deep-health-check.sh
-          ENDSSH
+          # Execute the atomic deploy script on the target node
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} \
+            "export GH_TOKEN='${{ secrets.GITHUB_TOKEN }}'; bash -s" < scripts/ops/deploy_to_node.sh \
+            -- \
+            --role "${{ matrix.role }}" \
+            --project-dir "${{ matrix.project_dir }}" \
+            --release-dir "$RELEASE_DIR" \
+            --backup-dir "${{ matrix.backup_dir }}" \
+            --log-dir "${{ matrix.log_dir }}" \
+            --is-first-deploy "${{ needs.preflight.outputs.is_first_deploy }}" \
+            --github-owner "${{ github.repository_owner }}" \
+            --image-sha "${{ github.sha }}" \
+            --github-actor "${{ github.actor }}" \
+            --github-token "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Health check
         id: health
         uses: ./.github/actions/health-check
         with:
-          url: ${{ steps.config.outputs.health_url }}
+          url: ${{ needs.preflight.outputs.health_url }}
           max-retries: ${{ env.MAX_RETRIES }}
           retry-interval: ${{ env.RETRY_INTERVAL }}
           expected-code: "200"
@@ -714,10 +693,10 @@ jobs:
       - name: Collect failure artifacts
         if: failure()
         run: |
-          echo "=== Failure Diagnostics ===" >> $GITHUB_STEP_SUMMARY
+          echo "=== Failure Diagnostics (${{ matrix.name }}) ===" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << 'ENDSSH' >> $GITHUB_STEP_SUMMARY 2>&1
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << 'ENDSSH' >> $GITHUB_STEP_SUMMARY 2>&1
             echo "--- docker compose ps ---"
             cd /opt/resto/current 2>/dev/null && docker compose ps 2>/dev/null || echo "compose not available"
             echo ""
@@ -736,12 +715,13 @@ jobs:
 
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Record deployment
+      - name: Record deployment on ${{ matrix.name }}
         if: success()
-        env:
-          LOG_DIR: ${{ format('{0}', needs.preflight.outputs['log_dir']) }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
+          LOG_DIR="${{ matrix.log_dir }}"
+          RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             LOG_DIR="${LOG_DIR:-/var/log/resto-bot}"
             mkdir -p "\$LOG_DIR"
             echo "${{ needs.preflight.outputs.version }}" > "\$LOG_DIR/current_version"
@@ -750,12 +730,13 @@ jobs:
 
           ================================================================================
           Deployment: ${{ needs.preflight.outputs.deploy_id }}
+          Node:       ${{ matrix.name }} (${{ matrix.role }})
           Version:    ${{ needs.preflight.outputs.version }}
           Previous:   ${{ needs.preflight.outputs.current_version }}
           Commit:     ${{ github.sha }}
           Branch:     ${{ github.ref_name }}
           Actor:      ${{ github.actor }}
-          Release:    ${{ needs.preflight.outputs.release_dir }}
+          Release:    $RELEASE_DIR
           Timestamp:  \$(date -u +%Y-%m-%dT%H:%M:%SZ)
           Status:     SUCCESS
           ================================================================================
@@ -766,88 +747,70 @@ jobs:
   # JOB 8: Production Smoke Battery
   # ============================================================================
   smoke-battery-prod:
-    name: Smoke Battery (Production)
+    name: Smoke (${{ matrix.check }})
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production]
     timeout-minutes: 10
-
-    outputs:
-      status: ${{ steps.smoke.outputs.status }}
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [internal, whatsapp, instagram, messenger]
 
     steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+          echo "domain=${{ needs.preflight.outputs.domain }}" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
         with:
-          ssh-key: ${{ secrets.VPS_SSH_KEY }}
-          vps-host: ${{ vars.VPS_HOST }}
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
 
+      # Internal Check (SSH)
       - name: Execute smoke.sh on VPS
-        id: smoke-script
+        if: matrix.check == 'internal'
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
             set -e
-            cd ${{ needs.preflight.outputs.project_dir }}/current
-
-            echo "=== Running scripts/smoke.sh against production ==="
+            cd ${{ steps.config.outputs.project_dir }}/current
             if [ -f "scripts/smoke.sh" ]; then
               chmod +x scripts/smoke.sh
-              bash scripts/smoke.sh || {
-                echo "::error::Production smoke.sh failed"
-                exit 1
-              }
+              bash scripts/smoke.sh
             else
-              echo "::warning::scripts/smoke.sh not found on VPS"
+              echo "::error::scripts/smoke.sh missing"
+              exit 1
             fi
           ENDSSH
 
-      - name: Test WA/IG/MSG endpoints
-        id: smoke
+      # External Checks (Curl)
+      - name: Check Channel Endpoint
+        if: matrix.check != 'internal'
         run: |
-          TESTS_PASSED=0
-          TESTS_TOTAL=3
+          ENDPOINT=""
+          case "${{ matrix.check }}" in
+            whatsapp) ENDPOINT="v1/inbound/whatsapp" ;;
+            instagram) ENDPOINT="v1/inbound/instagram" ;;
+            messenger) ENDPOINT="v1/inbound/messenger" ;;
+          esac
 
-          # 1: WhatsApp inbound endpoint
-          WA_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://api.${{ steps.config.outputs.domain }}/v1/inbound/whatsapp?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
-          if [ "$WA_CODE" != "000" ] && [ "$WA_CODE" != "502" ] && [ "$WA_CODE" != "503" ]; then
-            echo "1. WhatsApp endpoint: PASS (HTTP $WA_CODE)"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
+          URL="https://api.${{ steps.config.outputs.domain }}/$ENDPOINT?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test"
+          echo "Checking $URL..."
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+
+          if [ "$CODE" != "000" ] && [ "$CODE" != "502" ] && [ "$CODE" != "503" ]; then
+            echo "✅ $ENDPOINT: PASS (HTTP $CODE)"
           else
-            echo "1. WhatsApp endpoint: FAIL (HTTP $WA_CODE)"
-          fi
-
-          # 2: Instagram inbound endpoint
-          IG_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://api.${{ steps.config.outputs.domain }}/v1/inbound/instagram?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
-          if [ "$IG_CODE" != "000" ] && [ "$IG_CODE" != "502" ] && [ "$IG_CODE" != "503" ]; then
-            echo "2. Instagram endpoint: PASS (HTTP $IG_CODE)"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "2. Instagram endpoint: FAIL (HTTP $IG_CODE)"
-          fi
-
-          # 3: Messenger inbound endpoint
-          MSG_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://api.${{ steps.config.outputs.domain }}/v1/inbound/messenger?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test" || echo "000")
-          if [ "$MSG_CODE" != "000" ] && [ "$MSG_CODE" != "502" ] && [ "$MSG_CODE" != "503" ]; then
-            echo "3. Messenger endpoint: PASS (HTTP $MSG_CODE)"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-          else
-            echo "3. Messenger endpoint: FAIL (HTTP $MSG_CODE)"
-          fi
-
-          echo ""
-          echo "Channel smoke tests: $TESTS_PASSED/$TESTS_TOTAL passed"
-
-          if [ $TESTS_PASSED -lt 2 ]; then
-            echo "status=failed" >> $GITHUB_OUTPUT
-            echo "::error::Channel smoke tests failed ($TESTS_PASSED/$TESTS_TOTAL)"
+            echo "::error::$ENDPOINT: FAIL (HTTP $CODE)"
             exit 1
           fi
-          echo "status=passed" >> $GITHUB_OUTPUT
 
   # ============================================================================
   # JOB 9: DORA Metrics
@@ -859,18 +822,27 @@ jobs:
     if: always() && needs.deploy-production.result != 'cancelled'
     timeout-minutes: 5
     env:
-      LOG_DIR: ${{ format('{0}', needs.preflight.outputs['log_dir']) }}
-      PROJECT_DIR: ${{ format('{0}', needs.preflight.outputs['project_dir']) }}
+      LOG_DIR: ${{ format('{0}', needs.preflight.outputs.log_dir) }}
+      PROJECT_DIR: ${{ format('{0}', needs.preflight.outputs.project_dir) }}
 
     steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ needs.preflight.outputs.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ needs.preflight.outputs.log_dir }}" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
         with:
-          ssh-key: ${{ secrets.VPS_SSH_KEY }}
-          vps-host: ${{ vars.VPS_HOST }}
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
 
       - name: Record DORA metrics
         run: |
@@ -930,14 +902,23 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ needs.preflight.outputs.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ needs.preflight.outputs.log_dir }}" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
         with:
-          ssh-key: ${{ secrets.VPS_SSH_KEY }}
-          vps-host: ${{ vars.VPS_HOST }}
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
 
       - name: Cleanup old releases and Docker artifacts
         run: |
@@ -1021,11 +1002,21 @@ jobs:
       - name: Resolve configuration
         id: config
         run: |
-          echo "alert_webhook_url=${{ secrets['ALERT_WEBHOOK_URL'] }}" >> $GITHUB_OUTPUT
-          echo "vps_ssh_key=${{ secrets['VPS_SSH_KEY'] }}" >> $GITHUB_OUTPUT
-          echo "vps_host=${{ needs.preflight.outputs['vps_host'] }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs['vps_user'] }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs['project_dir'] }}" >> $GITHUB_OUTPUT
+          echo "alert_webhook_url=${{ secrets.ALERT_WEBHOOK_URL }}" >> $GITHUB_OUTPUT
+          echo "discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL }}" >> $GITHUB_OUTPUT
+          echo "vps_ssh_key=${{ secrets.VPS_SSH_KEY }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+
+          # Calculate deploy duration
+          if [ -n "${{ needs.deploy-production.outputs.deploy_start }}" ]; then
+            DEPLOY_END=$(date +%s)
+            DURATION=$((DEPLOY_END - ${{ needs.deploy-production.outputs.deploy_start }}))
+            echo "deploy_duration=$DURATION" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_duration=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -1042,37 +1033,18 @@ jobs:
         run: |
           echo "::warning::Deployment failed — initiating rollback"
 
-          ssh -o StrictHostKeyChecking=no ${{ format('{0}', needs.preflight.outputs['vps_user']) }}@${{ format('{0}', needs.preflight.outputs['vps_host']) }} << 'ENDSSH'
-            set -e
-            PROJECT_DIR="${{ format('{0}', needs.preflight.outputs['project_dir']) }}"
+          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
+          VPS_USER="${{ needs.preflight.outputs.vps_user }}"
+          VPS_HOST="${{ needs.preflight.outputs.vps_host }}"
 
-            # Find previous release (second newest)
-            CURRENT=$(readlink "$PROJECT_DIR/current" 2>/dev/null || echo "")
-            PREVIOUS=$(ls -1dt $PROJECT_DIR/releases/*/ 2>/dev/null | grep -v "$(basename $CURRENT)" | head -1)
-
-            if [ -z "$PREVIOUS" ]; then
-              echo "::error::No previous release found for rollback"
-              exit 1
-            fi
-
-            echo "Rolling back to: $PREVIOUS"
-
-            # Switch symlink to previous release
-            ln -sfn "$PREVIOUS" "$PROJECT_DIR/current"
-            cd "$PROJECT_DIR/current"
-
-            # Restart with previous release
-            docker compose up -d --remove-orphans
-
-            sleep 30
-
-            # Verify
-            if docker compose exec -T postgres pg_isready -U n8n >/dev/null 2>&1; then
-              echo "Rollback successful — services running"
-            else
-              echo "::error::Rollback may have failed — manual intervention required"
-            fi
-          ENDSSH
+          if [ -f "scripts/ops/rollback.sh" ]; then
+             chmod +x scripts/ops/rollback.sh
+             ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
+               "export PROJECT_DIR='$PROJECT_DIR'; bash -s" < scripts/ops/rollback.sh
+          else
+             echo "::error::scripts/ops/rollback.sh not found"
+             exit 1
+          fi
 
       - name: Deployment summary
         run: |
@@ -1116,21 +1088,31 @@ jobs:
         uses: ./.github/actions/notify
         with:
           webhook-url: ${{ steps.config.outputs.alert_webhook_url }}
+          discord-webhook-url: ${{ steps.config.outputs.discord_webhook_url }}
           status: failure
           title: "Deployment FAILED - v${{ needs.preflight.outputs.version }}"
           version: ${{ needs.preflight.outputs.version }}
           environment: ${{ needs.preflight.outputs.environment }}
           details: "Auto-rollback initiated. Actor: ${{ github.actor }}"
           commit-sha: ${{ github.sha }}
+          deploy-id: ${{ needs.preflight.outputs.deploy_id }}
+          deploy-duration: ${{ steps.config.outputs.deploy_duration }}
+          repo-url: ${{ github.server_url }}/${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Notify on success
         if: needs.deploy-production.result == 'success' && needs.smoke-battery-prod.result == 'success'
         uses: ./.github/actions/notify
         with:
           webhook-url: ${{ steps.config.outputs.alert_webhook_url }}
+          discord-webhook-url: ${{ steps.config.outputs.discord_webhook_url }}
           status: success
           title: "Deployment SUCCESS - v${{ needs.preflight.outputs.version }}"
           version: ${{ needs.preflight.outputs.version }}
           environment: ${{ needs.preflight.outputs.environment }}
           details: "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}. All smoke tests passed."
           commit-sha: ${{ github.sha }}
+          deploy-id: ${{ needs.preflight.outputs.deploy_id }}
+          deploy-duration: ${{ steps.config.outputs.deploy_duration }}
+          repo-url: ${{ github.server_url }}/${{ github.repository }}
+          run-id: ${{ github.run_id }}

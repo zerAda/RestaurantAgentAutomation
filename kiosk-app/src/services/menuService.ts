@@ -100,7 +100,7 @@ export const menuService = {
             const products = (json.data || []).map(transformProduct);
 
             // Update categories dynamically (deduplicated)
-            const uniqueCategories = [...new Set(products.map(p => p.category))].filter(Boolean);
+            const uniqueCategories = ([...new Set(products.map((p: Product) => p.category))].filter(Boolean)) as string[];
             CATEGORIES = uniqueCategories.sort();
 
             return products;
@@ -138,8 +138,9 @@ export const menuService = {
                     .filter(Boolean)
             )].sort();
 
-            CATEGORIES = categories;
-            return categories;
+            const typedCategories = categories as string[];
+            CATEGORIES = typedCategories;
+            return typedCategories;
         } catch (error) {
             console.error('Failed to fetch categories:', error);
             return [];

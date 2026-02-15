@@ -1,0 +1,164 @@
+{
+    "name": "W_DRIVER_BOT",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/driver-bot",
+                "options": {}
+            },
+            "name": "WhatsApp Inbound",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM drivers WHERE user_id = $1;",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.body.entry[0].changes[0].value.messages[0].from] }}"
+                }
+            },
+            "name": "Identify Driver",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $items('Identify Driver').length > 0 }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Is Registered?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const msg = $json.body.entry[0].changes[0].value.messages[0];\nreturn { json: { text: msg.text.body, type: msg.type } };"
+            },
+            "name": "Extract Message",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.text.toLowerCase() }}",
+                            "operation": "contains",
+                            "value2": "online"
+                        }
+                    ]
+                }
+            },
+            "name": "Command Router",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE drivers SET status = 'ONLINE', last_location_update = NOW() WHERE user_id = $1;",
+                "additionalFields": {
+                    "queryParams": "={{ $('Identify Driver').item.json.user_id }}"
+                }
+            },
+            "name": "Set Online",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE delivery_assignments SET status = 'ACCEPTED', accepted_at = NOW() WHERE order_id = $1 AND driver_id = $2;",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.text.split(' ')[1], $('Identify Driver').item.json.driver_id] }}"
+                }
+            },
+            "name": "Accept Order",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "WhatsApp Inbound": {
+            "main": [
+                [
+                    {
+                        "node": "Identify Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Identify Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Is Registered?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Registered?": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Message": {
+            "main": [
+                [
+                    {
+                        "node": "Command Router",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

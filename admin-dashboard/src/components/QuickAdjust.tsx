@@ -6,14 +6,13 @@ export function QuickAdjust() {
     const [items, setItems] = useState<StockItem[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const loadData = async () => {
-        setLoading(true);
-        const data = await stockService.getAll();
-        setItems(data);
-        setLoading(false);
-    };
-
     useEffect(() => {
+        const loadData = async () => {
+            setLoading(true);
+            const data = await stockService.getAll();
+            setItems(data);
+            setLoading(false);
+        };
         loadData();
     }, []);
 

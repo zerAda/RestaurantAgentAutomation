@@ -53,29 +53,12 @@ description = "Allowlist for known safe patterns"
 paths = [
   '''\.env\.example$''',
   '''config/\.env\.example$''',
-  '''docs/.*\.md$''',
-  '''tests/.*\.json$''',
   '''tests/fixtures/.*\.sql$''',
   '''\.gitleaks\.toml$''',
-  '''CLAUDE\.md$''',
-  '''CREDENTIALS\.md$''',
-  '''PIPELINE_GUIDE\.md$''',
   '''CHANGELOG\.md$''',
   '''PATCHLOG\.md$''',
   '''PATCH\.diff$''',
-  '''patches/.*''',
-  '''docs/RUNBOOK_HOSTINGER\.md$''',
-  '''docs/DEVOPS\.md$''',
-  '''db/seed.*\.sql$''',
-  '''scripts/test_.*\.sh$''',
-  '''scripts/smoke.*\.sh$''',
-  '''workflows/.*\.json$''',
-  '''docker-compose.*\.yml$''',
-  '''docker/docker-compose.*\.yml$''',
-  '''\.gitlab-ci\.yml$''',
-  '''\.github/workflows/.*\.yml$''',
-  '''infra/.*''',
-  '''mock-api/.*''',
+  '''mock-api/.*'''
 ]
 
 regexes = [
@@ -84,8 +67,8 @@ regexes = [
   '''example\.com''',
   '''localhost''',
   '''127\.0\.0\.1''',
-  '''RestoAdmin2026''',
-  '''f7e9de60cad50dd054475a89dca608d69ad74bfe8a654791c6f43de2d44a8d63''',
+  '''REPLACE_WITH_.*''',
+  '''tobemodified'''
 ]
 
 # Specific commits to ignore (if needed)

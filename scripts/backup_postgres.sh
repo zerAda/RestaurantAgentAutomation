@@ -45,9 +45,38 @@ fi
 
 echo "✅ Backup created: $out"
 
+# P0-SEC-05: Encryption (optional)
+# If BACKUP_ENCRYPT is true, encrypt using gpg symmetric
+BACKUP_ENCRYPT="${BACKUP_ENCRYPT:-false}"
+GPG_PASSPHRASE="${GPG_PASSPHRASE:-}"
+
+if [[ "$BACKUP_ENCRYPT" == "true" ]]; then
+  if [[ -z "$GPG_PASSPHRASE" ]]; then
+    echo "❌ BACKUP_ENCRYPT=true but GPG_PASSPHRASE is empty. Skipping encryption." >&2
+  else
+    echo "🔒 Encrypting backup with GPG..."
+    gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --symmetric --cipher-algo AES256 -o "${out}.gpg" "$out"
+    
+    if [[ -f "${out}.gpg" ]]; then
+       # Replace original with encrypted version
+       rm "$out"
+       out="${out}.gpg"
+       # Re-calculate hash for encrypted file
+       if command -v sha256sum >/dev/null 2>&1; then
+         sha256sum "$out" | awk '{print $1}' > "$sha"
+         echo "✅ Encrypted sha256: $(cat "$sha")"
+       fi
+       echo "✅ Encrypted backup created: $out"
+    else
+       echo "❌ Encryption failed" >&2
+       exit 1
+    fi
+  fi
+fi
+
 echo "== Rotation: delete backups older than ${RETENTION_DAYS} day(s) =="
 # Busybox find supports -mtime; this is host-side rotation.
-find "$BACKUP_DIR" -maxdepth 1 -type f -name "${PG_DB}_*.dump" -mtime "+${RETENTION_DAYS}" -print -delete || true
+find "$BACKUP_DIR" -maxdepth 1 -type f -name "${PG_DB}_*.dump*" -mtime "+${RETENTION_DAYS}" -print -delete || true
 find "$BACKUP_DIR" -maxdepth 1 -type f -name "${PG_DB}_*.dump.sha256" -mtime "+${RETENTION_DAYS}" -print -delete || true
 
 echo "✅ Rotation done"
