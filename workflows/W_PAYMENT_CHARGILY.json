@@ -125,6 +125,11 @@
                     "amount": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.validated_amount }}",
                     "external_id": "={{ $json.id }}",
                     "payment_url": "={{ $json.checkout_url }}"
+                },
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.tenant_context?.restaurant_id }}"
+                    }
                 }
             },
             "name": "Save Payment Record",

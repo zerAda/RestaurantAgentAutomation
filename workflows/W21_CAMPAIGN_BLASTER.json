@@ -28,6 +28,9 @@
                     "status": "scheduled",
                     "sceduled_at": {
                         "$lte": "={{ $now.format() }}"
+                    },
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
                     }
                 }
             },
@@ -64,6 +67,11 @@
                 "id": "={{ $json.id }}",
                 "fields": {
                     "status": "active"
+                },
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
+                    }
                 }
             },
             "name": "Mark Active",

@@ -28,6 +28,9 @@
                     "status": "pending",
                     "createdAt": {
                         "$gte": "={{ new Date(Date.now() - 300000).toISOString() }}"
+                    },
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
                     }
                 },
                 "limit": 50

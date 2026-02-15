@@ -25,7 +25,12 @@
             "parameters": {
                 "operation": "getAll",
                 "collection": "restaurants",
-                "limit": 100
+                "limit": 100,
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
+                    }
+                }
             },
             "id": "get-restaurants",
             "name": "Get All Restaurants",
@@ -46,7 +51,7 @@
                         "$gte": "={{ new Date(Date.now() - 86400000).toISOString() }}"
                     },
                     "restaurant_id": {
-                        "$eq": "={{ $json.id }}"
+                        "$eq": "={{ $json.id || $json.tenant_context?.restaurant_id }}"
                     }
                 },
                 "limit": 500
