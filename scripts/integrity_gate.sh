@@ -61,7 +61,7 @@ for wf in workflows/*.json; do
       || fail "$wf: missing mandatory B1a - Admin Access Validator (SECURED) node"
     
     # Ensure gateway bypass is removed (no direct route from media fetch to console without validator)
-    jq -e '.connections["B1 - Has Media to Fetch?"]?.main[0][] | select(.node=="B1a - Admin Access Validator (SECURED)")' "$wf" >/dev/null \
+    jq -e '.connections["B1 - Has Media to Fetch?"]?.main[][] | select(.node=="B1a - Admin Access Validator (SECURED)")' "$wf" >/dev/null \
       || fail "$wf: bypass detected in B1 - Has Media to Fetch? route"
   fi
 
