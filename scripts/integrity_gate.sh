@@ -67,12 +67,11 @@ for wf in workflows/*.json; do
 
   # P0 Security: Tenant Isolation - ensure restaurant_id/tenant_id filters use authenticated context
   # Check all Strapi nodes
-  STRAPI_NODES=$(jq -r '.nodes[] | select(.type=="n8n-nodes-base.strapi") | .name' "$wf")
-  for node in $STRAPI_NODES; do
+  while IFS= read -r node; do
     [[ -z "$node" ]] && continue
     jq -e ".nodes[] | select(.name==\"$node\") | .parameters.filters.restaurant_id.\"\$eq\" | contains(\"tenant_context\")" "$wf" >/dev/null \
       || fail "$wf [$node]: Strapi filter MUST use tenant_context for restaurant_id isolation"
-  done
+  done < <(jq -r '.nodes[] | select(.type=="n8n-nodes-base.strapi") | .name' "$wf")
 
 done
 
