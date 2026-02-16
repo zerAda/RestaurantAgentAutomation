@@ -136,6 +136,16 @@ echo "Recreating n8n with CORE_WORKFLOW_ID=$core_id and ADMIN_WA_CONSOLE_WORKFLO
 docker compose -f "$COMPOSE_FILE" stop n8n
 CORE_WORKFLOW_ID="$core_id" ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id" docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
 
+# Wait for n8n to be ready after recreate
+echo "Waiting for n8n to be ready after recreate..."
+for i in $(seq 1 60); do
+  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+  if [[ $i -eq 60 ]]; then fail "n8n did not start after recreate"; fi
+done
+
 # Import remaining workflows
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json W8_OPS.json; do
   import_wf "/opt/resto/workflows/$wf" "$wf"
@@ -181,6 +191,21 @@ done
 echo "[7/8] Smoke tests"
 
 curl -fsS "$BASE_URL/healthz" >/dev/null && echo "✅ healthz"
+
+# Wait for n8n to be reachable through the gateway (502 = n8n still starting)
+echo "Waiting for n8n behind gateway..."
+for i in $(seq 1 30); do
+  gw_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/v1/inbound/whatsapp" \
+    -H "Content-Type: application/json" \
+    -H "x-webhook-token: $INBOUND_TOKEN" \
+    -d '{"text":"warmup","from":"warmup","msgId":"harness-warmup-'$i'"}')"
+  if [[ "$gw_status" != "502" ]]; then
+    echo "n8n reachable (status=$gw_status)"
+    break
+  fi
+  sleep 2
+  if [[ $i -eq 30 ]]; then fail "n8n not reachable through gateway (stuck on 502)"; fi
+done
 
 # inbound valid
 curl -fsS -X POST "$BASE_URL/v1/inbound/whatsapp" \
