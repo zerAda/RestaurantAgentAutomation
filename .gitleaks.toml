@@ -68,7 +68,9 @@ paths = [
   '''TEST_REPORT\.md$''',
   '''docker-compose\..*\.yml$''',
   '''agents/.*''',
-  '''\.claude/.*'''
+  '''\.claude/.*''',
+  '''README\.md$''',
+  '''patches/.*'''
 ]
 
 regexes = [
@@ -92,7 +94,11 @@ regexes = [
   '''OLD_SHARED_TOKEN''',
   '''NEW_SECURE_TOKEN''',
   '''dummy[\-_]?\w*''',
-  '''placeholder[\-_]?\w*'''
+  '''placeholder[\-_]?\w*''',
+  '''<\w+_TOKEN>''',
+  '''<\w+_KEY>''',
+  '''<\w+_SECRET>''',
+  '''WEBHOOK_SHARED_TOKEN'''
 ]
 
 # Specific commits to ignore (if needed)

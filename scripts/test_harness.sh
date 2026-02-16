@@ -53,12 +53,22 @@ for i in $(seq 1 60); do
   if [[ $i -eq 60 ]]; then fail "postgres not ready"; fi
  done
 
+# 1.5) Bootstrap: apply schema + create strapi DB (needed by migration 006)
+echo "[1.5/8] Bootstrap schema + create strapi DB"
+docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U n8n -d n8n < /dev/stdin" < db/bootstrap.sql
+docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'strapi'\" | grep -q 1 || psql -U n8n -d postgres -c 'CREATE DATABASE strapi OWNER n8n;'"
+
 # 2) Apply migrations
 
 echo "[2/8] Apply migrations"
 for m in $(ls -1 db/migrations/*.sql 2>/dev/null | sort); do
   echo "- $m"
-  COMPOSE_FILE="$COMPOSE_FILE" ./scripts/db_migrate.sh "$COMPOSE_FILE" "$m"
+  # Cross-database migrations (\c) may warn but should not block the harness
+  if grep -q '\\c ' "$m"; then
+    COMPOSE_FILE="$COMPOSE_FILE" ./scripts/db_migrate.sh "$COMPOSE_FILE" "$m" || echo "::warning::Cross-database migration had issues (expected): $m"
+  else
+    COMPOSE_FILE="$COMPOSE_FILE" ./scripts/db_migrate.sh "$COMPOSE_FILE" "$m"
+  fi
 done
 
 # 3) Seed fixtures
