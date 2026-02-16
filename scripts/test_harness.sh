@@ -174,6 +174,19 @@ docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -v
 # Activate new endpoints
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -v ON_ERROR_STOP=1 -c \"update workflow_entity set active=true where name in ('W10 - CUSTOMER Delivery Quote (Zone + Fee + ETA)','W11 - ADMIN Delivery Zones (CRUD)','W12 - ADMIN Orders (List + Timeline)');\"" >/dev/null
 
+# Restart n8n so it registers webhooks for newly-activated workflows
+echo "Restarting n8n to register webhooks..."
+docker compose -f "$COMPOSE_FILE" restart n8n
+
+echo "Waiting for n8n to register webhooks..."
+for i in $(seq 1 60); do
+  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+  if [[ $i -eq 60 ]]; then fail "n8n did not restart"; fi
+done
+
 # 6) Up: gateway
 
 echo "[6/8] Up: gateway"
