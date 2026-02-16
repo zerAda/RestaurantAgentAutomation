@@ -95,6 +95,23 @@ for i in $(seq 1 60); do
   if [[ $i -eq 60 ]]; then fail "n8n did not start"; fi
 done
 
+# Create owner account (n8n 1.80+ requires this before webhooks work)
+echo "Setting up n8n owner account..."
+for i in $(seq 1 30); do
+  setup_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/rest/owner/setup" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"test@example.com","firstName":"Test","lastName":"User","password":"TestPassw0rd!"}')"
+  if [[ "$setup_status" == "200" ]]; then
+    echo "Owner created (200)"
+    break
+  elif [[ "$setup_status" == "400" ]]; then
+    echo "Owner already exists (400) - OK"
+    break
+  fi
+  sleep 2
+  if [[ $i -eq 30 ]]; then echo "Warning: owner setup returned $setup_status (may be fine)"; fi
+done
+
 # 5) Import workflows
 # Note: Webhook triggers must be active to receive requests.
 # n8n 1.80+ import:workflow expects array format [{}], not single object {}
@@ -197,13 +214,23 @@ for i in $(seq 1 90); do
 done
 
 # Give n8n extra time to register webhooks after HTTP is ready
-sleep 10
+sleep 15
+echo "n8n container logs (last 30 lines):"
+docker compose -f "$COMPOSE_FILE" logs --tail=30 n8n 2>&1 || true
+
 echo "Checking n8n webhook registration (direct)..."
 direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
   -H "Content-Type: application/json" \
   -H "x-webhook-token: test" \
   -d '{"text":"check","from":"check","msgId":"check-1"}')"
 echo "Direct n8n webhook status: $direct_status (404=not registered, other=registered)"
+
+# Also try /webhook-waiting/ path (n8n production webhook format)
+direct_status2="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook-waiting/v1/inbound/whatsapp" \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-token: test" \
+  -d '{"text":"check","from":"check","msgId":"check-2"}')"
+echo "Direct n8n webhook-waiting status: $direct_status2"
 
 # 6) Up: gateway
 
