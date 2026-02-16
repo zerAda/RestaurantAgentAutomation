@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Clock, CheckCircle, Truck, MoreHorizontal } from "lucide-react";
-import { useOrders, useUpdateOrderStatus, OrderStatus } from "@/services/orders";
+import { useOrders, useUpdateOrderStatus, type OrderStatus } from "@/services/orders";
 
 const COLUMNS: { id: OrderStatus; label: string; icon: React.ElementType; color: string }[] = [
     { id: 'NEW', label: 'Nouvelles', icon: Clock, color: 'bg-blue-50 text-blue-700' },

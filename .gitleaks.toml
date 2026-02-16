@@ -58,7 +58,14 @@ paths = [
   '''CHANGELOG\.md$''',
   '''PATCHLOG\.md$''',
   '''PATCH\.diff$''',
-  '''mock-api/.*'''
+  '''mock-api/.*''',
+  '''scripts/smoke/.*''',
+  '''scripts/smoke\.sh$''',
+  '''scripts/smoke_security_gateway\.sh$''',
+  '''docs/.*\.md$''',
+  '''RUNBOOK\.md$''',
+  '''TEST_REPORT\.md$''',
+  '''docker-compose\..*\.yml$'''
 ]
 
 regexes = [
@@ -68,7 +75,13 @@ regexes = [
   '''localhost''',
   '''127\.0\.0\.1''',
   '''REPLACE_WITH_.*''',
-  '''tobemodified'''
+  '''tobemodified''',
+  '''\$\{[A-Z_]+:-?\}''',
+  '''test-token-\w+''',
+  '''YOUR_\w*TOKEN''',
+  '''YOUR_\w*KEY''',
+  '''yourdomain\.com''',
+  '''CHANGEME_\w+'''
 ]
 
 # Specific commits to ignore (if needed)

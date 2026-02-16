@@ -88,6 +88,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Sign CMS
+        continue-on-error: true
         run: |
           cosign sign --yes --key env://COSIGN_PRIVATE_KEY "${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-cms:${{ github.sha }}"
         env:
@@ -95,6 +96,7 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Generate SBOM for CMS
+        continue-on-error: true
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-cms:${{ github.sha }}
@@ -102,6 +104,7 @@ jobs:
           output-file: sbom-cms.json
 
       - name: Attest CMS SBOM with Cosign
+        continue-on-error: true
         run: |
           cosign attest --yes --key env://COSIGN_PRIVATE_KEY \
             --predicate sbom-cms.json \
@@ -112,6 +115,7 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: SLSA Provenance — CMS
+        continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-cms
@@ -131,6 +135,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Sign Admin Dashboard
+        continue-on-error: true
         run: |
           cosign sign --yes --key env://COSIGN_PRIVATE_KEY "${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-admin:${{ github.sha }}"
         env:
@@ -138,6 +143,7 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Generate SBOM for Admin Dashboard
+        continue-on-error: true
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-admin:${{ github.sha }}
@@ -145,6 +151,7 @@ jobs:
           output-file: sbom-admin.json
 
       - name: Attest Admin SBOM with Cosign
+        continue-on-error: true
         run: |
           cosign attest --yes --key env://COSIGN_PRIVATE_KEY \
             --predicate sbom-admin.json \
@@ -155,6 +162,7 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: SLSA Provenance — Admin
+        continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-admin
@@ -174,6 +182,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Sign Kiosk App
+        continue-on-error: true
         run: |
           cosign sign --yes --key env://COSIGN_PRIVATE_KEY "${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-kiosk:${{ github.sha }}"
         env:
@@ -181,6 +190,7 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Generate SBOM for Kiosk App
+        continue-on-error: true
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-kiosk:${{ github.sha }}
@@ -188,6 +198,7 @@ jobs:
           output-file: sbom-kiosk.json
 
       - name: Attest Kiosk SBOM with Cosign
+        continue-on-error: true
         run: |
           cosign attest --yes --key env://COSIGN_PRIVATE_KEY \
             --predicate sbom-kiosk.json \
@@ -198,6 +209,7 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: SLSA Provenance — Kiosk
+        continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-kiosk

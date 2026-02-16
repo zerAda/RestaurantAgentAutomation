@@ -109,7 +109,7 @@ jobs:
           echo "=== Running VPS Pre-checks ==="
 
           # Execute pre-checks via SSH
-          RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+          RESULT=$(ssh -T -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
 
           set -e

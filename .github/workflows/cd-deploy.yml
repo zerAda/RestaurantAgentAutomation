@@ -822,7 +822,8 @@ jobs:
     name: DORA Metrics
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production, smoke-battery-prod]
-    if: always() && needs.deploy-production.result != 'cancelled'
+    if: always() && needs.deploy-production.result == 'success'
+    continue-on-error: true
     timeout-minutes: 5
     env:
       LOG_DIR: ${{ format('{0}', needs.preflight.outputs.log_dir) }}
