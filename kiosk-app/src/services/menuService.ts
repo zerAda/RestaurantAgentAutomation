@@ -53,11 +53,30 @@ function getRestaurantId(): string {
     return restaurantId;
 }
 
+// Strapi API response types (handles both v3 flat and v4 nested formats)
+interface StrapiProductAttributes {
+    id?: number | string;
+    marketing_name?: string;
+    name?: string;
+    price?: number;
+    category?: string;
+    image_url?: string;
+    image?: { data?: { attributes?: { url?: string } } };
+    description_multilang?: { fr?: string };
+    description?: string;
+    stock_quantity?: number;
+}
+
+type StrapiProductData = StrapiProductAttributes & {
+    id?: number | string;
+    attributes?: StrapiProductAttributes;
+};
+
 // Helper: Transform Strapi product to Product interface
-function transformProduct(data: any): Product {
-    const attr = data.attributes || data;
+function transformProduct(data: StrapiProductData): Product {
+    const attr: StrapiProductAttributes = data.attributes || data;
     return {
-        id: data.id?.toString() || attr.id?.toString(),
+        id: data.id?.toString() || attr.id?.toString() || '',
         name: attr.marketing_name || attr.name || 'Unnamed Product',
         price: attr.price || 0,
         category: attr.category || 'Other',
@@ -134,7 +153,7 @@ export const menuService = {
             const json = await response.json();
             const categories = [...new Set(
                 (json.data || [])
-                    .map((item: any) => item.attributes?.category)
+                    .map((item: StrapiProductData) => item.attributes?.category)
                     .filter(Boolean)
             )].sort();
 

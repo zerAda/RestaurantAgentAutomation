@@ -2,7 +2,7 @@
 // Uses Web Audio API for synthesized sounds to avoid loading heavy assets for now
 
 export const playSound = (type: 'swipe' | 'select' | 'ambient') => {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
     if (!AudioContext) return;
 
     const ctx = new AudioContext();

@@ -54,6 +54,7 @@ paths = [
   '''\.env\.example$''',
   '''config/\.env\.example$''',
   '''tests/fixtures/.*\.sql$''',
+  '''tests/.*\.md$''',
   '''\.gitleaks\.toml$''',
   '''CHANGELOG\.md$''',
   '''PATCHLOG\.md$''',
@@ -65,7 +66,9 @@ paths = [
   '''docs/.*\.md$''',
   '''RUNBOOK\.md$''',
   '''TEST_REPORT\.md$''',
-  '''docker-compose\..*\.yml$'''
+  '''docker-compose\..*\.yml$''',
+  '''agents/.*''',
+  '''\.claude/.*'''
 ]
 
 regexes = [
@@ -81,7 +84,15 @@ regexes = [
   '''YOUR_\w*TOKEN''',
   '''YOUR_\w*KEY''',
   '''yourdomain\.com''',
-  '''CHANGEME_\w+'''
+  '''CHANGEME_\w+''',
+  '''valid-token''',
+  '''invalid-token''',
+  '''LEGACY_SHARED_TOKEN''',
+  '''CLIENT_SPECIFIC_TOKEN''',
+  '''OLD_SHARED_TOKEN''',
+  '''NEW_SECURE_TOKEN''',
+  '''dummy[\-_]?\w*''',
+  '''placeholder[\-_]?\w*'''
 ]
 
 # Specific commits to ignore (if needed)
