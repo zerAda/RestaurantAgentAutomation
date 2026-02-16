@@ -25,6 +25,7 @@ need() { command -v "$1" >/dev/null 2>&1 || fail "Missing dependency: $1"; }
 
 need docker
 need curl
+need jq
 
 docker compose version >/dev/null 2>&1 || fail "docker compose is required"
 
@@ -112,102 +113,102 @@ for i in $(seq 1 30); do
   if [[ $i -eq 30 ]]; then echo "Warning: owner setup returned $setup_status (may be fine)"; fi
 done
 
-# 5) Import workflows
-# Note: Webhook triggers must be active to receive requests.
-# n8n 1.80+ import:workflow expects array format [{}], not single object {}
-
-import_wf() {
-  local wf_path="$1"
-  local label="$2"
-  docker compose -f "$COMPOSE_FILE" exec -T n8n sh -c "
-    node -e \"
-      const fs = require('fs');
-      const d = JSON.parse(fs.readFileSync('$wf_path', 'utf8'));
-      const a = Array.isArray(d) ? d : [d];
-      fs.writeFileSync('/tmp/_import.json', JSON.stringify(a));
-    \" && n8n import:workflow --input=/tmp/_import.json
-  " || fail "import $label failed"
-}
+# 5) Import workflows via n8n REST API
+# Using the REST API (not CLI import) ensures proper workflow ownership
+# and correct webhook registration on activation.
+# CLI import creates DB records but skips the shared_workflow ownership table,
+# which causes n8n 1.80+ to silently skip webhook route registration.
 
 echo "[5/8] Import workflows"
-# Import CORE first
 
-import_wf /opt/resto/workflows/W4_CORE.json "CORE"
-
-# Import ADMIN WA Support Console (W14) (required for admin WhatsApp piloting)
-import_wf /opt/resto/workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json "W14 admin WA console"
-
-# Get core ID
-core_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name like '%W4 - CORE Agent%' order by id desc limit 1;\"" | tr -d '\r' | xargs)"
-echo "Extracted CORE workflow ID: '$core_id'"
-[[ -n "$core_id" ]] || fail "CORE workflow ID not found after import"
-
-# Get W14 ID
-admin_wa_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name like '%W14 - ADMIN WA Support Console%' order by id desc limit 1;\"" | tr -d '\r' | xargs)"
-echo "Extracted ADMIN WA workflow ID: '$admin_wa_id'"
-[[ -n "$admin_wa_id" ]] || fail "W14 workflow ID not found after import"
-
-# Export IDs so all subsequent docker compose commands see them
-export CORE_WORKFLOW_ID="$core_id"
-export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
-
-# Recreate n8n with CORE_WORKFLOW_ID set
-
-echo "Recreating n8n with CORE_WORKFLOW_ID=$core_id and ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
-docker compose -f "$COMPOSE_FILE" stop n8n
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
-
-# Wait for n8n to be ready after recreate
-echo "Waiting for n8n to be ready after recreate..."
-for i in $(seq 1 60); do
-  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-  if [[ $i -eq 60 ]]; then fail "n8n did not start after recreate"; fi
-done
-
-# Import remaining workflows
-for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json W8_OPS.json; do
-  import_wf "/opt/resto/workflows/$wf" "$wf"
-done
-
-# Admin workflows
-import_wf /opt/resto/workflows/W9_ADMIN_PING.json "W9 admin"
-import_wf /opt/resto/workflows/W11_ADMIN_DELIVERY_ZONES.json "W11 admin zones"
-import_wf /opt/resto/workflows/W12_ADMIN_ORDERS.json "W12 admin orders"
-
-# Customer workflows
-import_wf /opt/resto/workflows/W10_CUSTOMER_DELIVERY_QUOTE.json "W10 customer quote"
-
-# Activate workflows via n8n REST API (registers webhooks in-process).
-# Only activate workflows that have webhook/trigger nodes.
-# W4 (CORE) and W8 (OPS cron) are called internally — do NOT activate.
-# W14 (ADMIN WA Console) has no trigger node — do NOT activate.
-
+# Login to n8n API
 echo "Logging into n8n API..."
 N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
 [[ -n "$N8N_COOKIE" ]] || fail "n8n API login failed"
 
-echo "Activating webhook workflows via API..."
-ACTIVATE_FAILED=0
-wf_ids="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -Atc \"SELECT id FROM workflow_entity WHERE name NOT LIKE '%W4 -%' AND name NOT LIKE '%W8 -%' AND name NOT LIKE '%W14 -%' ORDER BY name;\"")"
-for wf_id in $wf_ids; do
-  wf_id="$(echo "$wf_id" | tr -d '\r')"
-  [[ -z "$wf_id" ]] && continue
-  wf_name="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-    "psql -U n8n -d n8n -Atc \"SELECT name FROM workflow_entity WHERE id='$wf_id';\"" | tr -d '\r')"
-  act_status="$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
+# Helper: create workflow via REST API (handles ownership + activation + webhook registration)
+# Usage: id="$(create_wf path/to/file.json "label" true|false)"
+# Status messages → stderr; workflow ID → stdout.
+create_wf() {
+  local wf_file="$1"
+  local label="$2"
+  local active="${3:-false}"
+
+  jq "del(.id) | .active = $active" \
+    "$ROOT_DIR/$wf_file" > /tmp/_wf_payload.json || fail "preprocess $label failed"
+
+  local resp
+  resp="$(curl -s -X POST "http://localhost:25678/rest/workflows" \
     -H "Content-Type: application/json" \
     -H "cookie: n8n-auth=$N8N_COOKIE" \
-    -d '{"active":true}')"
-  echo "  $wf_name → $act_status"
-  [[ "$act_status" == "200" ]] || ACTIVATE_FAILED=$((ACTIVATE_FAILED + 1))
+    -d @/tmp/_wf_payload.json)"
+
+  local wf_id
+  wf_id="$(echo "$resp" | jq -r '.data.id // empty' 2>/dev/null)"
+
+  if [[ -n "$wf_id" && "$wf_id" != "null" ]]; then
+    echo "  $label → created (id=$wf_id, active=$active)" >&2
+    printf "%s" "$wf_id"
+  else
+    local msg
+    msg="$(echo "$resp" | jq -r '.message // "unknown error"' 2>/dev/null)"
+    echo "  $label → FAILED: $msg" >&2
+    return 1
+  fi
+}
+
+# Phase 1: Import internal workflows (inactive, no webhook needed)
+core_id="$(create_wf workflows/W4_CORE.json "W4 CORE" false)" || fail "W4 import failed"
+admin_wa_id="$(create_wf workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json "W14 ADMIN WA" false)" || fail "W14 import failed"
+
+echo "CORE_WORKFLOW_ID=$core_id"
+echo "ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
+export CORE_WORKFLOW_ID="$core_id"
+export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
+
+# Phase 2: Recreate n8n with CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID
+echo "Recreating n8n with workflow IDs..."
+docker compose -f "$COMPOSE_FILE" stop n8n
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
+
+echo "Waiting for n8n after recreate..."
+for i in $(seq 1 60); do
+  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then break; fi
+  sleep 2
+  if [[ $i -eq 60 ]]; then fail "n8n did not start after recreate"; fi
 done
-[[ "$ACTIVATE_FAILED" -eq 0 ]] || echo "::warning::$ACTIVATE_FAILED workflow(s) failed to activate"
+
+# Re-login after recreate (new process = new sessions)
+echo "Re-logging into n8n API..."
+N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
+[[ -n "$N8N_COOKIE" ]] || fail "n8n API re-login failed"
+
+# Phase 3: Import webhook workflows (active=true → registers webhook routes)
+echo "Creating webhook workflows (active)..."
+ACTIVATE_FAILED=0
+for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
+          W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
+          W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
+  create_wf "workflows/$wf" "$wf" true > /dev/null || {
+    echo "::warning::Failed to create $wf"
+    ACTIVATE_FAILED=$((ACTIVATE_FAILED + 1))
+  }
+done
+
+# Import non-webhook workflow (inactive)
+create_wf workflows/W8_OPS.json "W8 OPS" false > /dev/null || echo "::warning::W8 import failed"
+
+[[ "$ACTIVATE_FAILED" -eq 0 ]] || echo "::warning::$ACTIVATE_FAILED workflow(s) failed to create/activate"
+
+# Quick webhook sanity check (direct, bypassing gateway)
+direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"sanity","from":"sanity","msgId":"sanity-check"}')"
+echo "Direct webhook check: $direct_status"
 
 # 6) Up: gateway
 
