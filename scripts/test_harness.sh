@@ -180,43 +180,30 @@ import_wf /opt/resto/workflows/W12_ADMIN_ORDERS.json "W12 admin orders"
 # Customer workflows
 import_wf /opt/resto/workflows/W10_CUSTOMER_DELIVERY_QUOTE.json "W10 customer quote"
 
-# Activate needed workflows
+# Activate workflows via n8n REST API (properly registers webhooks)
+# SQL UPDATE alone doesn't register webhooks in n8n's memory
 
-echo "Activating webhook workflows..."
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -c \"update workflow_entity set active=true where name in ('W1 - IN WhatsApp Adapter (Secure + Fast ACK)','W2 - IN Instagram Adapter (Secure)','W3 - IN Messenger Adapter (Secure)','W9 - ADMIN Ping (Scopes Enforced)');\""
+echo "Logging into n8n API..."
+N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
+echo "Auth cookie obtained: ${N8N_COOKIE:+yes}"
 
-# Internal workflows used via ExecuteWorkflow
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -c \"update workflow_entity set active=true where name in ('W14 - ADMIN WA Support Console');\""
-
-# Activate new endpoints
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -c \"update workflow_entity set active=true where name in ('W10 - CUSTOMER Delivery Quote (Zone + Fee + ETA)','W11 - ADMIN Delivery Zones (CRUD)','W12 - ADMIN Orders (List + Timeline)');\""
-
-# Verify activations
-echo "Active workflows in DB:"
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select name, active from workflow_entity order by name;\""
-
-# Full stop/start n8n so it registers webhooks for active workflows
-echo "Stopping n8n for full restart..."
-docker compose -f "$COMPOSE_FILE" stop n8n
-sleep 2
-
-echo "Starting n8n (fresh start to register webhooks)..."
-docker compose -f "$COMPOSE_FILE" up -d n8n
-
-echo "Waiting for n8n to fully initialize..."
-for i in $(seq 1 90); do
-  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then
-    echo "n8n HTTP ready after ${i}x2s"
-    break
-  fi
-  sleep 2
-  if [[ $i -eq 90 ]]; then fail "n8n did not start"; fi
+echo "Activating workflows via n8n API..."
+wf_ids="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name not like '%W4%' and name not like '%W8%' order by name;\"")"
+for wf_id in $wf_ids; do
+  wf_id="$(echo "$wf_id" | tr -d '\r')"
+  [[ -z "$wf_id" ]] && continue
+  wf_name="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select name from workflow_entity where id='$wf_id';\"" | tr -d '\r')"
+  act_status="$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
+    -H "Content-Type: application/json" \
+    -H "cookie: n8n-auth=$N8N_COOKIE" \
+    -d '{"active": true}')"
+  echo "  Activated $wf_name ($wf_id): HTTP $act_status"
 done
 
-# Give n8n extra time to register webhooks after HTTP is ready
-sleep 15
-echo "n8n container logs (last 30 lines):"
-docker compose -f "$COMPOSE_FILE" logs --tail=30 n8n 2>&1 || true
+# Give n8n a moment to register all webhooks
+sleep 5
 
 echo "Checking n8n webhook registration (direct)..."
 direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
@@ -224,13 +211,6 @@ direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhos
   -H "x-webhook-token: test" \
   -d '{"text":"check","from":"check","msgId":"check-1"}')"
 echo "Direct n8n webhook status: $direct_status (404=not registered, other=registered)"
-
-# Also try /webhook-waiting/ path (n8n production webhook format)
-direct_status2="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook-waiting/v1/inbound/whatsapp" \
-  -H "Content-Type: application/json" \
-  -H "x-webhook-token: test" \
-  -d '{"text":"check","from":"check","msgId":"check-2"}')"
-echo "Direct n8n webhook-waiting status: $direct_status2"
 
 # 6) Up: gateway
 
