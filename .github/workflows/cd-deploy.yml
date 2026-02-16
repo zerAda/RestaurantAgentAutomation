@@ -332,7 +332,7 @@ jobs:
           fi
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.3.0
+        uses: sigstore/cosign-installer@v4.0.0
 
       - name: Verify Image Signatures
         env:
