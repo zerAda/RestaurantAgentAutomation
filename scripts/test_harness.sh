@@ -192,19 +192,20 @@ echo "[7/8] Smoke tests"
 
 curl -fsS "$BASE_URL/healthz" >/dev/null && echo "✅ healthz"
 
-# Wait for n8n to be reachable through the gateway (502 = n8n still starting)
-echo "Waiting for n8n behind gateway..."
-for i in $(seq 1 30); do
+# Wait for n8n webhooks to be registered through the gateway
+# 502 = n8n not started, 404 = n8n started but webhooks not yet loaded
+echo "Waiting for n8n webhooks behind gateway..."
+for i in $(seq 1 60); do
   gw_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/v1/inbound/whatsapp" \
     -H "Content-Type: application/json" \
     -H "x-webhook-token: $INBOUND_TOKEN" \
     -d '{"text":"warmup","from":"warmup","msgId":"harness-warmup-'$i'"}')"
-  if [[ "$gw_status" != "502" ]]; then
-    echo "n8n reachable (status=$gw_status)"
+  if [[ "$gw_status" != "502" && "$gw_status" != "404" && "$gw_status" != "000" ]]; then
+    echo "n8n webhooks ready (status=$gw_status)"
     break
   fi
   sleep 2
-  if [[ $i -eq 30 ]]; then fail "n8n not reachable through gateway (stuck on 502)"; fi
+  if [[ $i -eq 60 ]]; then fail "n8n webhooks not ready (last status=$gw_status)"; fi
 done
 
 # inbound valid
