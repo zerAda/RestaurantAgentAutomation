@@ -42,16 +42,16 @@ set -e
 echo "[1/8] Up: postgres + redis + mock-api"
 docker compose -f "$COMPOSE_FILE" up -d postgres redis mock-api
 
-# Wait for postgres
+# Wait for postgres (must survive initdb restart cycle)
 
 echo "Waiting for postgres..."
 for i in $(seq 1 60); do
-  if docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "pg_isready -U n8n -d n8n" >/dev/null 2>&1; then
+  if docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -c 'SELECT 1'" >/dev/null 2>&1; then
     break
   fi
-  sleep 1
+  sleep 2
   if [[ $i -eq 60 ]]; then fail "postgres not ready"; fi
- done
+done
 
 # 1.5) Create strapi DB (needed by migration 006)
 # NOTE: bootstrap.sql is already applied by docker-entrypoint-initdb.d mount in docker-compose.test.yml
