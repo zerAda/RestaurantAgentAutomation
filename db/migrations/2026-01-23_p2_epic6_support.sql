@@ -23,16 +23,17 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 );
 
 CREATE TABLE IF NOT EXISTS faq_entries (
-  id             serial PRIMARY KEY,
-  restaurant_id  uuid,
+  faq_id         bigserial PRIMARY KEY,
+  tenant_id      uuid NOT NULL,
+  restaurant_id  uuid NOT NULL,
+  locale         text NOT NULL CHECK (lower(locale) IN ('fr', 'ar')),
   question       text NOT NULL,
   answer         text NOT NULL,
-  locale         text NOT NULL DEFAULT 'fr',
-  category       text DEFAULT 'general',
-  tsv            tsvector,
-  active         boolean NOT NULL DEFAULT true,
+  tags           text[] NOT NULL DEFAULT '{}'::text[],
+  is_active      boolean NOT NULL DEFAULT true,
+  search_tsv     tsvector,
   created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz DEFAULT now()
+  updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_faq_tsv ON faq_entries USING gin(tsv);
+CREATE INDEX IF NOT EXISTS idx_faq_entries_search ON faq_entries USING GIN(search_tsv);

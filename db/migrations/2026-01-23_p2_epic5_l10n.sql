@@ -3,14 +3,13 @@
 -- This file is idempotent and safe to re-run.
 
 CREATE TABLE IF NOT EXISTS customer_preferences (
-  id               bigserial PRIMARY KEY,
-  conversation_key text NOT NULL UNIQUE,
-  locale           text NOT NULL DEFAULT 'fr',
-  ar_streak        int NOT NULL DEFAULT 0,
-  updated_at       timestamptz NOT NULL DEFAULT now()
+  tenant_id  text NOT NULL,
+  phone      text NOT NULL,
+  locale     text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, phone)
 );
-
-CREATE INDEX IF NOT EXISTS idx_customer_prefs_key ON customer_preferences (conversation_key);
 
 CREATE TABLE IF NOT EXISTS darija_patterns (
   id          serial PRIMARY KEY,

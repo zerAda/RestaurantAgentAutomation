@@ -4,11 +4,12 @@
 
 CREATE TABLE IF NOT EXISTS webhook_replay_guard (
   id             bigserial PRIMARY KEY,
-  payload_hash   text NOT NULL UNIQUE,
-  channel        text NOT NULL,
+  message_hash   varchar(64) NOT NULL,
+  message_id     varchar(255),
+  channel        varchar(20) NOT NULL DEFAULT 'whatsapp',
   received_at    timestamptz NOT NULL DEFAULT now(),
-  expires_at     timestamptz NOT NULL DEFAULT (now() + interval '5 minutes')
+  CONSTRAINT uq_replay_guard_hash_channel UNIQUE (message_hash, channel)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wrg_hash ON webhook_replay_guard (payload_hash);
-CREATE INDEX IF NOT EXISTS idx_wrg_expires ON webhook_replay_guard (expires_at);
+CREATE INDEX IF NOT EXISTS idx_replay_guard_received_at ON webhook_replay_guard (received_at);
+CREATE INDEX IF NOT EXISTS idx_replay_guard_message_id ON webhook_replay_guard (message_id) WHERE message_id IS NOT NULL;

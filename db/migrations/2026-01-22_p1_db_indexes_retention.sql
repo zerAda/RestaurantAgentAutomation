@@ -4,7 +4,7 @@
 
 -- Performance indexes (already in bootstrap.sql SECTION 7)
 CREATE INDEX IF NOT EXISTS idx_inbound_messages_created
-  ON inbound_messages (created_at);
+  ON inbound_messages (received_at);
 CREATE INDEX IF NOT EXISTS idx_outbound_messages_status
   ON outbound_messages (status);
 CREATE INDEX IF NOT EXISTS idx_outbound_messages_created
