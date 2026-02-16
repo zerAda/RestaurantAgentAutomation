@@ -53,9 +53,9 @@ for i in $(seq 1 60); do
   if [[ $i -eq 60 ]]; then fail "postgres not ready"; fi
  done
 
-# 1.5) Bootstrap: apply schema + create strapi DB (needed by migration 006)
-echo "[1.5/8] Bootstrap schema + create strapi DB"
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U n8n -d n8n < /dev/stdin" < db/bootstrap.sql
+# 1.5) Create strapi DB (needed by migration 006)
+# NOTE: bootstrap.sql is already applied by docker-entrypoint-initdb.d mount in docker-compose.test.yml
+echo "[1.5/8] Ensure strapi DB exists (for migration 006)"
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'strapi'\" | grep -q 1 || psql -U n8n -d postgres -c 'CREATE DATABASE strapi OWNER n8n;'"
 
 # 2) Apply migrations
