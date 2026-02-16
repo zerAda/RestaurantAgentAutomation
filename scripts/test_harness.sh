@@ -82,7 +82,7 @@ done
 # 4) Start n8n (CORE_WORKFLOW_ID is injected after import)
 
 echo "[4/8] Up: n8n (initial)"
-CORE_WORKFLOW_ID="" docker compose -f "$COMPOSE_FILE" up -d n8n
+docker compose -f "$COMPOSE_FILE" up -d n8n
 
 # Wait n8n port open (best-effort)
 
@@ -130,11 +130,15 @@ admin_wa_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -
 echo "Extracted ADMIN WA workflow ID: '$admin_wa_id'"
 [[ -n "$admin_wa_id" ]] || fail "W14 workflow ID not found after import"
 
+# Export IDs so all subsequent docker compose commands see them
+export CORE_WORKFLOW_ID="$core_id"
+export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
+
 # Recreate n8n with CORE_WORKFLOW_ID set
 
 echo "Recreating n8n with CORE_WORKFLOW_ID=$core_id and ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
 docker compose -f "$COMPOSE_FILE" stop n8n
-CORE_WORKFLOW_ID="$core_id" ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id" docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
 
 # Wait for n8n to be ready after recreate
 echo "Waiting for n8n to be ready after recreate..."
