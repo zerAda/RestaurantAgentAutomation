@@ -166,7 +166,7 @@ import_wf /opt/resto/workflows/W10_CUSTOMER_DELIVERY_QUOTE.json "W10 customer qu
 # Activate needed workflows
 
 echo "Activating webhook workflows..."
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -v ON_ERROR_STOP=1 -c \"update workflow_entity set active=true where name in ('W1 - INBOUND WhatsApp (Safe Parse + Auth + Idempotency)','W2 - INBOUND Instagram (Safe Parse + Auth + Idempotency)','W3 - INBOUND Messenger (Safe Parse + Auth + Idempotency)','W9 - ADMIN Ping (Scopes Enforced)');\"" >/dev/null
+docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -v ON_ERROR_STOP=1 -c \"update workflow_entity set active=true where name in ('W1 - IN WhatsApp Adapter (Secure + Fast ACK)','W2 - IN Instagram Adapter (Secure)','W3 - IN Messenger Adapter (Secure)','W9 - ADMIN Ping (Scopes Enforced)');\"" >/dev/null
 
 # Internal workflows used via ExecuteWorkflow
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -v ON_ERROR_STOP=1 -c \"update workflow_entity set active=true where name in ('W14 - ADMIN WA Support Console');\"" >/dev/null
