@@ -180,50 +180,43 @@ import_wf /opt/resto/workflows/W12_ADMIN_ORDERS.json "W12 admin orders"
 # Customer workflows
 import_wf /opt/resto/workflows/W10_CUSTOMER_DELIVERY_QUOTE.json "W10 customer quote"
 
-# Activate workflows via n8n REST API (properly registers webhooks)
-# SQL UPDATE alone doesn't register webhooks in n8n's memory
+# Activate workflows via n8n REST API (registers webhooks in-process).
+# Only activate workflows that have webhook/trigger nodes.
+# W4 (CORE) and W8 (OPS cron) are called internally — do NOT activate.
+# W14 (ADMIN WA Console) has no trigger node — do NOT activate.
 
 echo "Logging into n8n API..."
 N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
-echo "Auth cookie obtained: ${N8N_COOKIE:+yes}"
+[[ -n "$N8N_COOKIE" ]] || fail "n8n API login failed"
 
-echo "Activating workflows via n8n API..."
-wf_ids="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name not like '%W4%' and name not like '%W8%' order by name;\"")"
+echo "Activating webhook workflows via API..."
+ACTIVATE_FAILED=0
+wf_ids="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+  "psql -U n8n -d n8n -Atc \"SELECT id FROM workflow_entity WHERE name NOT LIKE '%W4 -%' AND name NOT LIKE '%W8 -%' AND name NOT LIKE '%W14 -%' ORDER BY name;\"")"
 for wf_id in $wf_ids; do
   wf_id="$(echo "$wf_id" | tr -d '\r')"
   [[ -z "$wf_id" ]] && continue
-  wf_name="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select name from workflow_entity where id='$wf_id';\"" | tr -d '\r')"
+  wf_name="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+    "psql -U n8n -d n8n -Atc \"SELECT name FROM workflow_entity WHERE id='$wf_id';\"" | tr -d '\r')"
   act_status="$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
     -H "Content-Type: application/json" \
     -H "cookie: n8n-auth=$N8N_COOKIE" \
-    -d '{"active": true}')"
-  echo "  Activated $wf_name ($wf_id): HTTP $act_status"
+    -d '{"active":true}')"
+  echo "  $wf_name → $act_status"
+  [[ "$act_status" == "200" ]] || ACTIVATE_FAILED=$((ACTIVATE_FAILED + 1))
 done
-
-# Give n8n a moment to register all webhooks
-sleep 5
-
-echo "Checking n8n webhook registration (direct)..."
-direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
-  -H "Content-Type: application/json" \
-  -H "x-webhook-token: test" \
-  -d '{"text":"check","from":"check","msgId":"check-1"}')"
-echo "Direct n8n webhook status: $direct_status (404=not registered, other=registered)"
+[[ "$ACTIVATE_FAILED" -eq 0 ]] || echo "::warning::$ACTIVATE_FAILED workflow(s) failed to activate"
 
 # 6) Up: gateway
 
 echo "[6/8] Up: gateway"
 docker compose -f "$COMPOSE_FILE" up -d gateway
 
-# Wait gateway health
-
 echo "Waiting for gateway /healthz..."
 for i in $(seq 1 60); do
-  if curl -fsS "$BASE_URL/healthz" >/dev/null 2>&1; then
-    break
-  fi
+  if curl -fsS "$BASE_URL/healthz" >/dev/null 2>&1; then break; fi
   sleep 1
   if [[ $i -eq 60 ]]; then fail "gateway not ready"; fi
 done
@@ -231,13 +224,11 @@ done
 # 7) Smoke tests
 
 echo "[7/8] Smoke tests"
-
 curl -fsS "$BASE_URL/healthz" >/dev/null && echo "✅ healthz"
 
-# Wait for n8n webhooks to be registered through the gateway
-# 502 = n8n not started, 404 = n8n started but webhooks not yet loaded
+# Wait for n8n webhooks to respond through gateway (502/404 = not ready yet)
 echo "Waiting for n8n webhooks behind gateway..."
-for i in $(seq 1 60); do
+for i in $(seq 1 45); do
   gw_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/v1/inbound/whatsapp" \
     -H "Content-Type: application/json" \
     -H "x-webhook-token: $INBOUND_TOKEN" \
@@ -247,7 +238,11 @@ for i in $(seq 1 60); do
     break
   fi
   sleep 2
-  if [[ $i -eq 60 ]]; then fail "n8n webhooks not ready (last status=$gw_status)"; fi
+  if [[ $i -eq 45 ]]; then
+    echo "::error::n8n webhooks not ready (last=$gw_status). n8n logs:"
+    docker compose -f "$COMPOSE_FILE" logs --tail=20 n8n 2>&1 || true
+    fail "n8n webhooks not ready after 90s (last status=$gw_status)"
+  fi
 done
 
 # inbound valid
