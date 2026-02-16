@@ -97,14 +97,28 @@ done
 
 # 5) Import workflows
 # Note: Webhook triggers must be active to receive requests.
+# n8n 1.80+ import:workflow expects array format [{}], not single object {}
+
+import_wf() {
+  local wf_path="$1"
+  local label="$2"
+  docker compose -f "$COMPOSE_FILE" exec -T n8n sh -c "
+    node -e \"
+      const fs = require('fs');
+      const d = JSON.parse(fs.readFileSync('$wf_path', 'utf8'));
+      const a = Array.isArray(d) ? d : [d];
+      fs.writeFileSync('/tmp/_import.json', JSON.stringify(a));
+    \" && n8n import:workflow --input=/tmp/_import.json
+  " || fail "import $label failed"
+}
 
 echo "[5/8] Import workflows"
 # Import CORE first
 
-docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W4_CORE.json" || fail "import CORE failed"
+import_wf /opt/resto/workflows/W4_CORE.json "CORE"
 
 # Import ADMIN WA Support Console (W14) (required for admin WhatsApp piloting)
-docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json" || fail "import W14 admin WA console failed"
+import_wf /opt/resto/workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json "W14 admin WA console"
 
 # Get core ID
 core_id="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -Atc \"select id from workflow_entity where name like '%W4 - CORE Agent%' order by id desc limit 1;\"" | tr -d '\r' | xargs)"
@@ -124,16 +138,16 @@ CORE_WORKFLOW_ID="$core_id" ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id" docker c
 
 # Import remaining workflows
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json W8_OPS.json; do
-  docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/$wf" || fail "import $wf failed"
+  import_wf "/opt/resto/workflows/$wf" "$wf"
 done
 
 # Admin workflows
-docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W9_ADMIN_PING.json" || fail "import W9 admin failed"
-docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W11_ADMIN_DELIVERY_ZONES.json" || fail "import W11 admin zones failed"
-docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W12_ADMIN_ORDERS.json" || fail "import W12 admin orders failed"
+import_wf /opt/resto/workflows/W9_ADMIN_PING.json "W9 admin"
+import_wf /opt/resto/workflows/W11_ADMIN_DELIVERY_ZONES.json "W11 admin zones"
+import_wf /opt/resto/workflows/W12_ADMIN_ORDERS.json "W12 admin orders"
 
 # Customer workflows
-docker compose -f "$COMPOSE_FILE" exec -T n8n sh -lc "n8n import:workflow --input=/opt/resto/workflows/W10_CUSTOMER_DELIVERY_QUOTE.json" || fail "import W10 customer quote failed"
+import_wf /opt/resto/workflows/W10_CUSTOMER_DELIVERY_QUOTE.json "W10 customer quote"
 
 # Activate needed workflows
 
