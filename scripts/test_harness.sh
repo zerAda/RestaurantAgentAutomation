@@ -187,7 +187,9 @@ N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
   -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
 [[ -n "$N8N_COOKIE" ]] || fail "n8n API re-login failed"
 
-# Phase 3: Import webhook workflows (active=true → registers webhook routes)
+# Phase 3: Import webhook workflows (active=true in DB).
+# Note: REST API activation does NOT register Express routes (n8n bug #21614).
+# We set active=true now; the n8n restart below triggers actual registration.
 echo "Creating webhook workflows (active)..."
 ACTIVATE_FAILED=0
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
@@ -203,6 +205,19 @@ done
 create_wf workflows/W8_OPS.json "W8 OPS" false > /dev/null || echo "::warning::W8 import failed"
 
 [[ "$ACTIVATE_FAILED" -eq 0 ]] || echo "::warning::$ACTIVATE_FAILED workflow(s) failed to create/activate"
+
+# n8n bug workaround (n8n-io/n8n#21614): REST API activation does NOT register
+# webhook Express routes. Restart n8n so the startup code reads active workflows
+# from the DB and registers their webhooks.
+echo "Restarting n8n to register webhooks (n8n#21614 workaround)..."
+docker compose -f "$COMPOSE_FILE" restart n8n
+
+echo "Waiting for n8n after restart..."
+for i in $(seq 1 60); do
+  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then break; fi
+  sleep 2
+  if [[ $i -eq 60 ]]; then fail "n8n did not restart"; fi
+done
 
 # Quick webhook sanity check (direct, bypassing gateway)
 direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
