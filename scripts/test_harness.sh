@@ -89,7 +89,7 @@ docker compose -f "$COMPOSE_FILE" up -d n8n
 # n8n 1.93+ returns "n8n is starting up. Please wait" while running migrations.
 echo "Waiting for n8n to start..."
 for i in $(seq 1 90); do
-  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null)"
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
   if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
   sleep 2
   if [[ $i -eq 90 ]]; then fail "n8n did not start (still initializing after 180s)"; fi
@@ -200,7 +200,7 @@ docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
 
 echo "Waiting for n8n after recreate..."
 for i in $(seq 1 90); do
-  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null)"
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
   if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
   sleep 2
   if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
@@ -239,7 +239,7 @@ docker compose -f "$COMPOSE_FILE" up -d n8n
 
 echo "Waiting for n8n after recreate..."
 for i in $(seq 1 90); do
-  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null)"
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
   if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
   sleep 2
   if [[ $i -eq 90 ]]; then fail "n8n did not restart"; fi
