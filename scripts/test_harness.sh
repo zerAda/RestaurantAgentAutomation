@@ -219,11 +219,39 @@ for i in $(seq 1 60); do
   if [[ $i -eq 60 ]]; then fail "n8n did not restart"; fi
 done
 
+# Extra wait for async webhook registration after HTTP server is up
+sleep 10
+
+# Re-login after restart (sessions are in-memory, lost on restart)
+echo "Re-logging into n8n API (post-restart)..."
+N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
+
+# Diagnostic: list active workflows via REST API
+echo "Active workflows after restart:"
+curl -s "http://localhost:25678/rest/workflows" \
+  -H "cookie: n8n-auth=$N8N_COOKIE" | jq -r '.data[] | "\(.name) active=\(.active)"' 2>/dev/null || echo "  (could not list)"
+
 # Quick webhook sanity check (direct, bypassing gateway)
-direct_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
+echo "Direct webhook check (production path)..."
+direct_resp="$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
   -H "Content-Type: application/json" \
   -d '{"text":"sanity","from":"sanity","msgId":"sanity-check"}')"
-echo "Direct webhook check: $direct_status"
+direct_status="${direct_resp##*HTTP_CODE:}"
+direct_body="${direct_resp%$'\n'HTTP_CODE:*}"
+echo "  Status: $direct_status"
+echo "  Body: $(echo "$direct_body" | head -c 300)"
+
+# Also test the webhook-test path (editor/test mode)
+test_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook-test/v1/inbound/whatsapp" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"sanity","from":"sanity","msgId":"sanity-check-test"}')"
+echo "  webhook-test path: $test_status"
+
+# Capture last 40 lines of n8n logs for debugging
+echo "n8n container logs (last 40 lines):"
+docker compose -f "$COMPOSE_FILE" logs --tail=40 n8n 2>&1 || true
 
 # 6) Up: gateway
 
