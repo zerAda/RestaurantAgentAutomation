@@ -96,10 +96,15 @@ for i in $(seq 1 60); do
   if [[ $i -eq 60 ]]; then fail "n8n did not start"; fi
 done
 
+# Cookie jar for n8n API auth (version-agnostic)
+N8N_JAR="/tmp/n8n_cookies"
+
 # Create owner account (n8n 1.80+ requires this before webhooks work)
+# Also captures the auth cookie set by the setup response.
 echo "Setting up n8n owner account..."
 for i in $(seq 1 30); do
-  setup_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/rest/owner/setup" \
+  setup_status="$(curl -s -o /tmp/n8n_setup_resp.json -w "%{http_code}" -c "$N8N_JAR" \
+    -X POST "http://localhost:25678/rest/owner/setup" \
     -H "Content-Type: application/json" \
     -d '{"email":"test@example.com","firstName":"Test","lastName":"User","password":"TestPassw0rd!"}')"
   if [[ "$setup_status" == "200" ]]; then
@@ -121,19 +126,33 @@ done
 
 echo "[5/8] Import workflows"
 
-# Login to n8n API (cookie-jar approach, version-agnostic)
-N8N_JAR="/tmp/n8n_cookies"
+# Login helper: saves session cookies to jar
 n8n_login() {
   rm -f "$N8N_JAR"
-  local status
-  status="$(curl -s -o /dev/null -w "%{http_code}" -c "$N8N_JAR" -X POST "http://localhost:25678/rest/login" \
+  local resp_code
+  resp_code="$(curl -s -o /tmp/n8n_login_resp.json -w "%{http_code}" -c "$N8N_JAR" \
+    -X POST "http://localhost:25678/rest/login" \
     -H "Content-Type: application/json" \
     -d '{"email":"test@example.com","password":"TestPassw0rd!"}')"
-  [[ "$status" == "200" ]] || return 1
-  [[ -s "$N8N_JAR" ]] || return 1
+  if [[ "$resp_code" != "200" ]]; then
+    echo "  login returned $resp_code" >&2
+    head -c 200 /tmp/n8n_login_resp.json >&2 || true
+    return 1
+  fi
+  # Verify cookies were actually set (not just file headers)
+  if ! grep -qv '^#' "$N8N_JAR" 2>/dev/null || ! grep -qv '^$' "$N8N_JAR" 2>/dev/null; then
+    echo "  login 200 but no cookies in jar" >&2
+    return 1
+  fi
 }
-echo "Logging into n8n API..."
-n8n_login || fail "n8n API login failed"
+
+# If owner setup already captured auth cookies, try them; otherwise login
+if grep -qv '^#\|^$' "$N8N_JAR" 2>/dev/null; then
+  echo "Auth cookies from owner setup"
+else
+  echo "Logging into n8n API..."
+  n8n_login || fail "n8n API login failed"
+fi
 
 # Helper: create workflow via REST API (handles ownership + activation + webhook registration)
 # Usage: id="$(create_wf path/to/file.json "label" true|false)"
@@ -146,21 +165,22 @@ create_wf() {
   jq "del(.id) | .active = $active" \
     "$ROOT_DIR/$wf_file" > /tmp/_wf_payload.json || fail "preprocess $label failed"
 
-  local resp
-  resp="$(curl -s -b "$N8N_JAR" -X POST "http://localhost:25678/rest/workflows" \
+  local resp http_code
+  http_code="$(curl -s -o /tmp/_wf_resp.json -w "%{http_code}" -b "$N8N_JAR" \
+    -X POST "http://localhost:25678/rest/workflows" \
     -H "Content-Type: application/json" \
     -d @/tmp/_wf_payload.json)"
+  resp="$(cat /tmp/_wf_resp.json 2>/dev/null)"
 
+  # Try both response formats: { data: { id } } (old) and { id } (new)
   local wf_id
-  wf_id="$(echo "$resp" | jq -r '.data.id // empty' 2>/dev/null)"
+  wf_id="$(echo "$resp" | jq -r '.data.id // .id // empty' 2>/dev/null)"
 
   if [[ -n "$wf_id" && "$wf_id" != "null" ]]; then
     echo "  $label → created (id=$wf_id, active=$active)" >&2
     printf "%s" "$wf_id"
   else
-    local msg
-    msg="$(echo "$resp" | jq -r '.message // "unknown error"' 2>/dev/null)"
-    echo "  $label → FAILED: $msg" >&2
+    echo "  $label → FAILED (HTTP $http_code): $(echo "$resp" | head -c 300)" >&2
     return 1
   fi
 }
