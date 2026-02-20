@@ -30,7 +30,7 @@ services:
       retries: 30
 
   n8n:
-    image: n8nio/n8n:${N8N_VERSION:-1.80.0}
+    image: n8nio/n8n:${N8N_VERSION:-1.93.0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,6 +44,10 @@ services:
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev_encryption_key_please_change_32chars_minimum_123456}
 
+      # Required for webhook registration in Docker (n8n needs to know its own URL)
+      WEBHOOK_URL: http://n8n:5678
+      N8N_HOST: 0.0.0.0
+
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
@@ -52,7 +56,7 @@ services:
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-n8npass}
 
       # Regular mode for test harness (single process handles webhooks + execution).
-      # Queue mode requires workers and has webhook registration issues in n8n 1.80.
+      # Queue mode requires workers and adds complexity not needed for smoke tests.
       # Redis remains in the stack for workflow nodes that use it.
       EXECUTIONS_MODE: regular
       QUEUE_BULL_REDIS_HOST: redis

@@ -41,7 +41,7 @@ env:
   POSTGRES_USER: n8n
   POSTGRES_PASSWORD: n8npass
   POSTGRES_DB: n8n
-  N8N_VERSION: "1.80.0"
+  N8N_VERSION: "1.93.0"
 
 jobs:
   # ==========================================================================
