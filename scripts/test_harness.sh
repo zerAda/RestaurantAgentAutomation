@@ -210,18 +210,22 @@ done
 echo "Re-logging into n8n API..."
 n8n_login || fail "n8n API re-login failed"
 
-# Phase 3: Import webhook workflows (active=true in DB).
-# Note: REST API activation does NOT register Express routes (n8n bug #21614).
-# We set active=true now; the n8n restart below triggers actual registration.
-echo "Creating webhook workflows (active)..."
+# Phase 3: Import webhook workflows as INACTIVE, then activate via PATCH.
+# n8n bug #21614: REST API creation with active=true does NOT register webhook
+# Express routes, and startup init mode also fails to register them.
+# PATCH activation (mimicking the UI toggle) is the most reliable path.
+echo "Creating webhook workflows (inactive)..."
+WH_IDS=""
 ACTIVATE_FAILED=0
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
           W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
           W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
-  create_wf "workflows/$wf" "$wf" true > /dev/null || {
+  wid="$(create_wf "workflows/$wf" "$wf" false)" || {
     echo "::warning::Failed to create $wf"
     ACTIVATE_FAILED=$((ACTIVATE_FAILED + 1))
+    continue
   }
+  WH_IDS="$WH_IDS $wid"
 done
 
 # Import non-webhook workflow (inactive)
@@ -229,21 +233,20 @@ create_wf workflows/W8_OPS.json "W8 OPS" false > /dev/null || echo "::warning::W
 
 [[ "$ACTIVATE_FAILED" -eq 0 ]] || echo "::warning::$ACTIVATE_FAILED workflow(s) failed to create/activate"
 
-# n8n bug workaround (n8n-io/n8n#21614): REST API activation does NOT register
-# webhook Express routes. Recreate n8n container so the startup 'init' code
-# reads active workflows from the DB and registers their webhooks.
-echo "Recreating n8n to register webhooks (n8n#21614 workaround)..."
-docker compose -f "$COMPOSE_FILE" stop n8n
-docker compose -f "$COMPOSE_FILE" rm -f n8n
-docker compose -f "$COMPOSE_FILE" up -d n8n
-
-echo "Waiting for n8n after recreate..."
-for i in $(seq 1 90); do
-  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
-  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
-  sleep 2
-  if [[ $i -eq 90 ]]; then fail "n8n did not restart"; fi
+# Activate each webhook workflow individually via PATCH.
+echo "Activating webhook workflows via PATCH..."
+for wid in $WH_IDS; do
+  act_resp="$(curl -s -w "\nHTTP:%{http_code}" -b "$N8N_JAR" -X PATCH "http://localhost:25678/rest/workflows/$wid" \
+    -H "Content-Type: application/json" \
+    -d '{"active":true}')"
+  act_code="${act_resp##*HTTP:}"
+  echo "  $wid → $act_code"
 done
+
+# Diagnostic: check webhook_entity table
+echo "webhook_entity rows:"
+docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+  "psql -U n8n -d n8n -c \"SELECT method, webhook_path FROM webhook_entity LIMIT 20;\"" 2>/dev/null || echo "  (query failed)"
 
 # Poll webhook endpoint directly until n8n registers the routes (up to 60s)
 echo "Waiting for webhook registration..."
