@@ -132,7 +132,7 @@ n8n_login() {
   resp_code="$(curl -s -o /tmp/n8n_login_resp.json -w "%{http_code}" -c "$N8N_JAR" \
     -X POST "http://localhost:25678/rest/login" \
     -H "Content-Type: application/json" \
-    -d '{"email":"test@example.com","password":"TestPassw0rd!"}')"
+    -d '{"emailOrLdapLoginId":"test@example.com","password":"TestPassw0rd!"}')"
   if [[ "$resp_code" != "200" ]]; then
     echo "  login returned $resp_code" >&2
     head -c 200 /tmp/n8n_login_resp.json >&2 || true
