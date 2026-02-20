@@ -85,15 +85,14 @@ done
 echo "[4/8] Up: n8n (initial)"
 docker compose -f "$COMPOSE_FILE" up -d n8n
 
-# Wait n8n port open (best-effort)
-
+# Wait for n8n to be fully initialized (not just HTTP port open).
+# n8n 1.93+ returns "n8n is starting up. Please wait" while running migrations.
 echo "Waiting for n8n to start..."
-for i in $(seq 1 60); do
-  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then
-    break
-  fi
+for i in $(seq 1 90); do
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null)"
+  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
   sleep 2
-  if [[ $i -eq 60 ]]; then fail "n8n did not start"; fi
+  if [[ $i -eq 90 ]]; then fail "n8n did not start (still initializing after 180s)"; fi
 done
 
 # Cookie jar for n8n API auth (version-agnostic)
@@ -200,10 +199,11 @@ docker compose -f "$COMPOSE_FILE" stop n8n
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
 
 echo "Waiting for n8n after recreate..."
-for i in $(seq 1 60); do
-  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then break; fi
+for i in $(seq 1 90); do
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null)"
+  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
   sleep 2
-  if [[ $i -eq 60 ]]; then fail "n8n did not start after recreate"; fi
+  if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
 done
 
 # Re-login after recreate (new process = new sessions)
@@ -238,10 +238,11 @@ docker compose -f "$COMPOSE_FILE" rm -f n8n
 docker compose -f "$COMPOSE_FILE" up -d n8n
 
 echo "Waiting for n8n after recreate..."
-for i in $(seq 1 60); do
-  if curl -fsS "http://localhost:25678/" >/dev/null 2>&1; then break; fi
+for i in $(seq 1 90); do
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null)"
+  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
   sleep 2
-  if [[ $i -eq 60 ]]; then fail "n8n did not restart"; fi
+  if [[ $i -eq 90 ]]; then fail "n8n did not restart"; fi
 done
 
 # Poll webhook endpoint directly until n8n registers the routes (up to 60s)
