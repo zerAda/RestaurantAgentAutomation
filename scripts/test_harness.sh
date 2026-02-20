@@ -121,12 +121,19 @@ done
 
 echo "[5/8] Import workflows"
 
-# Login to n8n API
+# Login to n8n API (cookie-jar approach, version-agnostic)
+N8N_JAR="/tmp/n8n_cookies"
+n8n_login() {
+  rm -f "$N8N_JAR"
+  local status
+  status="$(curl -s -o /dev/null -w "%{http_code}" -c "$N8N_JAR" -X POST "http://localhost:25678/rest/login" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"test@example.com","password":"TestPassw0rd!"}')"
+  [[ "$status" == "200" ]] || return 1
+  [[ -s "$N8N_JAR" ]] || return 1
+}
 echo "Logging into n8n API..."
-N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
-[[ -n "$N8N_COOKIE" ]] || fail "n8n API login failed"
+n8n_login || fail "n8n API login failed"
 
 # Helper: create workflow via REST API (handles ownership + activation + webhook registration)
 # Usage: id="$(create_wf path/to/file.json "label" true|false)"
@@ -140,9 +147,8 @@ create_wf() {
     "$ROOT_DIR/$wf_file" > /tmp/_wf_payload.json || fail "preprocess $label failed"
 
   local resp
-  resp="$(curl -s -X POST "http://localhost:25678/rest/workflows" \
+  resp="$(curl -s -b "$N8N_JAR" -X POST "http://localhost:25678/rest/workflows" \
     -H "Content-Type: application/json" \
-    -H "cookie: n8n-auth=$N8N_COOKIE" \
     -d @/tmp/_wf_payload.json)"
 
   local wf_id
@@ -182,10 +188,7 @@ done
 
 # Re-login after recreate (new process = new sessions)
 echo "Re-logging into n8n API..."
-N8N_COOKIE="$(curl -s -c - -X POST "http://localhost:25678/rest/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"TestPassw0rd!"}' | grep n8n-auth | awk '{print $NF}')"
-[[ -n "$N8N_COOKIE" ]] || fail "n8n API re-login failed"
+n8n_login || fail "n8n API re-login failed"
 
 # Phase 3: Import webhook workflows (active=true in DB).
 # Note: REST API activation does NOT register Express routes (n8n bug #21614).
