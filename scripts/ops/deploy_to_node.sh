@@ -145,6 +145,16 @@ if [ -L "$PROJECT_DIR/current" ] && [ -d "$PROJECT_DIR/current" ]; then
   docker compose down --remove-orphans 2>/dev/null || true
 fi
 
+# Stop services from any OTHER release directory (handles failed deploys with no symlink)
+for OLD_RELEASE in $(ls -1d "$PROJECT_DIR/releases"/*/ 2>/dev/null); do
+  OLD_RELEASE="${OLD_RELEASE%/}"
+  if [ "$OLD_RELEASE" = "$RELEASE_DIR" ]; then continue; fi
+  if [ -f "$OLD_RELEASE/docker-compose.yml" ] || [ -f "$OLD_RELEASE/docker-compose.hostinger.prod.yml" ]; then
+    echo "Stopping orphaned services from: $OLD_RELEASE"
+    cd "$OLD_RELEASE" && docker compose down --remove-orphans 2>/dev/null || true
+  fi
+done
+
 # On first deploy, stop legacy services (manual /root/project installs)
 if [ "$IS_FIRST" = "true" ]; then
   for LEGACY_DIR in /root/project /root/resto-bot; do
@@ -205,6 +215,10 @@ fi
 # ---------------------------------------------------------------------------
 echo ">>> Step 6: Starting services and activating release..."
 cd "$RELEASE_DIR"
+# Remove db-migrate container from Step 5b so docker compose up recreates it fresh.
+# If it exited non-zero, cached exit code would block services with
+# depends_on: { condition: service_completed_successfully }
+docker compose rm -f db-migrate 2>/dev/null || true
 docker compose up -d --remove-orphans
 
 echo "Activating release symlink..."

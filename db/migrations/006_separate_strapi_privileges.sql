@@ -59,14 +59,14 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM strapi;
 -- Back to postgres database for final checks
 \c postgres
 
--- Audit: List user privileges
+-- Audit: List user privileges (PG15-compatible — information_schema.database_privileges does not exist)
 SELECT
   'strapi' AS username,
   datname AS database,
-  array_agg(privilege_type) AS privileges
-FROM information_schema.database_privileges
-WHERE grantee = 'strapi'
-GROUP BY datname;
+  has_database_privilege('strapi', datname, 'CONNECT') AS can_connect,
+  has_database_privilege('strapi', datname, 'CREATE') AS can_create
+FROM pg_database
+WHERE datname IN ('n8n', 'strapi', 'postgres');
 
 COMMENT ON ROLE strapi IS 'Dedicated Strapi CMS user with limited privileges (strapi DB only)';
 
