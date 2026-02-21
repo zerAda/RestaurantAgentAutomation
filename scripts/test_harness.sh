@@ -260,12 +260,46 @@ for i in $(seq 1 90); do
   if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
 done
 
-# Diagnostic: check webhook_entity table after init-mode activation
+# Diagnostic: webhook_entity + shouldAddWebhooks source
 echo "webhook_entity rows (post-restart):"
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -c 'SELECT \"webhookPath\", method FROM webhook_entity LIMIT 20;'" 2>/dev/null || echo "  (query failed or table does not exist)"
+  "psql -U n8n -d n8n -c 'SELECT \"webhookPath\", method FROM webhook_entity LIMIT 20;'" 2>/dev/null || echo "  (query failed)"
 
-# Poll webhook endpoint directly until n8n registers the routes (up to 60s)
+# Diagnostic: probe n8n source for webhook registration code
+echo "n8n webhook source diagnostic:"
+docker compose -f "$COMPOSE_FILE" exec -T n8n sh -c \
+  "grep -c 'shouldAddWebhooks\|registerWebhook\|activeWebhooks' /usr/local/lib/node_modules/n8n/dist/active-workflow-manager.js 2>/dev/null" || true
+
+# Diagnostic: try the FULL webhook path from webhook_entity (may include workflowId prefix)
+WH_FULL_PATH="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+  "psql -U n8n -d n8n -Atc \"SELECT \\\"webhookPath\\\" FROM webhook_entity WHERE method='POST' LIMIT 1;\"" | tr -d '\r\n')"
+echo "Full webhook_entity path: $WH_FULL_PATH"
+if [[ -n "$WH_FULL_PATH" ]]; then
+  full_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/$WH_FULL_PATH" \
+    -H "Content-Type: application/json" \
+    -d '{"text":"probe-full","from":"probe","msgId":"harness-probe-full"}')"
+  echo "Full path /webhook/$WH_FULL_PATH → $full_status"
+fi
+
+# Also try with just workflowId/path (no nodeName)
+WH_WF_ID="$(echo "$WH_FULL_PATH" | cut -d/ -f1)"
+WH_USER_PATH="v1/inbound/whatsapp"
+echo "Simple path /webhook/$WH_USER_PATH probe:"
+simple_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/$WH_USER_PATH" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"probe-simple","from":"probe","msgId":"harness-probe-simple"}')"
+echo "  → $simple_status"
+echo "WorkflowId path /webhook/$WH_WF_ID/$WH_USER_PATH probe:"
+wfid_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/$WH_WF_ID/$WH_USER_PATH" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"probe-wfid","from":"probe","msgId":"harness-probe-wfid"}')"
+echo "  → $wfid_status"
+
+# Show n8n startup logs for webhook registration
+echo "n8n startup logs (webhook-related):"
+docker compose -f "$COMPOSE_FILE" logs n8n 2>&1 | grep -iE "webhook|register|route|listen|started|error|warn" | head -30 || true
+
+# Poll webhook endpoint (up to 60s)
 echo "Waiting for webhook registration..."
 for i in $(seq 1 30); do
   wh_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
