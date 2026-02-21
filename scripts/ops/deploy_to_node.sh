@@ -60,10 +60,11 @@ BACKUP_DIR="${BACKUP_DIR:-$PROJECT_DIR/backups}"
 LOG_DIR="${LOG_DIR:-/var/log/resto-bot}"
 IS_FIRST="${IS_FIRST:-false}"
 
-# Image URIs
-CMS_IMAGE="ghcr.io/${GH_OWNER}/resto-bot-cms:${IMAGE_SHA}"
-ADMIN_IMAGE="ghcr.io/${GH_OWNER}/resto-bot-admin:${IMAGE_SHA}"
-KIOSK_IMAGE="ghcr.io/${GH_OWNER}/resto-bot-kiosk:${IMAGE_SHA}"
+# Image URIs (GHCR requires lowercase owner)
+GH_OWNER_LC="${GH_OWNER,,}"
+CMS_IMAGE="ghcr.io/${GH_OWNER_LC}/resto-bot-cms:${IMAGE_SHA}"
+ADMIN_IMAGE="ghcr.io/${GH_OWNER_LC}/resto-bot-admin:${IMAGE_SHA}"
+KIOSK_IMAGE="ghcr.io/${GH_OWNER_LC}/resto-bot-kiosk:${IMAGE_SHA}"
 
 echo "============================================="
 echo "Deploy to Node — Role: $ROLE"
@@ -176,6 +177,7 @@ docker compose ps
 # Step 7: Deep health check
 # ---------------------------------------------------------------------------
 echo ">>> Step 7: Running deep health check..."
+if [ -f "$RELEASE_DIR/.env" ]; then set -a; source "$RELEASE_DIR/.env"; set +a; fi
 if [ -f "$RELEASE_DIR/scripts/deep-health-check.sh" ]; then
   bash "$RELEASE_DIR/scripts/deep-health-check.sh"
 else

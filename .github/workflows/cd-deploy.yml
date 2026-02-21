@@ -424,24 +424,32 @@ jobs:
 
             cd "\$STAGING_DIR"
 
-            # Set image tags for GHCR
-            export GITHUB_REPOSITORY_OWNER="${{ github.repository_owner }}"
-            export CMS_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-cms:${{ github.sha }}"
-            export ADMIN_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-admin:${{ github.sha }}"
-            export KIOSK_IMAGE="ghcr.io/\$GITHUB_REPOSITORY_OWNER/resto-bot-kiosk:${{ github.sha }}"
+            # Set image tags for GHCR (lowercase owner required by GHCR)
+            GH_OWNER_LC=\$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            export GITHUB_REPOSITORY_OWNER="\$GH_OWNER_LC"
+            export CMS_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-cms:${{ github.sha }}"
+            export ADMIN_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-admin:${{ github.sha }}"
+            export KIOSK_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-kiosk:${{ github.sha }}"
 
             # Login to GHCR on VPS
             echo "${{ secrets['GITHUB_TOKEN'] }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Start staging with separate compose project name
-            docker compose --project-name resto-staging pull --quiet
-            docker compose --project-name resto-staging up -d --remove-orphans
-
-            echo "Staging services started with project name: resto-staging"
-            docker compose --project-name resto-staging ps
-
             # Source .env so scripts can access DOMAIN_NAME etc.
             if [ -f .env ]; then set -a; source .env; set +a; fi
+
+            # Validate compose config before starting
+            docker compose --project-name resto-staging config --quiet
+
+            # Pull images to verify they exist in registry
+            docker compose --project-name resto-staging pull --quiet
+
+            # Start staging services WITHOUT traefik to avoid host port conflicts
+            # (production traefik is already binding ports 80/443/8080)
+            STAGING_SERVICES=\$(docker compose --project-name resto-staging config --services 2>/dev/null | grep -v '^traefik$' | tr '\n' ' ')
+            docker compose --project-name resto-staging up -d --remove-orphans \$STAGING_SERVICES
+
+            echo "Staging services started (without traefik):"
+            docker compose --project-name resto-staging ps
 
             echo "=== Running Deep Health Check (Staging) ==="
             bash scripts/deep-health-check.sh
@@ -453,6 +461,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             set -e
             cd \$STAGING_DIR
+            export COMPOSE_PROJECT_NAME=resto-staging
             if [ -f .env ]; then set -a; source .env; set +a; fi
 
             echo "🐒 Running Chaos Monkey Resilience Test..."
