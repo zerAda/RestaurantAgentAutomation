@@ -148,12 +148,25 @@ fi
 # On first deploy, stop legacy services (manual /root/project installs)
 if [ "$IS_FIRST" = "true" ]; then
   for LEGACY_DIR in /root/project /root/resto-bot; do
-    if [ -d "$LEGACY_DIR" ] && { [ -f "$LEGACY_DIR/docker-compose.yml" ] || [ -f "$LEGACY_DIR/docker-compose.hostinger.prod.yml" ]; }; then
+    if [ -d "$LEGACY_DIR" ] 2>/dev/null; then
       echo "Stopping legacy services from $LEGACY_DIR..."
-      cd "$LEGACY_DIR"
-      docker compose down --remove-orphans 2>/dev/null || true
+      cd "$LEGACY_DIR" 2>/dev/null && {
+        # Try explicit compose file first, then default
+        if [ -f "docker-compose.hostinger.prod.yml" ]; then
+          docker compose -f docker-compose.hostinger.prod.yml down --remove-orphans 2>/dev/null || true
+        fi
+        docker compose down --remove-orphans 2>/dev/null || true
+      } || echo "Cannot access $LEGACY_DIR (permission denied — may need manual cleanup)"
     fi
   done
+
+  # Also stop any containers with "project-" prefix (legacy naming)
+  LEGACY_CONTAINERS=$(docker ps -q --filter "name=project-" 2>/dev/null)
+  if [ -n "$LEGACY_CONTAINERS" ]; then
+    echo "Stopping legacy containers by name prefix..."
+    docker stop $LEGACY_CONTAINERS 2>/dev/null || true
+    docker rm $LEGACY_CONTAINERS 2>/dev/null || true
+  fi
 fi
 
 echo "Waiting for ports to free up..."
@@ -175,7 +188,7 @@ if [ "$ROLE" = "primary" ]; then
     sleep 2
   done
 
-  docker compose up db-migrate
+  docker compose up db-migrate </dev/null
   MIGRATE_EXIT=$(docker compose ps db-migrate --format '{{.ExitCode}}' 2>/dev/null || echo "0")
 
   if [ "$MIGRATE_EXIT" != "0" ] && [ "$MIGRATE_EXIT" != "" ]; then

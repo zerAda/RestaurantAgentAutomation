@@ -799,6 +799,7 @@ jobs:
     name: Smoke (${{ matrix.check }})
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -827,7 +828,7 @@ jobs:
       - name: Execute smoke.sh on VPS
         if: matrix.check == 'internal'
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
             set -e
             cd ${{ steps.config.outputs.project_dir }}/current
             if [ -f .env ]; then set -a; source .env; set +a; fi
@@ -912,7 +913,7 @@ jobs:
             STATUS="failure"
           fi
 
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
             set -e
             LOG_DIR="${LOG_DIR:-/var/log/resto-bot}"
             mkdir -p "\$LOG_DIR"
@@ -949,7 +950,7 @@ jobs:
     name: Post-deploy Cleanup
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production, smoke-battery-prod]
-    if: needs.deploy-production.result == 'success'
+    if: always() && needs.deploy-production.result == 'success'
     timeout-minutes: 10
 
     steps:
@@ -973,7 +974,7 @@ jobs:
 
       - name: Cleanup old releases and Docker artifacts
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << 'ENDSSH'
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << 'ENDSSH'
             set -e
             echo "=== Disk BEFORE cleanup ==="
             df -h / | tail -1
