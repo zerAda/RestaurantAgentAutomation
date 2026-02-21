@@ -257,32 +257,6 @@ for i in $(seq 1 90); do
   if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
 done
 
-# Diagnostic: webhook_entity after restart
-echo "webhook_entity rows (post-restart):"
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -c 'SELECT \"webhookPath\", method FROM webhook_entity LIMIT 10;'" 2>/dev/null || echo "  (query failed)"
-
-# Show n8n startup logs (activation + webhook)
-echo "n8n startup logs:"
-docker compose -f "$COMPOSE_FILE" logs n8n 2>&1 | grep -iE "started|webhook|register|route|error|warn|runner" | tail -20 || true
-
-# Poll webhook endpoint (up to 60s)
-echo "Waiting for webhook registration..."
-for i in $(seq 1 30); do
-  wh_status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
-    -H "Content-Type: application/json" \
-    -d '{"text":"probe","from":"probe","msgId":"webhook-probe-'$i'"}')"
-  if [[ "$wh_status" != "404" && "$wh_status" != "000" ]]; then
-    echo "Webhooks registered (status=$wh_status)"
-    break
-  fi
-  sleep 2
-  if [[ $i -eq 30 ]]; then
-    echo "::warning::Webhooks not registered after 60s (last=$wh_status)"
-    echo "n8n logs (last 50 lines):"
-    docker compose -f "$COMPOSE_FILE" logs --tail=50 n8n 2>&1 || true
-  fi
-done
 
 # 6) Up: gateway
 
