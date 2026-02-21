@@ -30,7 +30,7 @@ services:
       retries: 30
 
   n8n:
-    image: n8nio/n8n:${N8N_VERSION:-1.93.0}
+    image: n8nio/n8n:${N8N_VERSION:-1.123.21}
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,11 +43,6 @@ services:
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev_encryption_key_please_change_32chars_minimum_123456}
-
-      # Task runners DISABLED for test harness: n8n 1.93 task runner mode
-      # breaks webhook Express route registration (webhook_entity records
-      # created but routes never registered). Classic mode works.
-      N8N_RUNNERS_ENABLED: "false"
 
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres

@@ -41,7 +41,7 @@ env:
   POSTGRES_USER: n8n
   POSTGRES_PASSWORD: n8npass
   POSTGRES_DB: n8n
-  N8N_VERSION: "1.93.0"
+  N8N_VERSION: "1.123.21"
 
 jobs:
   # ==========================================================================
@@ -143,7 +143,7 @@ jobs:
           export SSL_EMAIL=test@example.com
           export TRAEFIK_TRUSTED_IPS=127.0.0.1/32
           export ADMIN_ALLOWED_IPS=127.0.0.1/32
-          export N8N_VERSION=1.76.1
+          export N8N_VERSION=1.123.21
           export TZ=UTC
           export WEBHOOK_SHARED_TOKEN=ci-test
           export META_APP_SECRET=ci-test

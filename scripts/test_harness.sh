@@ -86,7 +86,7 @@ echo "[4/8] Up: n8n (initial)"
 docker compose -f "$COMPOSE_FILE" up -d n8n
 
 # Wait for n8n to be fully initialized (not just HTTP port open).
-# n8n 1.93+ returns "n8n is starting up. Please wait" while running migrations.
+# Some n8n versions return "n8n is starting up" while running migrations.
 echo "Waiting for n8n to start..."
 for i in $(seq 1 90); do
   resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
@@ -195,8 +195,8 @@ export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
 # Phase 1b: Import ALL workflows BEFORE restart.
 # Only the 7 core smoke-tested webhook workflows are set ACTIVE;
-# all others are INACTIVE to avoid "Could not find property option"
-# errors from newer workflows incompatible with n8n 1.93.0.
+# all others are INACTIVE to avoid activation errors from workflows
+# that may use node versions incompatible with the test n8n version.
 echo "Creating core webhook workflows (active, pre-restart)..."
 CREATE_FAILED=0
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
@@ -234,12 +234,9 @@ done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
 
-# KEY FIX: Clear stale webhook_entity rows BEFORE restart.
-# The REST API creates webhook_entity records but does NOT register Express
-# routes (n8n bug #21614: shouldAddWebhooks('activate') returns false).
-# On restart, n8n sees existing webhook_entity records and SKIPS re-registration,
-# leaving Express routes unregistered. Clearing the table forces n8n's init mode
-# to register webhooks from scratch (both DB records AND Express routes).
+# Clear webhook_entity rows BEFORE restart to force fresh registration.
+# On restart, init mode will recreate webhook_entity records AND register
+# the corresponding Express routes for all active workflows.
 echo "Clearing stale webhook_entity (force re-registration on restart)..."
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
   "psql -U n8n -d n8n -c 'DELETE FROM webhook_entity;'" 2>/dev/null || echo "  (table may not exist yet — OK)"
