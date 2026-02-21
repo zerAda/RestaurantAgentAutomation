@@ -713,22 +713,22 @@ jobs:
             exit 1
           fi
 
-          chmod +x scripts/ops/deploy_to_node.sh
-
-          # Execute the atomic deploy script on the target node
+          # Execute the deploy script directly on the VPS (already synced via rsync)
+          # NOTE: Do NOT use 'bash -s < script' — docker compose up consumes stdin
           ssh $SSH_OPTS ${{ matrix.user }}@${{ matrix.host }} \
-            "export GH_TOKEN='${{ secrets.GITHUB_TOKEN }}'; bash -s" < scripts/ops/deploy_to_node.sh \
-            -- \
-            --role "${{ matrix.role }}" \
-            --project-dir "${{ matrix.project_dir }}" \
-            --release-dir "$RELEASE_DIR" \
-            --backup-dir "${{ matrix.backup_dir }}" \
-            --log-dir "${{ matrix.log_dir }}" \
-            --is-first-deploy "${{ needs.preflight.outputs.is_first_deploy }}" \
-            --github-owner "${{ github.repository_owner }}" \
-            --image-sha "${{ github.sha }}" \
-            --github-actor "${{ github.actor }}" \
-            --github-token "${{ secrets.GITHUB_TOKEN }}"
+            "export GH_TOKEN='${{ secrets.GITHUB_TOKEN }}'; \
+             chmod +x $RELEASE_DIR/scripts/ops/deploy_to_node.sh; \
+             bash $RELEASE_DIR/scripts/ops/deploy_to_node.sh \
+               --role '${{ matrix.role }}' \
+               --project-dir '${{ matrix.project_dir }}' \
+               --release-dir '$RELEASE_DIR' \
+               --backup-dir '${{ matrix.backup_dir }}' \
+               --log-dir '${{ matrix.log_dir }}' \
+               --is-first-deploy '${{ needs.preflight.outputs.is_first_deploy }}' \
+               --github-owner '${{ github.repository_owner }}' \
+               --image-sha '${{ github.sha }}' \
+               --github-actor '${{ github.actor }}' \
+               --github-token '${{ secrets.GITHUB_TOKEN }}'"
 
       - name: Health check
         id: health
