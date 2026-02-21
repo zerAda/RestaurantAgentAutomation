@@ -44,8 +44,10 @@ services:
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev_encryption_key_please_change_32chars_minimum_123456}
 
-      # Task runners (n8n 1.93+ deprecation fix)
-      N8N_RUNNERS_ENABLED: "true"
+      # Task runners DISABLED for test harness: n8n 1.93 task runner mode
+      # breaks webhook Express route registration (webhook_entity records
+      # created but routes never registered). Classic mode works.
+      N8N_RUNNERS_ENABLED: "false"
 
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
