@@ -194,17 +194,23 @@ export CORE_WORKFLOW_ID="$core_id"
 export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
 # Phase 1b: Import ALL workflows BEFORE restart.
-# n8n bug #21614: REST API activation uses 'activate' mode which does NOT
-# register webhook Express routes. But on restart, ActiveWorkflowManager.init()
-# reads active workflows from DB in 'init' mode → shouldAddWebhooks('init')
-# returns true → webhooks ARE registered. So we create them ACTIVE here,
-# then restart n8n to trigger init-mode webhook registration.
-echo "Creating webhook workflows (active, pre-restart)..."
+# Only the 7 core smoke-tested webhook workflows are set ACTIVE;
+# all others are INACTIVE to avoid "Could not find property option"
+# errors from newer workflows incompatible with n8n 1.93.0.
+echo "Creating core webhook workflows (active, pre-restart)..."
 CREATE_FAILED=0
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
           W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
-          W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json \
-          W0_META_VERIFY_UNIFIED.json W1_IN_TIKTOK.json \
+          W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
+  create_wf "workflows/$wf" "$wf" true > /dev/null 2>&1 || {
+    echo "::warning::Failed to create $wf (non-blocking)"
+    CREATE_FAILED=$((CREATE_FAILED + 1))
+  }
+done
+
+# Import all remaining workflows as INACTIVE (coverage, no activation errors)
+echo "Creating remaining workflows (inactive)..."
+for wf in W0_META_VERIFY_UNIFIED.json W1_IN_TIKTOK.json \
           W8_DLQ_REPLAY.json W16_HEALTHZ.json \
           W_PAYMENT_CALLBACK.json W_PAYMENT_CHARGILY.json \
           W20_ASSET_ENHANCER.json W_HIVE_MIND_DISPATCH.json \
@@ -213,16 +219,8 @@ for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
           W_CMS_SYNC.json W_DRIVER_OTP_VERIFY.json \
           W_DRIVER_ACTIONS.json W_DRIVER_AVAILABLE_LIST.json \
           W_DRIVER_ONBOARDING.json W_DRIVER_HISTORY.json \
-          W_DRIVER_ROUTER.json; do
-  create_wf "workflows/$wf" "$wf" true > /dev/null 2>&1 || {
-    echo "::warning::Failed to create $wf (non-blocking)"
-    CREATE_FAILED=$((CREATE_FAILED + 1))
-  }
-done
-
-# Import non-webhook (internal / scheduled) workflows as inactive
-echo "Creating internal workflows (inactive)..."
-for wf in W8_OPS.json W8_DLQ_HANDLER.json W5_OUT_WA.json W5_OUT_TIKTOK.json \
+          W_DRIVER_ROUTER.json \
+          W8_OPS.json W8_DLQ_HANDLER.json W5_OUT_WA.json W5_OUT_TIKTOK.json \
           W6_OUT_IG.json W7_OUT_MSG.json W15_OUTBOX_WORKER.json \
           W17_HEALTH_MONITOR.json W18_MEDIA_FETCH_WORKER.json \
           W21_CAMPAIGN_BLASTER.json W4_CORE_ALGERIAN_STUB.json \
@@ -234,11 +232,22 @@ for wf in W8_OPS.json W8_DLQ_HANDLER.json W5_OUT_WA.json W5_OUT_TIKTOK.json \
   create_wf "workflows/$wf" "$wf" false > /dev/null 2>&1 || echo "::warning::Failed to create $wf (non-blocking)"
 done
 
-[[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED webhook workflow(s) failed to create"
+[[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
+
+# KEY FIX: Clear stale webhook_entity rows BEFORE restart.
+# The REST API creates webhook_entity records but does NOT register Express
+# routes (n8n bug #21614: shouldAddWebhooks('activate') returns false).
+# On restart, n8n sees existing webhook_entity records and SKIPS re-registration,
+# leaving Express routes unregistered. Clearing the table forces n8n's init mode
+# to register webhooks from scratch (both DB records AND Express routes).
+echo "Clearing stale webhook_entity (force re-registration on restart)..."
+docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+  "psql -U n8n -d n8n -c 'DELETE FROM webhook_entity;'" 2>/dev/null || echo "  (table may not exist yet — OK)"
 
 # Phase 2: Recreate n8n with CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID.
 # On restart, ActiveWorkflowManager.init() reads active workflows from DB
-# and activates them with mode='init' → webhooks get registered as Express routes.
+# and activates them with mode='init'. With webhook_entity cleared, it will
+# create fresh Express routes for all active webhook workflows.
 echo "Recreating n8n with workflow IDs..."
 docker compose -f "$COMPOSE_FILE" stop n8n
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
@@ -252,9 +261,9 @@ for i in $(seq 1 90); do
 done
 
 # Diagnostic: check webhook_entity table after init-mode activation
-echo "webhook_entity rows:"
+echo "webhook_entity rows (post-restart):"
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -c 'SELECT * FROM webhook_entity LIMIT 20;'" 2>/dev/null || echo "  (query failed or table does not exist)"
+  "psql -U n8n -d n8n -c 'SELECT \"webhookPath\", method FROM webhook_entity LIMIT 20;'" 2>/dev/null || echo "  (query failed or table does not exist)"
 
 # Poll webhook endpoint directly until n8n registers the routes (up to 60s)
 echo "Waiting for webhook registration..."
