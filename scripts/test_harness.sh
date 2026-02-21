@@ -193,7 +193,52 @@ echo "ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
 export CORE_WORKFLOW_ID="$core_id"
 export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
-# Phase 2: Recreate n8n with CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID
+# Phase 1b: Import ALL workflows BEFORE restart.
+# n8n bug #21614: REST API activation uses 'activate' mode which does NOT
+# register webhook Express routes. But on restart, ActiveWorkflowManager.init()
+# reads active workflows from DB in 'init' mode → shouldAddWebhooks('init')
+# returns true → webhooks ARE registered. So we create them ACTIVE here,
+# then restart n8n to trigger init-mode webhook registration.
+echo "Creating webhook workflows (active, pre-restart)..."
+CREATE_FAILED=0
+for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
+          W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
+          W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json \
+          W0_META_VERIFY_UNIFIED.json W1_IN_TIKTOK.json \
+          W8_DLQ_REPLAY.json W16_HEALTHZ.json \
+          W_PAYMENT_CALLBACK.json W_PAYMENT_CHARGILY.json \
+          W20_ASSET_ENHANCER.json W_HIVE_MIND_DISPATCH.json \
+          W_THE_USUAL.json W_DRIVER_GAMIFICATION.json \
+          W_DRIVER_BOT.json W_DRIVER_DISPATCH.json \
+          W_CMS_SYNC.json W_DRIVER_OTP_VERIFY.json \
+          W_DRIVER_ACTIONS.json W_DRIVER_AVAILABLE_LIST.json \
+          W_DRIVER_ONBOARDING.json W_DRIVER_HISTORY.json \
+          W_DRIVER_ROUTER.json; do
+  create_wf "workflows/$wf" "$wf" true > /dev/null 2>&1 || {
+    echo "::warning::Failed to create $wf (non-blocking)"
+    CREATE_FAILED=$((CREATE_FAILED + 1))
+  }
+done
+
+# Import non-webhook (internal / scheduled) workflows as inactive
+echo "Creating internal workflows (inactive)..."
+for wf in W8_OPS.json W8_DLQ_HANDLER.json W5_OUT_WA.json W5_OUT_TIKTOK.json \
+          W6_OUT_IG.json W7_OUT_MSG.json W15_OUTBOX_WORKER.json \
+          W17_HEALTH_MONITOR.json W18_MEDIA_FETCH_WORKER.json \
+          W21_CAMPAIGN_BLASTER.json W4_CORE_ALGERIAN_STUB.json \
+          W4_CORE_MENU_GROUNDED.json W0_REDIS_HELPER.json \
+          W_ADMIN_LIVE_MONITOR.json W_AI_STRATEGY_ADVISOR.json \
+          W_INVENTORY_SYNC.json W_LOW_STOCK_ALERT.json \
+          W_MARKETING_AUTOPILOT.json W_MENU_VALIDATOR.json \
+          W_QR_TABLE_DETECTOR.json W_WEATHER_TRIGGER.json; do
+  create_wf "workflows/$wf" "$wf" false > /dev/null 2>&1 || echo "::warning::Failed to create $wf (non-blocking)"
+done
+
+[[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED webhook workflow(s) failed to create"
+
+# Phase 2: Recreate n8n with CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID.
+# On restart, ActiveWorkflowManager.init() reads active workflows from DB
+# and activates them with mode='init' → webhooks get registered as Express routes.
 echo "Recreating n8n with workflow IDs..."
 docker compose -f "$COMPOSE_FILE" stop n8n
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
@@ -206,47 +251,10 @@ for i in $(seq 1 90); do
   if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
 done
 
-# Re-login after recreate (new process = new sessions)
-echo "Re-logging into n8n API..."
-n8n_login || fail "n8n API re-login failed"
-
-# Phase 3: Import webhook workflows as INACTIVE, then activate via PATCH.
-# n8n bug #21614: REST API creation with active=true does NOT register webhook
-# Express routes, and startup init mode also fails to register them.
-# PATCH activation (mimicking the UI toggle) is the most reliable path.
-echo "Creating webhook workflows (inactive)..."
-WH_IDS=""
-ACTIVATE_FAILED=0
-for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
-          W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
-          W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
-  wid="$(create_wf "workflows/$wf" "$wf" false)" || {
-    echo "::warning::Failed to create $wf"
-    ACTIVATE_FAILED=$((ACTIVATE_FAILED + 1))
-    continue
-  }
-  WH_IDS="$WH_IDS $wid"
-done
-
-# Import non-webhook workflow (inactive)
-create_wf workflows/W8_OPS.json "W8 OPS" false > /dev/null || echo "::warning::W8 import failed"
-
-[[ "$ACTIVATE_FAILED" -eq 0 ]] || echo "::warning::$ACTIVATE_FAILED workflow(s) failed to create/activate"
-
-# Activate each webhook workflow individually via PATCH.
-echo "Activating webhook workflows via PATCH..."
-for wid in $WH_IDS; do
-  act_resp="$(curl -s -w "\nHTTP:%{http_code}" -b "$N8N_JAR" -X PATCH "http://localhost:25678/rest/workflows/$wid" \
-    -H "Content-Type: application/json" \
-    -d '{"active":true}')"
-  act_code="${act_resp##*HTTP:}"
-  echo "  $wid → $act_code"
-done
-
-# Diagnostic: check webhook_entity table
+# Diagnostic: check webhook_entity table after init-mode activation
 echo "webhook_entity rows:"
 docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -c \"SELECT method, webhook_path FROM webhook_entity LIMIT 20;\"" 2>/dev/null || echo "  (query failed)"
+  "psql -U n8n -d n8n -c 'SELECT * FROM webhook_entity LIMIT 20;'" 2>/dev/null || echo "  (query failed or table does not exist)"
 
 # Poll webhook endpoint directly until n8n registers the routes (up to 60s)
 echo "Waiting for webhook registration..."
@@ -261,7 +269,8 @@ for i in $(seq 1 30); do
   sleep 2
   if [[ $i -eq 30 ]]; then
     echo "::warning::Webhooks not registered after 60s (last=$wh_status)"
-    docker compose -f "$COMPOSE_FILE" logs --tail=30 n8n 2>&1 || true
+    echo "n8n logs (last 50 lines):"
+    docker compose -f "$COMPOSE_FILE" logs --tail=50 n8n 2>&1 || true
   fi
 done
 

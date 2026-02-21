@@ -187,10 +187,7 @@
     {
       "parameters": {
         "responseCode": 200,
-        "responseData": "={{$json._response.body}}",
-        "options": {
-          "responseHeaders": "={{$json._response.headers}}"
-        }
+        "responseData": "={{$json._response.body}}"
       },
       "id": "749ca270-a37e-4a57-a9b4-85f70dfcc6ea",
       "name": "RESP - 200 OK",
