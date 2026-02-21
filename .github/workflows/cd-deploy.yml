@@ -680,10 +680,16 @@ jobs:
       - name: Sync code to node
         run: |
           RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ConnectionAttempts=3"
 
-          # Create release directory on target node
-          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} \
-            "mkdir -p $RELEASE_DIR"
+          # Create release directory on target node (with retry)
+          for attempt in 1 2 3; do
+            if ssh $SSH_OPTS ${{ matrix.user }}@${{ matrix.host }} "mkdir -p $RELEASE_DIR"; then
+              break
+            fi
+            echo "SSH attempt $attempt failed, retrying in 15s..."
+            sleep 15
+          done
 
           rsync -avz --delete \
             --exclude='.git' \
@@ -694,12 +700,13 @@ jobs:
             --exclude='.pytest_cache' \
             --exclude='*.pyc' \
             --exclude='.DS_Store' \
-            -e "ssh -o StrictHostKeyChecking=no" \
+            -e "ssh $SSH_OPTS" \
             ./ ${{ matrix.user }}@${{ matrix.host }}:$RELEASE_DIR/
 
       - name: Deploy to ${{ matrix.name }} via deploy_to_node.sh
         run: |
           RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ConnectionAttempts=3"
 
           if [ ! -f "scripts/ops/deploy_to_node.sh" ]; then
             echo "::error::scripts/ops/deploy_to_node.sh not found"
@@ -709,7 +716,7 @@ jobs:
           chmod +x scripts/ops/deploy_to_node.sh
 
           # Execute the atomic deploy script on the target node
-          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} \
+          ssh $SSH_OPTS ${{ matrix.user }}@${{ matrix.host }} \
             "export GH_TOKEN='${{ secrets.GITHUB_TOKEN }}'; bash -s" < scripts/ops/deploy_to_node.sh \
             -- \
             --role "${{ matrix.role }}" \
@@ -1081,7 +1088,7 @@ jobs:
 
           if [ -f "scripts/ops/rollback.sh" ]; then
              chmod +x scripts/ops/rollback.sh
-             ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
+             ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 "$VPS_USER@$VPS_HOST" \
                "export PROJECT_DIR='$PROJECT_DIR'; bash -s" < scripts/ops/rollback.sh
           else
              echo "::error::scripts/ops/rollback.sh not found"

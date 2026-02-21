@@ -134,10 +134,37 @@ echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 docker compose pull --quiet
 
 # ---------------------------------------------------------------------------
-# Step 5: Migrations (primary only)
+# Step 5a: Stop previous services (free ports + shared volumes)
 # ---------------------------------------------------------------------------
+echo ">>> Step 5a: Stopping previous services..."
+
+# Stop services from current symlink if it exists (normal re-deploy)
+if [ -L "$PROJECT_DIR/current" ] && [ -d "$PROJECT_DIR/current" ]; then
+  echo "Stopping services from previous release..."
+  cd "$PROJECT_DIR/current"
+  docker compose down --remove-orphans 2>/dev/null || true
+fi
+
+# On first deploy, stop legacy services (manual /root/project installs)
+if [ "$IS_FIRST" = "true" ]; then
+  for LEGACY_DIR in /root/project /root/resto-bot; do
+    if [ -d "$LEGACY_DIR" ] && { [ -f "$LEGACY_DIR/docker-compose.yml" ] || [ -f "$LEGACY_DIR/docker-compose.hostinger.prod.yml" ]; }; then
+      echo "Stopping legacy services from $LEGACY_DIR..."
+      cd "$LEGACY_DIR"
+      docker compose down --remove-orphans 2>/dev/null || true
+    fi
+  done
+fi
+
+echo "Waiting for ports to free up..."
+sleep 3
+
+# ---------------------------------------------------------------------------
+# Step 5b: Migrations (primary only)
+# ---------------------------------------------------------------------------
+cd "$RELEASE_DIR"
 if [ "$ROLE" = "primary" ]; then
-  echo ">>> Step 5: Running migrations (primary node)..."
+  echo ">>> Step 5b: Running migrations (primary node)..."
   docker compose up -d postgres redis
   echo "Waiting for PostgreSQL..."
   for i in $(seq 1 30); do
@@ -158,7 +185,7 @@ if [ "$ROLE" = "primary" ]; then
   fi
   echo "Migrations complete"
 else
-  echo ">>> Step 5: Skipping migrations (replica node)"
+  echo ">>> Step 5b: Skipping migrations (replica node)"
 fi
 
 # ---------------------------------------------------------------------------

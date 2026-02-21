@@ -26,8 +26,9 @@ CURRENT=$(readlink "$PROJECT_DIR/current" 2>/dev/null || echo "")
 PREVIOUS=$(ls -1dt "$PROJECT_DIR"/releases/*/ 2>/dev/null | grep -v "$(basename "$CURRENT")" | head -1)
 
 if [ -z "$PREVIOUS" ]; then
-  echo "::error::No previous release found for rollback"
-  exit 1
+  echo "::warning::No previous release found for rollback (first deploy?)"
+  echo "Manual intervention may be required"
+  exit 0
 fi
 
 echo "Rolling back to: $PREVIOUS"
