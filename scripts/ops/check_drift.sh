@@ -48,8 +48,10 @@ done
 if [ -n "$MISSING_VARS" ]; then
   echo "::warning::Config drift detected - variables in config/.env.example missing from VPS shared .env:"
   echo -e "$MISSING_VARS" | while read -r v; do
-    [ -n "$v" ] && echo "::warning::  Missing var: $v"
+    if [ -n "$v" ]; then echo "::warning::  Missing var: $v"; fi
   done
 else
   echo "No config drift detected - all .env.example vars present on VPS"
 fi
+
+exit 0

@@ -341,10 +341,11 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           SHA: ${{ github.sha }}
         run: |
+          OWNER_LC="${OWNER,,}"
           IMAGES=("resto-bot-cms" "resto-bot-admin" "resto-bot-kiosk")
 
           for img in "${IMAGES[@]}"; do
-            IMAGE_URI="$REGISTRY/$OWNER/$img:$SHA"
+            IMAGE_URI="$REGISTRY/$OWNER_LC/$img:$SHA"
             echo "Verifying signature for $IMAGE_URI"
             cosign verify --key env://COSIGN_PUBLIC_KEY "$IMAGE_URI" || {
               echo "::error::Signature verification failed for $img"
@@ -439,6 +440,9 @@ jobs:
             echo "Staging services started with project name: resto-staging"
             docker compose --project-name resto-staging ps
 
+            # Source .env so scripts can access DOMAIN_NAME etc.
+            if [ -f .env ]; then set -a; source .env; set +a; fi
+
             echo "=== Running Deep Health Check (Staging) ==="
             bash scripts/deep-health-check.sh
           ENDSSH
@@ -449,12 +453,14 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             set -e
             cd \$STAGING_DIR
+            if [ -f .env ]; then set -a; source .env; set +a; fi
+
             echo "🐒 Running Chaos Monkey Resilience Test..."
             bash scripts/chaos-monkey.sh
-            
+
             echo "⏳ Waiting for auto-healing..."
             sleep 15
-            
+
             echo "🔍 Verifying recovery with Deep Health Check..."
             bash scripts/deep-health-check.sh
           ENDSSH
@@ -467,6 +473,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             set -e
             cd $STAGING_DIR
+            if [ -f .env ]; then set -a; source .env; set +a; fi
 
             echo "=== Running scripts/smoke.sh against staging ==="
             if [ -f "scripts/smoke.sh" ]; then
@@ -784,6 +791,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
             set -e
             cd ${{ steps.config.outputs.project_dir }}/current
+            if [ -f .env ]; then set -a; source .env; set +a; fi
             if [ -f "scripts/smoke.sh" ]; then
               chmod +x scripts/smoke.sh
               bash scripts/smoke.sh
@@ -875,11 +883,11 @@ jobs:
               cd ${{ steps.config.outputs.project_dir }}/current
               chmod +x scripts/dora_metrics.sh
               bash scripts/dora_metrics.sh \
-                --version "${{ needs.preflight.outputs.version }}" \
-                --commit "${{ github.sha }}" \
-                --status "$STATUS" \
-                --lead-time "$LEAD_TIME" \
-                --deploy-duration "$DEPLOY_DURATION"
+                "${{ needs.preflight.outputs.version }}" \
+                "${{ github.sha }}" \
+                "$STATUS" \
+                "$DEPLOY_START" \
+                "\$LOG_DIR"
             else
               # Inline DORA metrics recording
               TIMESTAMP="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"

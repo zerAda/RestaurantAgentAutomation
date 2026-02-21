@@ -29,8 +29,8 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # 2. Check Redis
-REDIS_PASS=$(cat ./secrets/redis_password)
-REDIS_PING=$(docker compose exec -T redis redis-cli -a "$REDIS_PASS" ping 2>/dev/null)
+REDIS_PASS=$(cat ./secrets/redis_password 2>/dev/null || echo "")
+REDIS_PING=$(docker compose exec -T redis redis-cli ${REDIS_PASS:+-a "$REDIS_PASS"} ping 2>/dev/null)
 if [[ "$REDIS_PING" != "PONG" ]]; then
     REDIS_STATUS="critical"
     STATUS="critical"
