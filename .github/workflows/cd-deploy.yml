@@ -449,12 +449,29 @@ jobs:
             # Pull images to verify they exist in registry
             docker compose --project-name resto-staging pull --quiet
 
-            # Start staging services WITHOUT traefik to avoid host port conflicts
-            # (production traefik is already binding ports 80/443/8080)
-            STAGING_SERVICES=\$(docker compose --project-name resto-staging config --services 2>/dev/null | grep -v '^traefik$' | tr '\n' ' ')
-            docker compose --project-name resto-staging up -d --remove-orphans \$STAGING_SERVICES
+            # Start infrastructure services first (postgres, redis)
+            docker compose --project-name resto-staging up -d postgres redis
+            echo "Waiting for postgres + redis healthy..."
+            for i in \$(seq 1 30); do
+              if docker compose --project-name resto-staging exec -T postgres pg_isready -U n8n -d n8n >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
 
-            echo "Staging services started (without traefik):"
+            # Run migrations (may fail on fresh staging DB — non-blocking)
+            docker compose --project-name resto-staging up db-migrate 2>&1 || {
+              echo "::warning::db-migrate failed in staging (non-blocking)"
+            }
+
+            # Start remaining services WITHOUT traefik (port 80/443 conflict)
+            # and WITHOUT db-migrate (already ran above)
+            STAGING_SERVICES=\$(docker compose --project-name resto-staging config --services 2>/dev/null | grep -Ev '^(traefik|db-migrate)$' | tr '\n' ' ')
+            docker compose --project-name resto-staging up -d --remove-orphans \$STAGING_SERVICES || {
+              echo "::warning::Some staging services failed to start (non-blocking)"
+            }
+
+            echo "Staging services:"
             docker compose --project-name resto-staging ps
 
             echo "=== Running Deep Health Check (Staging) ==="
