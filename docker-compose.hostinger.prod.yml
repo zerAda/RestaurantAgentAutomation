@@ -29,6 +29,7 @@ services:
       - "443:443"
       - "127.0.0.1:8080:8080"
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_data:/letsencrypt
       - ./secrets/traefik_usersfile:/run/secrets/traefik_usersfile:ro
     networks: [ proxy ]
