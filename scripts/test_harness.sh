@@ -193,19 +193,22 @@ echo "ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
 export CORE_WORKFLOW_ID="$core_id"
 export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
-# Phase 1b: Import ALL workflows BEFORE restart.
-# Only the 7 core smoke-tested webhook workflows are set ACTIVE;
-# all others are INACTIVE to avoid activation errors from workflows
-# that may use node versions incompatible with the test n8n version.
-echo "Creating core webhook workflows (active, pre-restart)..."
+# Phase 1b: Import ALL workflows as INACTIVE first, then explicitly activate
+# webhook workflows. In n8n 1.123+, POST with active=true may just set the
+# DB flag without triggering the webhook Express route registration lifecycle.
+echo "Creating core webhook workflows (inactive, will activate separately)..."
 CREATE_FAILED=0
+WEBHOOK_IDS=""
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
           W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
           W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
-  create_wf "workflows/$wf" "$wf" true > /dev/null 2>&1 || {
+  wf_id="$(create_wf "workflows/$wf" "$wf" false 2>/dev/null)" || {
     echo "::warning::Failed to create $wf (non-blocking)"
     CREATE_FAILED=$((CREATE_FAILED + 1))
+    continue
   }
+  WEBHOOK_IDS="$WEBHOOK_IDS $wf_id"
+  echo "  $wf → id=$wf_id"
 done
 
 # Import all remaining workflows as INACTIVE (coverage, no activation errors)
@@ -234,53 +237,34 @@ done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
 
-# Clear webhook_entity rows BEFORE restart to force fresh registration.
-# On restart, init mode will recreate webhook_entity records AND register
-# the corresponding Express routes for all active workflows.
-echo "Clearing stale webhook_entity (force re-registration on restart)..."
-docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -c 'DELETE FROM webhook_entity;'" 2>/dev/null || echo "  (table may not exist yet — OK)"
-
-# Phase 2: Recreate n8n with CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID.
-# On restart, ActiveWorkflowManager.init() reads active workflows from DB
-# and activates them with mode='init'. With webhook_entity cleared, it will
-# create fresh Express routes for all active webhook workflows.
-echo "Recreating n8n with workflow IDs..."
-docker compose -f "$COMPOSE_FILE" stop n8n
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate n8n
-
-echo "Waiting for n8n after recreate..."
-for i in $(seq 1 90); do
-  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
-  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
-  sleep 2
-  if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
-done
-
-# n8n 1.123+ init mode may silently skip webhook route registration.
-# Force registration by re-logging in and toggling each active workflow.
-echo "Re-logging into n8n API after restart..."
-n8n_login || fail "n8n API re-login failed after restart"
-
-echo "Toggling active workflows to force webhook registration..."
-ACTIVE_IDS=$(curl -s -b "$N8N_JAR" "http://localhost:25678/rest/workflows" | \
-  jq -r '(.data // .)[] | select(.active == true) | .id' 2>/dev/null || true)
-
-for wf_id in $ACTIVE_IDS; do
-  # Deactivate then reactivate to trigger webhook Express route creation
-  curl -s -o /dev/null -b "$N8N_JAR" \
+# Explicitly activate each webhook workflow via PATCH.
+# This triggers the full activation lifecycle (webhook_entity + Express routes)
+# regardless of whether POST with active=true did it or not.
+echo "Activating webhook workflows..."
+for wf_id in $WEBHOOK_IDS; do
+  RESP=$(curl -s -b "$N8N_JAR" \
     -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
     -H "Content-Type: application/json" \
-    -d '{"active": false}' 2>/dev/null
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" -b "$N8N_JAR" \
-    -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
-    -H "Content-Type: application/json" \
-    -d '{"active": true}' 2>/dev/null)
-  echo "  Toggled workflow $wf_id (activate status=$STATUS)"
+    -d '{"active": true}')
+  ACTIVE=$(echo "$RESP" | jq -r '.active // .data.active // "unknown"' 2>/dev/null)
+  echo "  Activated $wf_id → active=$ACTIVE"
 done
 
-# Small delay for webhook routes to settle
-sleep 3
+# Verify webhook is reachable directly on n8n (no gateway)
+sleep 2
+echo "Verifying webhook directly on n8n..."
+WH_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"check","from":"check","msgId":"check-1"}')
+echo "  Direct webhook status: $WH_DIRECT"
+
+if [[ "$WH_DIRECT" == "404" ]]; then
+  echo "::warning::Webhook still 404 after explicit activation. Checking DB..."
+  docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+    "psql -U n8n -d n8n -c 'SELECT \"webhookId\", method, \"webhookPath\" FROM webhook_entity LIMIT 10;'" 2>/dev/null || true
+  docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+    "psql -U n8n -d n8n -c 'SELECT id, name, active FROM workflow_entity WHERE active = true;'" 2>/dev/null || true
+fi
 
 # 6) Up: gateway
 
