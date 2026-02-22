@@ -232,7 +232,18 @@ docker compose ps
 echo ">>> Step 7: Running deep health check..."
 if [ -f "$RELEASE_DIR/.env" ]; then set -a; source "$RELEASE_DIR/.env"; set +a; fi
 if [ -f "$RELEASE_DIR/scripts/deep-health-check.sh" ]; then
+  # Exit codes: 0=healthy, 1=warning, 2=critical
+  # Tolerate warnings (e.g. disk 76%) — only fail on critical
+  set +e
   bash "$RELEASE_DIR/scripts/deep-health-check.sh"
+  HC_EXIT=$?
+  set -e
+  if [ "$HC_EXIT" -ge 2 ]; then
+    echo "::error::Deep health check CRITICAL (exit $HC_EXIT)"
+    exit 1
+  elif [ "$HC_EXIT" -eq 1 ]; then
+    echo "::warning::Deep health check returned warnings (non-blocking)"
+  fi
 else
   echo "::warning::deep-health-check.sh not found — skipping"
 fi
