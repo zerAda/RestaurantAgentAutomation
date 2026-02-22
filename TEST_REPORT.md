@@ -1,3 +1,70 @@
+# TEST_REPORT — RESTO BOT
+
+## v3.3.2 — CD Pipeline Verification (2026-02-22)
+
+### CI Pipeline (commit 4e04261)
+
+| Job | Status |
+|-----|--------|
+| Security Scan (10 jobs) | PASS |
+| Integrity Gate | PASS |
+| Lint & Validate | PASS |
+| Python Tests | PASS |
+| Integration Tests (PG15/16) | PASS |
+| Frontend Lint | PASS |
+| Docker Build (cms, kiosk, admin) | PASS |
+| Build & Push GHCR | PASS |
+
+### CD Pipeline Verification
+
+| Stage | Result | Notes |
+|-------|--------|-------|
+| Validate | PASS | Compose syntax + env validation |
+| Preflight | PASS | VPS reachability + disk/memory checks |
+| Security Gate | PASS | Gitleaks + Trivy + SBOM |
+| Deploy Staging | PASS | Full stack on staging port range |
+| Smoke Staging | PASS | Healthz + inbound endpoint checks |
+| Approve | PASS | Auto-approved (environment protection) |
+| Deploy Production | PASS | Atomic symlink cutover |
+| Smoke Production | PASS | External endpoint verification |
+| DORA Metrics | PASS | Deployment frequency + lead time |
+| Cleanup | PASS | Release pruning (keep 5) |
+| Post-Deploy | PASS | Rollback gate (no rollback needed) |
+
+### VPS Service Health (post-deploy)
+
+```
+$ docker compose ps
+NAME                STATUS          PORTS
+traefik-1           Up              0.0.0.0:80, 0.0.0.0:443, 127.0.0.1:8080
+gateway-1           Up (healthy)    80, 8080
+n8n-main-1          Up              5678
+n8n-worker-1        Up              5678
+cms-1               Up (healthy)    1337
+adminer-1           Up              8080
+postgres-1          Up (healthy)    5432
+redis-1             Up (healthy)    6379
+admin-dashboard-1   Up (healthy)    80, 8080
+kiosk-app-1         Up (healthy)    80, 8080
+```
+
+### HTTPS Endpoint Verification
+
+| Endpoint | Expected | Actual |
+|----------|----------|--------|
+| `https://api.srv1258231.hstgr.cloud/healthz` | 200 `ok` | 200 `ok` |
+| `https://console.srv1258231.hstgr.cloud/` | 401 BasicAuth | 401 BasicAuth |
+| `http://api.srv1258231.hstgr.cloud/` | 301 → HTTPS | 301 → HTTPS |
+
+### Known Limitations
+
+- Cosign image signing: COSIGN_PASSWORD mismatch (non-blocking, documented)
+- Backup job: skips first deploy (expected behavior, works on subsequent deploys)
+- Smoke battery: external channel tests (WhatsApp/Instagram/Messenger) require real API tokens
+- Disk usage: 76% (warning threshold, non-blocking)
+
+---
+
 # TEST_REPORT — RESTO BOT v3.1 — 2026-01-22
 
 Couvre :

@@ -257,6 +257,30 @@ for i in $(seq 1 90); do
   if [[ $i -eq 90 ]]; then fail "n8n did not start after recreate"; fi
 done
 
+# n8n 1.123+ init mode may silently skip webhook route registration.
+# Force registration by re-logging in and toggling each active workflow.
+echo "Re-logging into n8n API after restart..."
+n8n_login || fail "n8n API re-login failed after restart"
+
+echo "Toggling active workflows to force webhook registration..."
+ACTIVE_IDS=$(curl -s -b "$N8N_JAR" "http://localhost:25678/rest/workflows" | \
+  jq -r '(.data // .)[] | select(.active == true) | .id' 2>/dev/null || true)
+
+for wf_id in $ACTIVE_IDS; do
+  # Deactivate then reactivate to trigger webhook Express route creation
+  curl -s -o /dev/null -b "$N8N_JAR" \
+    -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
+    -H "Content-Type: application/json" \
+    -d '{"active": false}' 2>/dev/null
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" -b "$N8N_JAR" \
+    -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
+    -H "Content-Type: application/json" \
+    -d '{"active": true}' 2>/dev/null)
+  echo "  Toggled workflow $wf_id (activate status=$STATUS)"
+done
+
+# Small delay for webhook routes to settle
+sleep 3
 
 # 6) Up: gateway
 

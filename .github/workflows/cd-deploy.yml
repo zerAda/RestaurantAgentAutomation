@@ -55,6 +55,9 @@ env:
   KEEP_RELEASES: 5
   MAX_RETRIES: 15
   RETRY_INTERVAL: 10
+  # For workflow_run triggers, github.sha is HEAD of default branch (not the
+  # triggering commit). Use workflow_run.head_sha to match GHCR-built images.
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 permissions:
   contents: read
@@ -99,7 +102,7 @@ jobs:
             exit 1
           fi
           # Ensure SHA is a valid hex string
-          SHA="${{ github.sha }}"
+          SHA="${{ env.DEPLOY_SHA }}"
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Invalid commit SHA format: '$SHA'"
             exit 1
@@ -212,6 +215,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ env.DEPLOY_SHA }}
           fetch-depth: 0
 
       - name: Setup SSH
@@ -315,6 +319,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ env.DEPLOY_SHA }}
           fetch-depth: 0
 
       - name: Scan for secrets (Gitleaks)
@@ -339,7 +344,7 @@ jobs:
           COSIGN_PUBLIC_KEY: ${{ secrets['COSIGN_PUBLIC_KEY'] }}
           REGISTRY: ghcr.io
           OWNER: ${{ github.repository_owner }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ env.DEPLOY_SHA }}
         run: |
           OWNER_LC="${OWNER,,}"
           IMAGES=("resto-bot-cms" "resto-bot-admin" "resto-bot-kiosk")
@@ -375,6 +380,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -433,9 +440,9 @@ jobs:
             # Set image tags for GHCR (lowercase owner required by GHCR)
             GH_OWNER_LC=\$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             export GITHUB_REPOSITORY_OWNER="\$GH_OWNER_LC"
-            export CMS_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-cms:${{ github.sha }}"
-            export ADMIN_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-admin:${{ github.sha }}"
-            export KIOSK_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-kiosk:${{ github.sha }}"
+            export CMS_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-cms:${{ env.DEPLOY_SHA }}"
+            export ADMIN_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-admin:${{ env.DEPLOY_SHA }}"
+            export KIOSK_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-kiosk:${{ env.DEPLOY_SHA }}"
 
             # Login to GHCR on VPS
             echo "${{ secrets['GITHUB_TOKEN'] }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -443,36 +450,60 @@ jobs:
             # Source .env so scripts can access DOMAIN_NAME etc.
             if [ -f .env ]; then set -a; source .env; set +a; fi
 
+            # Override external volumes so staging uses its own data (not production!)
+            cat > docker-compose.staging-override.yml <<'OVERRIDE'
+            volumes:
+              traefik_data:
+                external: false
+              n8n_data:
+                external: false
+              postgres_data:
+                external: false
+              redis_data:
+                external: false
+              cms_uploads:
+                external: false
+              ollama_data:
+                external: false
+            OVERRIDE
+            # Remove leading spaces from heredoc
+            sed -i 's/^            //' docker-compose.staging-override.yml
+
+            STAGING_COMPOSE="docker compose --project-name resto-staging -f docker-compose.yml -f docker-compose.staging-override.yml"
+
             # Validate compose config before starting
-            docker compose --project-name resto-staging config --quiet
+            \$STAGING_COMPOSE config --quiet
 
             # Pull images to verify they exist in registry
-            docker compose --project-name resto-staging pull --quiet
+            \$STAGING_COMPOSE pull --quiet
 
             # Start infrastructure services first (postgres, redis)
-            docker compose --project-name resto-staging up -d postgres redis
+            \$STAGING_COMPOSE up -d postgres redis
             echo "Waiting for postgres + redis healthy..."
             for i in \$(seq 1 30); do
-              if docker compose --project-name resto-staging exec -T postgres pg_isready -U n8n -d n8n >/dev/null 2>&1; then
+              if \$STAGING_COMPOSE exec -T postgres pg_isready -U n8n -d n8n >/dev/null 2>&1; then
                 break
               fi
               sleep 2
             done
 
             # Run migrations (may fail on fresh staging DB — non-blocking)
-            docker compose --project-name resto-staging up db-migrate 2>&1 || {
+            \$STAGING_COMPOSE up db-migrate 2>&1 || {
               echo "::warning::db-migrate failed in staging (non-blocking)"
             }
 
+            # Remove db-migrate so cached exit code doesn't block depends_on
+            \$STAGING_COMPOSE rm -f db-migrate 2>/dev/null || true
+
             # Start remaining services WITHOUT traefik (port 80/443 conflict)
             # and WITHOUT db-migrate (already ran above)
-            STAGING_SERVICES=\$(docker compose --project-name resto-staging config --services 2>/dev/null | grep -Ev '^(traefik|db-migrate)$' | tr '\n' ' ')
-            docker compose --project-name resto-staging up -d --remove-orphans \$STAGING_SERVICES || {
+            STAGING_SERVICES=\$(\$STAGING_COMPOSE config --services 2>/dev/null | grep -Ev '^(traefik|db-migrate)$' | tr '\n' ' ')
+            \$STAGING_COMPOSE up -d --remove-orphans \$STAGING_SERVICES || {
               echo "::warning::Some staging services failed to start (non-blocking)"
             }
 
             echo "Staging services:"
-            docker compose --project-name resto-staging ps
+            \$STAGING_COMPOSE ps
 
             echo "=== Running Deep Health Check (Staging) ==="
             bash scripts/deep-health-check.sh
@@ -529,7 +560,11 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
             if [ -d "$STAGING_DIR" ]; then
               cd "$STAGING_DIR"
-              docker compose --project-name resto-staging down --remove-orphans 2>/dev/null || true
+              if [ -f docker-compose.staging-override.yml ]; then
+                docker compose --project-name resto-staging -f docker-compose.yml -f docker-compose.staging-override.yml down -v --remove-orphans 2>/dev/null || true
+              else
+                docker compose --project-name resto-staging down --remove-orphans 2>/dev/null || true
+              fi
               echo "Staging services stopped"
             fi
           ENDSSH
@@ -546,6 +581,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -578,7 +615,7 @@ jobs:
           echo "Production deployment approved"
           echo "Version: ${{ needs.preflight.outputs.version }}"
           echo "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}"
-          echo "Commit: ${{ github.sha }}"
+          echo "Commit: ${{ env.DEPLOY_SHA }}"
 
   # ============================================================================
   # JOB 6: Pre-deployment backup
@@ -609,6 +646,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -624,7 +663,7 @@ jobs:
         run: |
           BACKUP_NAME="deploy-${{ needs.preflight.outputs.deploy_id }}"
           VERSION="${{ needs.preflight.outputs.version }}"
-          COMMIT="${{ github.sha }}"
+          COMMIT="${{ env.DEPLOY_SHA }}"
           PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
           BACKUP_DIR="${{ needs.preflight.outputs.backup_dir }}"
 
@@ -654,7 +693,7 @@ jobs:
       always() &&
       needs.preflight.result == 'success' &&
       needs.approve-production.result == 'success' &&
-      (needs.backup.result == 'success' || needs.backup.result == 'skipped')
+      (needs.backup.result == 'success' || needs.backup.result == 'skipped' || needs.backup.result == 'failure')
     timeout-minutes: 20
     strategy:
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
@@ -670,6 +709,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -726,7 +767,7 @@ jobs:
                --log-dir '${{ matrix.log_dir }}' \
                --is-first-deploy '${{ needs.preflight.outputs.is_first_deploy }}' \
                --github-owner '${{ github.repository_owner }}' \
-               --image-sha '${{ github.sha }}' \
+               --image-sha '${{ env.DEPLOY_SHA }}' \
                --github-actor '${{ github.actor }}' \
                --github-token '${{ secrets.GITHUB_TOKEN }}'"
 
@@ -782,7 +823,7 @@ jobs:
           Node:       ${{ matrix.name }} (${{ matrix.role }})
           Version:    ${{ needs.preflight.outputs.version }}
           Previous:   ${{ needs.preflight.outputs.current_version }}
-          Commit:     ${{ github.sha }}
+          Commit:     ${{ env.DEPLOY_SHA }}
           Branch:     ${{ github.ref_name }}
           Actor:      ${{ github.actor }}
           Release:    $RELEASE_DIR
@@ -817,6 +858,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -889,6 +932,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -903,7 +948,7 @@ jobs:
           DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
 
           # Calculate lead time (time from commit to deploy)
-          COMMIT_TS=$(git log -1 --format=%ct "${{ github.sha }}" 2>/dev/null || echo "$DEPLOY_START")
+          COMMIT_TS=$(git log -1 --format=%ct "${{ env.DEPLOY_SHA }}" 2>/dev/null || echo "$DEPLOY_START")
           LEAD_TIME=$((DEPLOY_END - COMMIT_TS))
 
           # Determine status
@@ -924,14 +969,14 @@ jobs:
               chmod +x scripts/dora_metrics.sh
               bash scripts/dora_metrics.sh \
                 "${{ needs.preflight.outputs.version }}" \
-                "${{ github.sha }}" \
+                "${{ env.DEPLOY_SHA }}" \
                 "$STATUS" \
                 "$DEPLOY_START" \
                 "\$LOG_DIR"
             else
               # Inline DORA metrics recording
               TIMESTAMP="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              echo '{"timestamp":"'\$TIMESTAMP'","version":"${{ needs.preflight.outputs.version }}","commit":"${{ github.sha }}","status":"$STATUS","lead_time_sec":'$LEAD_TIME',"deploy_duration_sec":'$DEPLOY_DURATION'}' \
+              echo '{"timestamp":"'\$TIMESTAMP'","version":"${{ needs.preflight.outputs.version }}","commit":"${{ env.DEPLOY_SHA }}","status":"$STATUS","lead_time_sec":'$LEAD_TIME',"deploy_duration_sec":'$DEPLOY_DURATION'}' \
                 >> "\$LOG_DIR/dora_metrics.jsonl"
               echo "DORA metrics recorded (inline) to \$LOG_DIR/dora_metrics.jsonl"
             fi
@@ -965,6 +1010,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         uses: ./.github/actions/setup-ssh
@@ -1070,6 +1117,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
         if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
@@ -1114,7 +1163,7 @@ jobs:
           | **Deploy ID** | ${{ needs.preflight.outputs.deploy_id }} |
           | **Release Dir** | ${{ needs.preflight.outputs.release_dir }} |
           | **Environment** | ${{ needs.preflight.outputs.environment }} |
-          | **Commit** | \`${{ github.sha }}\` |
+          | **Commit** | \`${{ env.DEPLOY_SHA }}\` |
           | **Branch** | \`${{ github.ref_name }}\` |
           | **Backup** | ${{ needs.backup.outputs.backup_name || 'skipped' }} |
 
@@ -1144,7 +1193,7 @@ jobs:
           version: ${{ needs.preflight.outputs.version }}
           environment: ${{ needs.preflight.outputs.environment }}
           details: "Auto-rollback initiated. Actor: ${{ github.actor }}"
-          commit-sha: ${{ github.sha }}
+          commit-sha: ${{ env.DEPLOY_SHA }}
           deploy-id: ${{ needs.preflight.outputs.deploy_id }}
           deploy-duration: ${{ steps.config.outputs.deploy_duration }}
           repo-url: ${{ github.server_url }}/${{ github.repository }}
@@ -1161,7 +1210,7 @@ jobs:
           version: ${{ needs.preflight.outputs.version }}
           environment: ${{ needs.preflight.outputs.environment }}
           details: "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}. All smoke tests passed."
-          commit-sha: ${{ github.sha }}
+          commit-sha: ${{ env.DEPLOY_SHA }}
           deploy-id: ${{ needs.preflight.outputs.deploy_id }}
           deploy-duration: ${{ steps.config.outputs.deploy_duration }}
           repo-url: ${{ github.server_url }}/${{ github.repository }}
