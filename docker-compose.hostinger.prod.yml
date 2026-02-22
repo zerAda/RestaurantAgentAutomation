@@ -344,7 +344,7 @@ services:
       - "traefik.http.routers.admin-dash.entrypoints=websecure"
       - "traefik.http.routers.admin-dash.tls=true"
       - "traefik.http.routers.admin-dash.tls.certresolver=mytlschallenge"
-      - "traefik.http.services.admin-dash.loadbalancer.server.port=8080"
+      - "traefik.http.services.admin-dash.loadbalancer.server.port=80"
       # Security: IP Allowlist + Basic Auth
       - "traefik.http.routers.admin-dash.middlewares=admin-dash-chain@docker"
       - "traefik.http.middlewares.admin-dash-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
@@ -388,7 +388,7 @@ services:
       - "traefik.http.routers.kiosk.entrypoints=websecure"
       - "traefik.http.routers.kiosk.tls=true"
       - "traefik.http.routers.kiosk.tls.certresolver=mytlschallenge"
-      - "traefik.http.services.kiosk.loadbalancer.server.port=8080"
+      - "traefik.http.services.kiosk.loadbalancer.server.port=80"
       # Public-facing – rate limit + security headers only (no IP allowlist)
       - "traefik.http.routers.kiosk.middlewares=kiosk-chain@docker"
       - "traefik.http.middlewares.kiosk-ratelimit.ratelimit.average=30"
