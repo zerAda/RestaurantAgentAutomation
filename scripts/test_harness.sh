@@ -193,16 +193,17 @@ echo "ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
 export CORE_WORKFLOW_ID="$core_id"
 export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
-# Phase 1b: Import ALL workflows as INACTIVE first, then explicitly activate
-# webhook workflows. In n8n 1.123+, POST with active=true may just set the
-# DB flag without triggering the webhook Express route registration lifecycle.
-echo "Creating core webhook workflows (inactive, will activate separately)..."
+# Create webhook workflows as ACTIVE in a single REST POST call.
+# IMPORTANT: n8n registers Express routes for webhooks in the SAME process
+# where POST active=true is called. These routes are in-memory only and lost
+# on container recreation. We MUST avoid recreating n8n after this point.
+echo "Creating core webhook workflows (active)..."
 CREATE_FAILED=0
 WEBHOOK_IDS=""
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
           W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
           W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
-  wf_id="$(create_wf "workflows/$wf" "$wf" false 2>/dev/null)" || {
+  wf_id="$(create_wf "workflows/$wf" "$wf" true 2>/dev/null)" || {
     echo "::warning::Failed to create $wf (non-blocking)"
     CREATE_FAILED=$((CREATE_FAILED + 1))
     continue
@@ -236,36 +237,6 @@ for wf in W0_META_VERIFY_UNIFIED.json W1_IN_TIKTOK.json \
 done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
-
-# CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID env vars have changed since
-# n8n was initially started. Recreate n8n with the correct env vars FIRST,
-# then re-activate webhooks on the fresh process. This prevents the implicit
-# recreation that happens when "docker compose up -d gateway" detects config drift.
-echo "[5b/8] Restart n8n with correct CORE_WORKFLOW_ID env..."
-docker compose -f "$COMPOSE_FILE" up -d n8n
-
-echo "Waiting for n8n to restart..."
-for i in $(seq 1 90); do
-  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
-  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
-  sleep 2
-  if [[ $i -eq 90 ]]; then fail "n8n did not restart"; fi
-done
-
-# Re-login (new process, old cookies invalid)
-echo "Re-authenticating with n8n..."
-n8n_login || fail "n8n re-login failed after restart"
-
-# Explicitly activate each webhook workflow via PATCH.
-echo "Activating webhook workflows..."
-for wf_id in $WEBHOOK_IDS; do
-  RESP=$(curl -s -b "$N8N_JAR" \
-    -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
-    -H "Content-Type: application/json" \
-    -d '{"active": true}')
-  ACTIVE=$(echo "$RESP" | jq -r '.active // .data.active // "unknown"' 2>/dev/null)
-  echo "  Activated $wf_id → active=$ACTIVE"
-done
 
 # Resolve actual webhook paths from DB.
 # n8n 1.123+ stores webhook paths with a workflowId/nodeName prefix:
