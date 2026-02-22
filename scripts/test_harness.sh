@@ -193,17 +193,17 @@ echo "ADMIN_WA_CONSOLE_WORKFLOW_ID=$admin_wa_id"
 export CORE_WORKFLOW_ID="$core_id"
 export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
-# Create webhook workflows as ACTIVE in a single REST POST call.
-# IMPORTANT: n8n registers Express routes for webhooks in the SAME process
-# where POST active=true is called. These routes are in-memory only and lost
-# on container recreation. We MUST avoid recreating n8n after this point.
-echo "Creating core webhook workflows (active)..."
+# Create webhook workflows as INACTIVE first, then activate via PATCH.
+# PATCH creates webhook_entity DB records. Then we restart n8n in queue mode
+# so that ActiveWorkflowManager.init() reads those records and registers
+# the Express routes. (In regular mode, init() silently skips registration.)
+echo "Creating core webhook workflows (inactive)..."
 CREATE_FAILED=0
 WEBHOOK_IDS=""
 for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json \
           W9_ADMIN_PING.json W10_CUSTOMER_DELIVERY_QUOTE.json \
           W11_ADMIN_DELIVERY_ZONES.json W12_ADMIN_ORDERS.json; do
-  wf_id="$(create_wf "workflows/$wf" "$wf" true 2>/dev/null)" || {
+  wf_id="$(create_wf "workflows/$wf" "$wf" false 2>/dev/null)" || {
     echo "::warning::Failed to create $wf (non-blocking)"
     CREATE_FAILED=$((CREATE_FAILED + 1))
     continue
@@ -238,118 +238,61 @@ done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
 
-# Resolve actual webhook paths from DB.
-# n8n 1.123+ stores webhook paths with a workflowId/nodeName prefix:
-#   <workflowId>/<urlEncodedNodeName>/<path>
-# We need to discover the actual registered paths and configure nginx accordingly.
-echo "Resolving actual webhook paths from DB..."
-resolve_wh() {
-  docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-    "psql -U n8n -d n8n -Atc \"SELECT \\\"webhookPath\\\" FROM webhook_entity WHERE method='$1' AND \\\"webhookPath\\\" LIKE '%$2' LIMIT 1;\"" 2>/dev/null | tr -d '\r\n'
-}
-
-WH_WA=$(resolve_wh POST "v1/inbound/whatsapp")
-WH_IG=$(resolve_wh POST "v1/inbound/instagram")
-WH_MSG=$(resolve_wh POST "v1/inbound/messenger")
-WH_PING=$(resolve_wh GET "v1/admin/ping")
-WH_QUOTE=$(resolve_wh POST "v1/customer/delivery/quote")
-WH_ZONES_G=$(resolve_wh GET "v1/admin/delivery/zones")
-WH_ZONES_P=$(resolve_wh POST "v1/admin/delivery/zones")
-WH_ORDERS=$(resolve_wh GET "v1/admin/orders")
-
-echo "  WA:    /webhook/$WH_WA"
-echo "  IG:    /webhook/$WH_IG"
-echo "  MSG:   /webhook/$WH_MSG"
-echo "  PING:  /webhook/$WH_PING"
-echo "  QUOTE: /webhook/$WH_QUOTE"
-
-# Verify webhook is reachable directly on n8n using the ACTUAL path
-sleep 2
-echo "Verifying webhook directly on n8n (actual path)..."
-if [[ -n "$WH_WA" ]]; then
-  WH_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/$WH_WA" \
+# Activate webhook workflows via PATCH (creates webhook_entity DB records)
+echo "Activating webhook workflows via PATCH..."
+for wf_id in $WEBHOOK_IDS; do
+  RESP=$(curl -s -b "$N8N_JAR" \
+    -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
     -H "Content-Type: application/json" \
-    -d '{"text":"check","from":"check","msgId":"check-direct-1"}')
-  echo "  Direct webhook (actual path): $WH_DIRECT"
-else
-  echo "  No WA webhook path found in DB — falling back to flat path"
-  WH_WA="v1/inbound/whatsapp"
-  WH_IG="v1/inbound/instagram"
-  WH_MSG="v1/inbound/messenger"
-  WH_PING="v1/admin/ping"
-  WH_QUOTE="v1/customer/delivery/quote"
-  WH_ZONES_G="v1/admin/delivery/zones"
-  WH_ZONES_P="v1/admin/delivery/zones"
-  WH_ORDERS="v1/admin/orders"
-  WH_DIRECT="skip"
+    -d '{"active": true}')
+  ACTIVE=$(echo "$RESP" | jq -r '.active // .data.active // "unknown"' 2>/dev/null)
+  echo "  Activated $wf_id → active=$ACTIVE"
+done
+
+# Restart n8n so queue-mode init() registers Express routes from webhook_entity.
+# The env vars CORE_WORKFLOW_ID and ADMIN_WA_CONSOLE_WORKFLOW_ID also get updated.
+echo "[5b/8] Restart n8n (queue mode init registers webhooks from DB)..."
+docker compose -f "$COMPOSE_FILE" up -d n8n
+
+echo "Waiting for n8n to restart..."
+for i in $(seq 1 90); do
+  resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
+  if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
+  sleep 2
+  if [[ $i -eq 90 ]]; then fail "n8n did not restart"; fi
+done
+
+# Verify webhook directly on n8n (should work now after queue mode init)
+sleep 3
+echo "Verifying webhook directly on n8n..."
+WH_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/v1/inbound/whatsapp" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"check","from":"check","msgId":"check-direct-1"}')
+echo "  Direct webhook status: $WH_DIRECT"
+
+# If flat path doesn't work, try resolving actual paths from DB
+if [[ "$WH_DIRECT" == "404" ]]; then
+  echo "  Flat path 404 — checking DB for actual webhook paths..."
+  resolve_wh() {
+    docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+      "psql -U n8n -d n8n -Atc \"SELECT \\\"webhookPath\\\" FROM webhook_entity WHERE method='$1' AND \\\"webhookPath\\\" LIKE '%$2' LIMIT 1;\"" 2>/dev/null | tr -d '\r\n'
+  }
+  WH_WA=$(resolve_wh POST "v1/inbound/whatsapp")
+  echo "  DB path: $WH_WA"
+
+  if [[ -n "$WH_WA" && "$WH_WA" != "v1/inbound/whatsapp" ]]; then
+    WH_DIRECT2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/$WH_WA" \
+      -H "Content-Type: application/json" \
+      -d '{"text":"check","from":"check","msgId":"check-direct-2"}')
+    echo "  Direct webhook (full path): $WH_DIRECT2"
+  fi
 fi
 
-# 6) Up: gateway (with dynamic nginx config if paths have prefix)
+# 6) Up: gateway
 
 echo "[6/8] Up: gateway"
 
-NGINX_CONF="$ROOT_DIR/infra/gateway/nginx.test.conf"
-
-# If webhook paths differ from the flat format, overwrite nginx.test.conf
-# with dynamic paths before starting gateway. The compose file bind-mounts
-# this file, so gateway will pick up the dynamic version.
-if [[ "$WH_WA" != "v1/inbound/whatsapp" ]]; then
-  echo "  Webhook paths have n8n prefix — generating dynamic nginx config..."
-  cat > "$NGINX_CONF" <<NGXCONF
-# AUTO-GENERATED by test_harness.sh — dynamic webhook path mapping
-upstream n8n_upstream { server n8n:5678; keepalive 16; }
-server {
-  listen 8080;
-  location = /healthz { add_header Content-Type text/plain; return 200 'ok'; }
-
-  location = /v1/inbound/whatsapp {
-    proxy_pass http://n8n_upstream/webhook/$WH_WA;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/inbound/instagram {
-    proxy_pass http://n8n_upstream/webhook/$WH_IG;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/inbound/messenger {
-    proxy_pass http://n8n_upstream/webhook/$WH_MSG;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/inbound/wa-incoming-v16 {
-    proxy_pass http://n8n_upstream/webhook/$WH_WA;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/inbound/ig-incoming-v16 {
-    proxy_pass http://n8n_upstream/webhook/$WH_IG;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/inbound/msg-incoming-v16 {
-    proxy_pass http://n8n_upstream/webhook/$WH_MSG;
-    include /etc/nginx/proxy_params;
-  }
-
-  location = /v1/admin/ping {
-    proxy_pass http://n8n_upstream/webhook/$WH_PING;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/customer/delivery/quote {
-    proxy_pass http://n8n_upstream/webhook/$WH_QUOTE;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/admin/delivery/zones {
-    proxy_pass http://n8n_upstream/webhook/$WH_ZONES_G;
-    include /etc/nginx/proxy_params;
-  }
-  location = /v1/admin/orders {
-    proxy_pass http://n8n_upstream/webhook/$WH_ORDERS;
-    include /etc/nginx/proxy_params;
-  }
-
-  location / { return 404; }
-}
-NGXCONF
-fi
-
-# Start gateway WITHOUT recreating n8n (we already restarted it with correct env)
+# Start gateway without recreating n8n (which now has correct env + registered routes)
 docker compose -f "$COMPOSE_FILE" up -d --no-recreate gateway
 
 echo "Waiting for gateway /healthz..."
