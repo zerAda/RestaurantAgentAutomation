@@ -36,9 +36,9 @@ export function StockView() {
     if (loading) return <div className="p-8 text-zinc-500">Loading inventory...</div>;
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {items.map(item => (
-                <div key={item.id} className="card">
+                <div key={item.id} className="diamond-card p-6 rounded-2xl group hover:scale-[1.02]">
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <h3 className="font-semibold text-lg">{item.name}</h3>

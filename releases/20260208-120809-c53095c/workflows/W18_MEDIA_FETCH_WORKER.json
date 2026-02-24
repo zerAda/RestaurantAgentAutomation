@@ -1,0 +1,644 @@
+{
+  "name": "W18 - Media Fetch Worker (Graph API + DLQ)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "media-worker-trigger",
+      "name": "CRON - Every 15s",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [-2400, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Media Fetch Worker - Configuration\n * Fetches media URLs from WhatsApp Graph API\n */\nconst workerEnabled = (($env.MEDIA_FETCH_ENABLED || 'true').toString().toLowerCase() !== 'false');\nconst batchSize = parseInt($env.MEDIA_FETCH_BATCH_SIZE || '10', 10);\nconst maxAttempts = parseInt($env.MEDIA_FETCH_MAX_ATTEMPTS || '5', 10);\nconst baseDelaySec = parseInt($env.MEDIA_FETCH_BASE_DELAY_SEC || '15', 10);\nconst maxDelaySec = parseInt($env.MEDIA_FETCH_MAX_DELAY_SEC || '1800', 10);\nconst graphVersion = ($env.GRAPH_API_VERSION || 'v21.0').toString();\nconst waToken = ($env.WA_API_TOKEN || '').toString().trim();\n\nif (!workerEnabled) {\n  return [{ json: { skip: true, reason: 'WORKER_DISABLED' } }];\n}\n\nif (!waToken) {\n  return [{ json: { skip: true, reason: 'WA_API_TOKEN_MISSING' } }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    config: {\n      batchSize,\n      maxAttempts,\n      baseDelaySec,\n      maxDelaySec,\n      graphVersion,\n      timestamp: new Date().toISOString()\n    }\n  }\n}];\n"
+      },
+      "id": "media-config",
+      "name": "B0 - Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-2150, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}",
+              "operation": "isFalse"
+            }
+          ]
+        }
+      },
+      "id": "media-enabled-check",
+      "name": "B0 - Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-1900, 0]
+    },
+    {
+      "parameters": {
+        "operation": "pop",
+        "list": "ralphe:media:pending",
+        "tail": true
+      },
+      "id": "media-rpop",
+      "name": "B1 - RPOP Media Request",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-1650, -100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Parse popped media request\n */\nconst raw = $json;\nconst config = $('B0 - Config').first().json.config;\n\n// Redis returns null/undefined if queue is empty\nif (!raw || raw === 'nil' || raw === '' || (typeof raw === 'object' && Object.keys(raw).length === 0)) {\n  return [{ json: { empty: true, config } }];\n}\n\n// Parse JSON\nlet req;\ntry {\n  req = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return [{ json: { empty: false, invalid: true, raw, error: e.message, config } }];\n}\n\n// Validate required fields\nif (!req.media_id) {\n  return [{ json: { empty: false, invalid: true, req, error: 'MISSING_MEDIA_ID', config } }];\n}\n\n// Calculate retry info\nconst attempts = (req.attempts || 0) + 1;\nconst nextRetryAt = req.nextRetryAt ? new Date(req.nextRetryAt).getTime() : 0;\nconst now = Date.now();\n\n// Check if ready for retry\nif (nextRetryAt > now) {\n  return [{ json: { empty: false, notReady: true, req, config, requeue: true } }];\n}\n\nreturn [{\n  json: {\n    empty: false,\n    invalid: false,\n    notReady: false,\n    req: {\n      ...req,\n      attempts\n    },\n    config\n  }\n}];\n"
+      },
+      "id": "media-parse-msg",
+      "name": "B1 - Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1400, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.empty || $json.invalid}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "media-check-empty",
+      "name": "B1 - Empty/Invalid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-1150, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.notReady}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "media-check-ready",
+      "name": "B1 - Not Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-900, -200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Re-queue request that's not ready for retry\n */\nconst data = $json;\nreturn [{\n  json: {\n    requeue: JSON.stringify(data.req)\n  }\n}];\n"
+      },
+      "id": "media-prepare-requeue",
+      "name": "B1 - Prepare Requeue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-650, -300]
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "ralphe:media:pending",
+        "messageData": "={{$json.requeue}}",
+        "tail": true
+      },
+      "id": "media-requeue",
+      "name": "B1 - LPUSH Requeue",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-400, -300],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Fetch media URL from WhatsApp Graph API\n * GET https://graph.facebook.com/{version}/{media_id}\n * Returns: { url, mime_type, sha256, file_size, id, messaging_product }\n * \n * The URL is temporary and requires Bearer token to download.\n */\nconst data = $json;\nconst req = data.req;\nconst config = data.config;\n\nconst graphVersion = config.graphVersion || 'v21.0';\nconst mediaId = req.media_id;\nconst waToken = ($env.WA_API_TOKEN || '').toString().trim();\n\nconst timestamp = new Date().toISOString();\n\nif (!waToken) {\n  return [{ json: {\n    ...data,\n    fetched: false,\n    error: 'WA_API_TOKEN_MISSING',\n    retryable: false,\n    dlqReason: 'CONFIG_ERROR',\n    timestamp\n  }}];\n}\n\n// Build Graph API URL\nconst graphUrl = `https://graph.facebook.com/${graphVersion}/${mediaId}`;\n\ntry {\n  const response = await $httpRequest({\n    method: 'GET',\n    url: graphUrl,\n    headers: {\n      'Authorization': `Bearer ${waToken}`\n    },\n    json: true,\n    timeout: 30000,\n    returnFullResponse: true\n  });\n  \n  const statusCode = response.statusCode || response.status || 200;\n  const responseBody = response.body || response.data || response;\n  \n  if (statusCode >= 200 && statusCode < 300 && responseBody.url) {\n    // Success! Media URL retrieved\n    return [{ json: {\n      ...data,\n      fetched: true,\n      statusCode,\n      mediaUrl: responseBody.url,\n      mimeType: responseBody.mime_type || req.mime || 'application/octet-stream',\n      sha256: responseBody.sha256 || req.sha256 || '',\n      fileSize: responseBody.file_size || 0,\n      timestamp,\n      responseBody\n    }}];\n  }\n  \n  // Handle specific error codes\n  let retryable = false;\n  let dlqReason = 'FETCH_FAILED';\n  \n  if (statusCode === 401) {\n    // Token expired or invalid - DLQ immediately\n    dlqReason = 'AUTH_EXPIRED';\n    retryable = false;\n  } else if (statusCode === 400) {\n    // Invalid media ID or already expired\n    const errorCode = responseBody?.error?.code;\n    if (errorCode === 100 || errorCode === 131051) {\n      // Media expired or not found\n      dlqReason = 'MEDIA_EXPIRED';\n      retryable = false;\n    } else {\n      dlqReason = 'BAD_REQUEST';\n      retryable = false;\n    }\n  } else if (statusCode === 403) {\n    dlqReason = 'FORBIDDEN';\n    retryable = false;\n  } else if (statusCode === 429) {\n    // Rate limited - retry\n    dlqReason = 'RATE_LIMITED';\n    retryable = true;\n  } else if (statusCode >= 500) {\n    // Server error - retry\n    dlqReason = 'SERVER_ERROR';\n    retryable = true;\n  }\n  \n  return [{ json: {\n    ...data,\n    fetched: false,\n    statusCode,\n    retryable,\n    dlqReason,\n    error: `HTTP_${statusCode}`,\n    errorDetail: responseBody?.error || null,\n    timestamp\n  }}];\n  \n} catch (err) {\n  // Network error - retryable\n  return [{ json: {\n    ...data,\n    fetched: false,\n    retryable: true,\n    dlqReason: 'NETWORK_ERROR',\n    error: 'NETWORK_ERROR',\n    errorMessage: err.message,\n    timestamp\n  }}];\n}\n"
+      },
+      "id": "media-fetch",
+      "name": "B2 - Fetch Media URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-650, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.fetched}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "media-fetch-ok",
+      "name": "B2 - Fetch OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-400, -100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Update canonical payload with fetched media URL\n * Store in Redis for the inbound workflow to use\n */\nconst crypto = require('crypto');\nconst data = $json;\nconst req = data.req;\n\n// Build update payload\nconst updateKey = `ralphe:media:resolved:${req.correlation_id || req.msg_id}`;\nconst updatePayload = {\n  media_id: req.media_id,\n  url: data.mediaUrl,\n  mime: data.mimeType,\n  sha256: data.sha256,\n  file_size: data.fileSize,\n  resolved_at: data.timestamp,\n  original_request: req\n};\n\nreturn [{\n  json: {\n    updateKey,\n    updatePayload: JSON.stringify(updatePayload),\n    ttl: 3600, // 1 hour TTL for resolved media URLs\n    ...data\n  }\n}];\n"
+      },
+      "id": "media-prepare-update",
+      "name": "B3 - Prepare Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-150, -200]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "={{$json.updateKey}}",
+        "value": "={{$json.updatePayload}}",
+        "expire": true,
+        "ttl": "={{$json.ttl}}"
+      },
+      "id": "media-store-url",
+      "name": "B3 - Store Resolved URL",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [100, -200],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Handle fetch failure - retry or DLQ\n */\nconst data = $json;\nconst req = data.req;\nconst config = data.config;\nconst attempts = req.attempts || 1;\nconst maxAttempts = config?.maxAttempts || 5;\nconst baseDelaySec = config?.baseDelaySec || 15;\nconst maxDelaySec = config?.maxDelaySec || 1800;\n\n// 401 errors go straight to DLQ - token expired\nconst is401 = data.statusCode === 401;\nconst shouldRetry = data.retryable && attempts < maxAttempts && !is401;\n\nif (shouldRetry) {\n  // Calculate next retry time with exponential backoff\n  const delaySec = Math.min(baseDelaySec * Math.pow(2, attempts - 1), maxDelaySec);\n  const nextRetryAt = new Date(Date.now() + delaySec * 1000).toISOString();\n  \n  const retryReq = {\n    ...req,\n    attempts,\n    nextRetryAt,\n    lastError: data.error,\n    lastStatusCode: data.statusCode,\n    lastAttemptAt: data.timestamp\n  };\n  \n  return [{ json: {\n    action: 'retry',\n    retryReq: JSON.stringify(retryReq),\n    attempts,\n    nextRetryAt,\n    delaySec\n  }}];\n}\n\n// Move to DLQ\nconst dlqEntry = {\n  media_id: req.media_id,\n  msg_id: req.msg_id,\n  correlation_id: req.correlation_id,\n  channel: req.channel || 'whatsapp',\n  media_type: req.media_type,\n  attempts,\n  error: data.error,\n  statusCode: data.statusCode,\n  dlqReason: data.dlqReason || 'MAX_RETRIES_EXHAUSTED',\n  errorDetail: data.errorDetail,\n  failedAt: data.timestamp,\n  originalRequest: req\n};\n\nreturn [{ json: {\n  action: 'dlq',\n  dlqEntry: JSON.stringify(dlqEntry),\n  dlqReason: data.dlqReason,\n  is401,\n  attempts,\n  error: data.error\n}}];\n"
+      },
+      "id": "media-handle-fail",
+      "name": "B2 - Handle Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-150, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "value2": "retry"
+            }
+          ]
+        }
+      },
+      "id": "media-retry-or-dlq",
+      "name": "B2 - Retry or DLQ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [100, 0]
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "ralphe:media:pending",
+        "messageData": "={{$json.retryReq}}",
+        "tail": true
+      },
+      "id": "media-push-retry",
+      "name": "B3 - LPUSH Retry",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [350, -100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "ralphe:media:dlq",
+        "messageData": "={{$json.dlqEntry}}"
+      },
+      "id": "media-push-dlq",
+      "name": "B3 - Push to DLQ",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [350, 100],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.is401}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "media-is-401",
+      "name": "B3 - Is 401 Auth Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [600, 100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-02: Alert admin on 401 (token expired)\n * This is critical - all media fetches will fail until token is refreshed\n */\nconst data = $json;\nconst alertPayload = {\n  severity: 'CRITICAL',\n  type: 'MEDIA_FETCH_AUTH_EXPIRED',\n  message: 'WhatsApp API token expired - media fetch failing with 401',\n  details: {\n    error: data.error,\n    dlqReason: data.dlqReason,\n    timestamp: new Date().toISOString()\n  },\n  action_required: 'Refresh WA_API_TOKEN in environment configuration'\n};\n\nreturn [{ json: { alertPayload } }];\n"
+      },
+      "id": "media-prepare-alert",
+      "name": "B4 - Prepare Admin Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 0]
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "ralphe:alerts:critical",
+        "messageData": "={{JSON.stringify($json.alertPayload)}}"
+      },
+      "id": "media-push-alert",
+      "name": "B4 - Push Alert",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-02: Worker cycle complete - success\nreturn [{ json: { status: 'SUCCESS', mediaUrl: $json.mediaUrl, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-success",
+      "name": "END - Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [350, -200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-02: Worker cycle complete - retry scheduled\nreturn [{ json: { status: 'RETRY_SCHEDULED', attempts: $json.attempts, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-retry",
+      "name": "END - Retry Scheduled",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, -100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-02: Worker cycle complete - moved to DLQ (non-401)\nreturn [{ json: { status: 'DLQ', error: $json.error, dlqReason: $json.dlqReason, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-dlq",
+      "name": "END - DLQ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-02: Worker cycle complete - DLQ + alert sent for 401\nreturn [{ json: { status: 'DLQ_ALERT_SENT', error: 'AUTH_EXPIRED', timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-dlq-alert",
+      "name": "END - DLQ + Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// P1-02: Worker cycle complete - queue empty or skipped\nreturn [{ json: { status: 'IDLE', reason: $json.reason || 'QUEUE_EMPTY', timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "end-idle",
+      "name": "END - Idle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-900, 100]
+    }
+  ],
+  "connections": {
+    "CRON - Every 15s": {
+      "main": [
+        [
+          {
+            "node": "B0 - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Config": {
+      "main": [
+        [
+          {
+            "node": "B0 - Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Enabled?": {
+      "main": [
+        [
+          {
+            "node": "B1 - RPOP Media Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END - Idle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - RPOP Media Request": {
+      "main": [
+        [
+          {
+            "node": "B1 - Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Parse Request": {
+      "main": [
+        [
+          {
+            "node": "B1 - Empty/Invalid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Empty/Invalid?": {
+      "main": [
+        [
+          {
+            "node": "END - Idle",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B1 - Not Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Not Ready?": {
+      "main": [
+        [
+          {
+            "node": "B1 - Prepare Requeue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B2 - Fetch Media URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Prepare Requeue": {
+      "main": [
+        [
+          {
+            "node": "B1 - LPUSH Requeue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - LPUSH Requeue": {
+      "main": [
+        [
+          {
+            "node": "END - Idle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Fetch Media URL": {
+      "main": [
+        [
+          {
+            "node": "B2 - Fetch OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Fetch OK?": {
+      "main": [
+        [
+          {
+            "node": "B3 - Prepare Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B2 - Handle Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Prepare Update": {
+      "main": [
+        [
+          {
+            "node": "B3 - Store Resolved URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Store Resolved URL": {
+      "main": [
+        [
+          {
+            "node": "END - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Handle Failure": {
+      "main": [
+        [
+          {
+            "node": "B2 - Retry or DLQ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B2 - Retry or DLQ?": {
+      "main": [
+        [
+          {
+            "node": "B3 - LPUSH Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B3 - Push to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - LPUSH Retry": {
+      "main": [
+        [
+          {
+            "node": "END - Retry Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Push to DLQ": {
+      "main": [
+        [
+          {
+            "node": "B3 - Is 401 Auth Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B3 - Is 401 Auth Error?": {
+      "main": [
+        [
+          {
+            "node": "B4 - Prepare Admin Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END - DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Prepare Admin Alert": {
+      "main": [
+        [
+          {
+            "node": "B4 - Push Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B4 - Push Alert": {
+      "main": [
+        [
+          {
+            "node": "END - DLQ + Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

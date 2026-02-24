@@ -27,7 +27,7 @@ export function QuickAdjust() {
     if (loading) return <div className="p-8 text-zinc-500">Loading...</div>;
 
     return (
-        <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+        <div className="diamond-card rounded-2xl overflow-hidden">
             <table className="w-full text-left">
                 <thead className="bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-zinc-700">
                     <tr>

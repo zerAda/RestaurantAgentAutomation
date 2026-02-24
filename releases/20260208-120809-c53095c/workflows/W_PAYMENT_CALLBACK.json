@@ -1,0 +1,168 @@
+{
+    "name": "W_PAYMENT_CALLBACK",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "chargily-callback",
+                "options": {}
+            },
+            "name": "Chargily Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Verify Chargily signature\nconst crypto = require('crypto');\nconst signature = $input.first().headers['signature'] || '';\nconst payload = JSON.stringify($input.first().json);\nconst secret = $env.CHARGILY_SECRET_KEY;\n\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(payload)\n  .digest('hex');\n\nconst isValid = signature === expectedSignature;\nconst event = $input.first().json;\n\nreturn {\n  json: {\n    is_valid: isValid,\n    event_type: event.type,\n    checkout_id: event.data?.id,\n    order_id: event.data?.metadata?.order_id,\n    status: event.data?.status\n  }\n};"
+            },
+            "name": "Verify Signature",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.is_valid }}",
+                            "operation": "equal",
+                            "value2": "={{ true }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Valid Signature?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.status }}",
+                            "operation": "equal",
+                            "value2": "paid"
+                        }
+                    ]
+                }
+            },
+            "name": "Is Paid?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "collection": "payments",
+                "filters": {
+                    "external_id": "={{ $json.checkout_id }}"
+                },
+                "fields": {
+                    "status": "paid",
+                    "paid_at": "={{ new Date().toISOString() }}"
+                }
+            },
+            "name": "Mark Payment Paid",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                900,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "collection": "orders",
+                "id": "={{ $json.order_id }}",
+                "fields": {
+                    "payment_status": "paid",
+                    "status": "confirmed"
+                }
+            },
+            "name": "Confirm Order",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                100
+            ]
+        }
+    ],
+    "connections": {
+        "Chargily Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Verify Signature",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verify Signature": {
+            "main": [
+                [
+                    {
+                        "node": "Valid Signature?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Valid Signature?": {
+            "main": [
+                [
+                    {
+                        "node": "Is Paid?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Is Paid?": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Payment Paid",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Mark Payment Paid": {
+            "main": [
+                [
+                    {
+                        "node": "Confirm Order",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

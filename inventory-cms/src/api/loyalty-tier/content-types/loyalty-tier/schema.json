@@ -1,0 +1,37 @@
+{
+    "kind": "collectionType",
+    "collectionName": "loyalty-tiers",
+    "info": {
+        "singularName": "loyalty-tier",
+        "pluralName": "loyalty-tiers",
+        "displayName": "Loyalty Tier"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "attributes": {
+        "name": {
+            "type": "string",
+            "required": true
+        },
+        "multiplier": {
+            "type": "float",
+            "default": 1.0,
+            "description": "Points multiplier for this tier"
+        },
+        "min_points": {
+            "type": "integer",
+            "default": 0,
+            "description": "Minimum points to reach this tier"
+        },
+        "perks": {
+            "type": "json"
+        },
+        "customers": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::customer.customer",
+            "mappedBy": "loyalty_tier"
+        }
+    }
+}

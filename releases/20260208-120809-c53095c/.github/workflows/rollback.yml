@@ -1,0 +1,275 @@
+# =============================================================================
+# Rollback Workflow - Resto Bot (SSH-based)
+# =============================================================================
+# Manual rollback with database and configuration restore
+# =============================================================================
+
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_name:
+        description: 'Backup name (leave empty for latest)'
+        required: false
+        default: ''
+      rollback_type:
+        description: 'Type of rollback'
+        required: true
+        default: 'config'
+        type: choice
+        options:
+          - config        # Only .env and secrets
+          - full          # Config + database
+      confirm:
+        description: 'Type ROLLBACK to confirm'
+        required: true
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        default: 'Deployment issue'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: ${{ vars.VPS_HOST }}
+  VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
+  PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
+  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/opt/resto/backups' }}
+  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  LOG_DIR: ${{ vars.LOG_DIR || '/var/log/resto-bot' }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Request
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'ROLLBACK' }}
+
+    outputs:
+      backup_name: ${{ steps.select.outputs.backup_name }}
+      rollback_type: ${{ steps.select.outputs.rollback_type }}
+
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: List available backups
+        run: |
+          echo "=== Available Backups ==="
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -lht ${{ env.BACKUP_DIR }}/deploy-* 2>/dev/null | head -20" || echo "No backups found"
+
+      - name: Select backup
+        id: select
+        run: |
+          ROLLBACK_TYPE="${{ github.event.inputs.rollback_type }}"
+          echo "rollback_type=$ROLLBACK_TYPE" >> $GITHUB_OUTPUT
+
+          if [ -n "${{ github.event.inputs.backup_name }}" ]; then
+            BACKUP="${{ github.event.inputs.backup_name }}"
+          else
+            BACKUP=$(ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "ls -t ${{ env.BACKUP_DIR }}/deploy-*-config.tar.gz 2>/dev/null | head -1 | xargs -r basename | sed 's/-config.tar.gz//'")
+          fi
+
+          if [ -z "$BACKUP" ]; then
+            echo "::error::No backup found"
+            exit 1
+          fi
+
+          echo "backup_name=$BACKUP" >> $GITHUB_OUTPUT
+          echo "Selected: $BACKUP"
+
+  pre-rollback-backup:
+    name: Pre-rollback Backup
+    runs-on: ubuntu-latest
+    needs: validate
+
+    outputs:
+      pre_backup: ${{ steps.backup.outputs.name }}
+
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Create safety backup
+        id: backup
+        run: |
+          PRE_BACKUP="pre-rollback-$(date +%Y%m%d-%H%M%S)"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            mkdir -p "${{ env.BACKUP_DIR }}"
+            cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }}
+
+            # Config backup
+            tar -czvf "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-config.tar.gz" .env secrets/ 2>/dev/null || true
+
+            # DB backup
+            docker compose exec -T postgres pg_dump -U n8n -d n8n --no-owner --no-acl | gzip > "${{ env.BACKUP_DIR }}/${PRE_BACKUP}-db.sql.gz"
+
+            echo "Pre-rollback backup: ${PRE_BACKUP}"
+          ENDSSH
+
+          echo "name=$PRE_BACKUP" >> $GITHUB_OUTPUT
+
+  rollback:
+    name: Execute Rollback
+    runs-on: ubuntu-latest
+    needs: [validate, pre-rollback-backup]
+
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Stop services
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }}/current 2>/dev/null && docker compose down --timeout 30 || (cd ${{ env.PROJECT_DIR }} && docker compose down --timeout 30)" || true
+
+      - name: Restore database (full only)
+        if: needs.validate.outputs.rollback_type == 'full'
+        run: |
+          BACKUP="${{ needs.validate.outputs.backup_name }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }}
+
+            # Start postgres only
+            docker compose up -d postgres
+            sleep 15
+
+            # Wait for postgres
+            for i in \$(seq 1 30); do
+              docker compose exec -T postgres pg_isready -U n8n && break
+              sleep 2
+            done
+
+            # Restore database
+            echo "Restoring database..."
+            docker compose exec -T postgres psql -U n8n -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'n8n' AND pid <> pg_backend_pid();" postgres || true
+            docker compose exec -T postgres dropdb -U n8n --if-exists n8n || true
+            docker compose exec -T postgres createdb -U n8n n8n
+
+            gunzip -c "${{ env.BACKUP_DIR }}/${BACKUP}-db.sql.gz" | docker compose exec -T postgres psql -U n8n -d n8n
+
+            echo "Database restored"
+          ENDSSH
+
+      - name: Restore configuration
+        run: |
+          BACKUP="${{ needs.validate.outputs.backup_name }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            set -e
+            cd ${{ env.PROJECT_DIR }}/current 2>/dev/null || cd ${{ env.PROJECT_DIR }}
+            tar -xzvf "${{ env.BACKUP_DIR }}/${BACKUP}-config.tar.gz" --overwrite
+            chmod 600 .env 2>/dev/null || true
+            chmod 700 secrets 2>/dev/null || true
+            echo "Configuration restored"
+          ENDSSH
+
+      - name: Restart services
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cd ${{ env.PROJECT_DIR }}/current 2>/dev/null && docker compose up -d --remove-orphans || (cd ${{ env.PROJECT_DIR }} && docker compose up -d --remove-orphans)"
+          sleep 20
+
+      - name: Health check
+        id: health
+        run: |
+          for i in {1..12}; do
+            if curl -sf "${{ env.HEALTH_URL }}" > /dev/null; then
+              echo "status=healthy" >> $GITHUB_OUTPUT
+              echo "Services healthy"
+              exit 0
+            fi
+            echo "Waiting... ($i/12)"
+            sleep 10
+          done
+
+          echo "status=unhealthy" >> $GITHUB_OUTPUT
+          echo "::error::Health check failed"
+          exit 1
+
+  post-rollback:
+    name: Post-rollback
+    runs-on: ubuntu-latest
+    needs: [validate, pre-rollback-backup, rollback]
+    if: always()
+
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
+        with:
+          key: ${{ secrets.VPS_SSH_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Record rollback
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << ENDSSH
+            mkdir -p ${{ env.LOG_DIR }}
+            cat >> ${{ env.LOG_DIR }}/rollbacks.log << EOF
+
+          ================================================================================
+          ROLLBACK: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ================================================================================
+          Type: ${{ needs.validate.outputs.rollback_type }}
+          Backup: ${{ needs.validate.outputs.backup_name }}
+          Reason: ${{ github.event.inputs.reason }}
+          Actor: ${{ github.actor }}
+          Status: ${{ needs.rollback.result }}
+          Pre-backup: ${{ needs.pre-rollback-backup.outputs.pre_backup }}
+          ================================================================================
+          EOF
+          ENDSSH
+
+      - name: Summary
+        run: |
+          echo "## Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ needs.rollback.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | ${{ needs.validate.outputs.rollback_type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Backup** | ${{ needs.validate.outputs.backup_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Reason** | ${{ github.event.inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Actor** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+
+  rejected:
+    name: Rejected
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm != 'ROLLBACK' }}
+
+    steps:
+      - name: Reject
+        run: |
+          echo "::error::Type 'ROLLBACK' to confirm"
+          exit 1

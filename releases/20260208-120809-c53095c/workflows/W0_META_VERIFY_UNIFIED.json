@@ -1,0 +1,130 @@
+{
+  "name": "W0 - Meta Webhook Verify (Unified WA/IG/MSG)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 30,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/inbound/whatsapp",
+        "responseMode": "responseNode"
+      },
+      "id": "verify_wa_webhook",
+      "name": "IN - Verify WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-900, -200]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/inbound/instagram",
+        "responseMode": "responseNode"
+      },
+      "id": "verify_ig_webhook",
+      "name": "IN - Verify Instagram",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-900, 0]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/inbound/messenger",
+        "responseMode": "responseNode"
+      },
+      "id": "verify_msg_webhook",
+      "name": "IN - Verify Messenger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-900, 200]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * Meta Webhook Verification Handler (Unified)\n * Handles GET requests from Meta for webhook verification\n * Works for WhatsApp, Instagram, and Messenger\n * \n * Meta sends:\n *   GET /?hub.mode=subscribe&hub.verify_token=<token>&hub.challenge=<challenge>\n * \n * Expected response:\n *   - 200 with challenge value (raw string) if valid\n *   - 403 if token mismatch\n *   - 400 if mode != subscribe\n */\n\nconst q = $json.query || $json.qs || {};\n\n// Meta uses dot notation, but some proxies convert to underscore\nconst mode = (q['hub.mode'] || q['hub_mode'] || q['hubMode'] || '').toString().trim();\nconst token = (q['hub.verify_token'] || q['hub_verify_token'] || q['hubVerifyToken'] || '').toString().trim();\nconst challenge = (q['hub.challenge'] || q['hub_challenge'] || q['hubChallenge'] || '').toString().trim();\n\n// Detect channel from webhook path\nconst webhookPath = ($json.webhookPath || $json.path || '').toString();\nlet channel = 'unknown';\nif (webhookPath.includes('whatsapp')) channel = 'whatsapp';\nelse if (webhookPath.includes('instagram')) channel = 'instagram';\nelse if (webhookPath.includes('messenger')) channel = 'messenger';\n\n// Environment config\nconst enabled = (($env.META_VERIFY_ENABLED || 'true').toString().toLowerCase() === 'true');\nconst expected = ($env.META_VERIFY_TOKEN || '').toString().trim();\n\n// Logging helper\nconst timestamp = new Date().toISOString();\nconst logContext = { channel, mode, hasChallenge: !!challenge, timestamp };\n\nif (!enabled) {\n  console.log('[META_VERIFY] Disabled', logContext);\n  return [{ json: { _code: 404, _contentType: 'text/plain', _body: 'Not Found', _log: { ...logContext, reason: 'verify_disabled' } } }];\n}\n\nif (!expected) {\n  console.error('[META_VERIFY] META_VERIFY_TOKEN not configured', logContext);\n  return [{ json: { _code: 500, _contentType: 'text/plain', _body: 'Server Configuration Error', _log: { ...logContext, reason: 'token_not_configured' } } }];\n}\n\nif (mode !== 'subscribe') {\n  console.warn('[META_VERIFY] Invalid mode', { ...logContext, receivedMode: mode });\n  return [{ json: { _code: 400, _contentType: 'text/plain', _body: 'Bad Request: Invalid mode', _log: { ...logContext, reason: 'invalid_mode', receivedMode: mode } } }];\n}\n\nif (!challenge) {\n  console.warn('[META_VERIFY] Missing challenge', logContext);\n  return [{ json: { _code: 400, _contentType: 'text/plain', _body: 'Bad Request: Missing challenge', _log: { ...logContext, reason: 'missing_challenge' } } }];\n}\n\n// Timing-safe comparison to prevent timing attacks\nfunction timingSafeCompare(a, b) {\n  if (typeof a !== 'string' || typeof b !== 'string') return false;\n  if (a.length !== b.length) return false;\n  let result = 0;\n  for (let i = 0; i < a.length; i++) {\n    result |= a.charCodeAt(i) ^ b.charCodeAt(i);\n  }\n  return result === 0;\n}\n\nif (!timingSafeCompare(token, expected)) {\n  console.warn('[META_VERIFY] Token mismatch', { ...logContext, tokenLength: token.length, expectedLength: expected.length });\n  return [{ json: { _code: 403, _contentType: 'text/plain', _body: 'Forbidden: Token mismatch', _log: { ...logContext, reason: 'token_mismatch' } } }];\n}\n\n// SUCCESS: Return challenge as plain text (Meta requirement)\nconsole.log('[META_VERIFY] Success', logContext);\nreturn [{ json: { _code: 200, _contentType: 'text/plain', _body: challenge, _log: { ...logContext, reason: 'success' } } }];\n"
+      },
+      "id": "verify_logic",
+      "name": "B0 - Verify Challenge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseCode": "={{$json._code || 200}}",
+        "responseBody": "={{$json._body || ''}}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "={{$json._contentType || 'text/plain'}}"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "verify_response",
+      "name": "RESP - Verify",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-300, 0]
+    }
+  ],
+  "connections": {
+    "IN - Verify WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "B0 - Verify Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IN - Verify Instagram": {
+      "main": [
+        [
+          {
+            "node": "B0 - Verify Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IN - Verify Messenger": {
+      "main": [
+        [
+          {
+            "node": "B0 - Verify Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Verify Challenge": {
+      "main": [
+        [
+          {
+            "node": "RESP - Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+    "kind": "collectionType",
+    "collectionName": "orders",
+    "info": {
+        "singularName": "order",
+        "pluralName": "orders",
+        "displayName": "Order",
+        "description": "Sales history for ROI calculations"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "total_amount": {
+            "type": "decimal",
+            "required": true
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "pending",
+                "confirmed",
+                "delivered",
+                "cancelled"
+            ],
+            "default": "pending"
+        },
+        "customer_phone": {
+            "type": "string"
+        },
+        "items_summary": {
+            "type": "json",
+            "description": "Snapshot of items bought"
+        },
+        "attributed_campaign": {
+            "type": "string",
+            "description": "Tracking code (ex: MARDI50) for marketing ROI"
+        },
+        "payment_method": {
+            "type": "enumeration",
+            "enum": [
+                "cash",
+                "card",
+                "online"
+            ],
+            "default": "cash"
+        },
+        "delivery_status": {
+            "type": "enumeration",
+            "enum": [
+                "READY_FOR_DELIVERY",
+                "OUT_FOR_DELIVERY",
+                "DELIVERED"
+            ]
+        },
+        "driver": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::driver.driver",
+            "inversedBy": "assigned_orders"
+        },
+        "otp_hash": {
+            "type": "string",
+            "description": "SHA-256 hash of OTP code — never store plaintext"
+        },
+        "otp_expires_at": {
+            "type": "datetime"
+        },
+        "otp_attempts": {
+            "type": "integer",
+            "default": 0
+        },
+        "delivered_at": {
+            "type": "datetime"
+        },
+        "delivery_commune": {
+            "type": "string"
+        },
+        "delivery_wilaya": {
+            "type": "string"
+        },
+        "delivery_address": {
+            "type": "string"
+        }
+    }
+}

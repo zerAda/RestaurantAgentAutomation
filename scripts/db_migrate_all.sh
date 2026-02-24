@@ -182,8 +182,10 @@ for migration in $MIGRATIONS; do
   if docker compose -f "$COMPOSE_FILE" exec -T postgres \
     sh -c "psql -v ON_ERROR_STOP=1 -U n8n -d n8n" < "$migration" 2>&1; then
 
-    # Record successful migration
-    run_sql -c "INSERT INTO schema_migrations (filename, checksum) VALUES ('$filename', '$CHECKSUM')" >/dev/null
+    # Record successful migration (escape single quotes to prevent SQL injection)
+    safe_filename=$(echo "$filename" | sed "s/'/''/g")
+    safe_checksum=$(echo "$CHECKSUM" | sed "s/'/''/g")
+    run_sql -c "INSERT INTO schema_migrations (filename, checksum) VALUES ('$safe_filename', '$safe_checksum')" >/dev/null
 
     log_pass "Applied: $filename"
   else

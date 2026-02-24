@@ -1,0 +1,68 @@
+{
+    "kind": "collectionType",
+    "collectionName": "marketing_campaigns",
+    "info": {
+        "singularName": "marketing-campaign",
+        "pluralName": "marketing-campaigns",
+        "displayName": "Marketing Campaign",
+        "description": "Manages promotional campaigns and ROI tracking"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "name": {
+            "type": "string",
+            "required": true
+        },
+        "tracking_code": {
+            "type": "uid",
+            "targetField": "name",
+            "required": true
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "draft",
+                "scheduled",
+                "active",
+                "completed"
+            ],
+            "default": "draft"
+        },
+        "channels": {
+            "type": "json",
+            "default": []
+        },
+        "target_segment": {
+            "type": "enumeration",
+            "enum": [
+                "all_clients",
+                "big_spenders",
+                "dormant",
+                "vip"
+            ],
+            "default": "all_clients"
+        },
+        "promotional_rules": {
+            "type": "json",
+            "description": "Array of { productId, discountPrice } overrides"
+        },
+        "kpi_metrics": {
+            "type": "json",
+            "default": {
+                "sent_count": 0,
+                "click_count": 0,
+                "conversion_count": 0,
+                "revenue_generated": 0
+            }
+        },
+        "sceduled_at": {
+            "type": "datetime"
+        },
+        "ai_brief": {
+            "type": "text"
+        }
+    }
+}

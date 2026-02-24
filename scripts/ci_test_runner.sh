@@ -19,7 +19,7 @@ run_test() {
   TOTAL=$((TOTAL + 1))
 
   START=$(date +%s%N)
-  if eval "$cmd" > "/tmp/ci_test_${TOTAL}.log" 2>&1; then
+  if bash -c "$cmd" > "/tmp/ci_test_${TOTAL}.log" 2>&1; then
     END=$(date +%s%N)
     ELAPSED=$(echo "scale=3; ($END - $START) / 1000000000" | bc)
     echo "PASS: $name (${ELAPSED}s)"

@@ -1,0 +1,45 @@
+{
+    "kind": "collectionType",
+    "collectionName": "customers",
+    "info": {
+        "singularName": "customer",
+        "pluralName": "customers",
+        "displayName": "Customer",
+        "description": "Patron profiles linked to loyalty and orders"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "attributes": {
+        "phone": {
+            "type": "string",
+            "unique": true,
+            "required": true
+        },
+        "name": {
+            "type": "string"
+        },
+        "points": {
+            "type": "integer",
+            "default": 0
+        },
+        "loyalty_tier": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::loyalty-tier.loyalty-tier",
+            "inversedBy": "customers"
+        },
+        "orders": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::order.order",
+            "mappedBy": "customer"
+        },
+        "feedbacks": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::feedback.feedback",
+            "mappedBy": "customer"
+        }
+    }
+}

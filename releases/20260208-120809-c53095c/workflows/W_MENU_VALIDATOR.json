@@ -1,0 +1,76 @@
+{
+    "name": "W_MENU_VALIDATOR",
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "Input",
+            "type": "n8n-nodes-base.start",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "collection": "products",
+                "filters": {
+                    "publishedAt": {
+                        "$notNull": true
+                    }
+                },
+                "limit": 100
+            },
+            "name": "Get Menu (Published)",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "credentials": {
+                "strapiApi": {
+                    "id": "STRAPI_CREDENTIAL_ID",
+                    "name": "Strapi connection"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Format Menu for AI Context\nconst products = $input.all().map(item => item.json);\nconst userMessage = $node['Input'].json.text;\n\n// Build menu string optimized for GPT\nconst menuFormatted = products.map(p => {\n  const displayName = p.marketing_name || p.name;\n  const aliases = p.aliases ? ` (aussi appelé: ${p.aliases.join(', ')})` : '';\n  const descFr = p.description_multilang?.fr || '';\n  const price = p.price ? `${p.price} DA` : '';\n  const stock = p.stock_quantity > 0 ? '✅' : '❌ Rupture';\n  \n  return `- ${displayName}${aliases}: ${descFr} - ${price} ${stock}`;\n}).join('\\n');\n\n// Build searchable index\nconst searchIndex = products.map(p => ({\n  id: p.id,\n  name: p.name,\n  marketing_name: p.marketing_name,\n  aliases: p.aliases || [],\n  category: p.category,\n  in_stock: p.stock_quantity > 0\n}));\n\nreturn {\n  json: {\n    user_text: userMessage,\n    menu_formatted: menuFormatted,\n    menu_index: searchIndex,\n    total_products: products.length\n  }\n};"
+            },
+            "name": "Format Menu Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Input": {
+            "main": [
+                [
+                    {
+                        "node": "Get Menu (Published)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Menu (Published)": {
+            "main": [
+                [
+                    {
+                        "node": "Format Menu Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

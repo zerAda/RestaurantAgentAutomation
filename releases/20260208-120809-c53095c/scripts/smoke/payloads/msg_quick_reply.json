@@ -1,0 +1,27 @@
+{
+  "object": "page",
+  "entry": [
+    {
+      "id": "PAGE_ID_123456",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "PSID_USER_000111222"
+          },
+          "recipient": {
+            "id": "PAGE_ID_123456"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "message": {
+            "mid": "m_msg_qr_ggg777hhh888",
+            "text": "Oui",
+            "quick_reply": {
+              "payload": "CONFIRM_YES"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

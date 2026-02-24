@@ -1,0 +1,56 @@
+{
+    "kind": "collectionType",
+    "collectionName": "drivers",
+    "info": {
+        "singularName": "driver",
+        "pluralName": "drivers",
+        "displayName": "Driver",
+        "description": "Delivery drivers managed by the restaurant owner"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "first_name": {
+            "type": "string",
+            "required": true
+        },
+        "last_name": {
+            "type": "string",
+            "required": true
+        },
+        "phone_number": {
+            "type": "string",
+            "required": true,
+            "unique": true,
+            "regex": "^\\+?[0-9]{10,15}$"
+        },
+        "is_active": {
+            "type": "boolean",
+            "default": true
+        },
+        "onboarding_status": {
+            "type": "enumeration",
+            "enum": [
+                "INVITED",
+                "ACTIVE",
+                "SUSPENDED"
+            ],
+            "default": "INVITED"
+        },
+        "assigned_orders": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::order.order",
+            "mappedBy": "driver"
+        },
+        "total_deliveries": {
+            "type": "integer",
+            "default": 0
+        },
+        "last_seen_at": {
+            "type": "datetime"
+        }
+    }
+}

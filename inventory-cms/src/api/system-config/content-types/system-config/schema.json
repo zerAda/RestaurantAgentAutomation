@@ -1,0 +1,60 @@
+{
+    "kind": "singleType",
+    "collectionName": "system_configs",
+    "info": {
+        "singularName": "system-config",
+        "pluralName": "system-configs",
+        "displayName": "System Configuration",
+        "description": "Centralized source of truth for AI prompts, API keys, and business settings"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "openai_key": {
+            "type": "string",
+            "private": true
+        },
+        "replicate_token": {
+            "type": "string",
+            "private": true
+        },
+        "whatsapp_phone_number_id": {
+            "type": "string"
+        },
+        "whatsapp_business_account_id": {
+            "type": "string"
+        },
+        "whatsapp_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "whatsapp_verify_token": {
+            "type": "string",
+            "private": true
+        },
+        "system_prompt_strategy": {
+            "type": "text",
+            "default": "You are a professional restaurant marketing strategist specializing in Algerian market dynamics."
+        },
+        "system_prompt_image_gen": {
+            "type": "text",
+            "default": "Generate a high-end, appetizing image of {dish_name} with a luxury minimalist aesthetic."
+        },
+        "system_prompt_video_gen": {
+            "type": "text"
+        },
+        "maintenance_mode": {
+            "type": "boolean",
+            "default": false
+        },
+        "allowed_admin_ips": {
+            "type": "text",
+            "default": "127.0.0.1/32"
+        },
+        "global_contact_phone": {
+            "type": "string"
+        }
+    }
+}

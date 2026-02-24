@@ -1,0 +1,351 @@
+{
+    "name": "W_DRIVER_ROUTER",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "driver/menu",
+                "options": {}
+            },
+            "name": "Driver Menu Request",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst buttonId = (input.button_id || input.interactive?.button_reply?.id || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nreturn {\n  json: {\n    phone,\n    buttonId,\n    text\n  }\n};"
+            },
+            "name": "Parse Input",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Anti-spam cooldown (in-memory per execution context)\nconst phone = $json.phone;\nconst COOLDOWN_MS = parseInt($env.DRIVER_ANTI_SPAM_MS || '2000', 10);\n\n// n8n Code nodes don't persist state across executions,\n// so we rely on n8n's built-in rate limiting for true anti-spam.\n// This node validates basic input.\nif (!phone) {\n  return { json: { ...($json), skip: true, reason: 'NO_PHONE' } };\n}\n\nreturn { json: { ...($json), skip: false } };"
+            },
+            "name": "Validate Input",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.skip }}",
+                            "operation": "equal",
+                            "value2": false
+                        }
+                    ]
+                }
+            },
+            "name": "Valid Request?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers?filters[phone_number][$eq]={{ $json.phone }}&filters[is_active][$eq]=true",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Lookup Driver",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                900,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ ($json.data || []).length }}",
+                            "operation": "larger",
+                            "value2": 0
+                        }
+                    ]
+                }
+            },
+            "name": "Is Registered?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const driver = $node['Lookup Driver'].json.data[0];\nconst attr = driver.attributes || driver;\nconst driverId = driver.id;\nconst phone = $node['Parse Input'].json.phone;\nconst buttonId = $node['Parse Input'].json.buttonId;\n\nreturn {\n  json: {\n    phone,\n    driverId,\n    firstName: attr.first_name || '',\n    buttonId,\n    onboardingStatus: attr.onboarding_status || 'INVITED'\n  }\n};"
+            },
+            "name": "Extract Driver Info",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $json.driverId }}",
+                "method": "PUT",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "data",
+                            "value": "={{ { last_seen_at: new Date().toISOString() } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Update Last Seen",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1500,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const phone = $node['Extract Driver Info'].json.phone;\nconst firstName = $node['Extract Driver Info'].json.firstName;\n\nconst menuText = `📦 *Dashboard Livreur*\\n\\nSalut ${firstName} !\\n\\nQue veux-tu faire ?`;\n\nreturn {\n  json: {\n    phone,\n    menuText\n  }\n};"
+            },
+            "name": "Build Dashboard",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1700,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={{ { type: 'button', body: { text: $json.menuText }, action: { buttons: [{ type: 'reply', reply: { id: 'LIVRABLES', title: '📦 Livrables' } }, { type: 'reply', reply: { id: 'EN_COURS', title: '🚚 En cours' } }, { type: 'reply', reply: { id: 'HISTORIQUE', title: '🕘 Historique' } }] } } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Dashboard",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1900,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $node['Parse Input'].json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: '⚠️ Vous n\\'êtes pas enregistré comme livreur. Contactez l\\'administrateur.' } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Not Registered",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1300,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "Driver Menu Request": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Input": {
+            "main": [
+                [
+                    {
+                        "node": "Validate Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate Input": {
+            "main": [
+                [
+                    {
+                        "node": "Valid Request?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Valid Request?": {
+            "main": [
+                [
+                    {
+                        "node": "Lookup Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Lookup Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Is Registered?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Registered?": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Driver Info",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Not Registered",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Driver Info": {
+            "main": [
+                [
+                    {
+                        "node": "Update Last Seen",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Last Seen": {
+            "main": [
+                [
+                    {
+                        "node": "Build Dashboard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Dashboard": {
+            "main": [
+                [
+                    {
+                        "node": "Send Dashboard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

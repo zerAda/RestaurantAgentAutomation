@@ -5,13 +5,18 @@
 # Usage: make <target>
 # =============================================================================
 
-.PHONY: help lint test-unit test-battery test-harness smoke security up down build migrate backup preflight ci
+.PHONY: help lint test-unit test-battery test-harness smoke security up down build migrate backup preflight ci \
+       setup preflight-prod deploy status logs rollback
 
 .DEFAULT_GOAL := help
+
+# Config
+COMPOSE_PROD := docker-compose.hostinger.prod.yml
 
 # Colors
 GREEN  := \033[0;32m
 YELLOW := \033[0;33m
+RED    := \033[0;31m
 NC     := \033[0m
 
 help: ## Show this help
@@ -118,3 +123,53 @@ ci: ## Run full CI pipeline locally (lint + unit tests + integrity + security)
 	@$(MAKE) security
 	@echo ""
 	@echo "== Local CI: ALL PASSED =="
+
+# ---------------------------------------------------------------------------
+# Production Deployment
+# ---------------------------------------------------------------------------
+setup: ## First deploy: create volumes, verify .env, fix permissions
+	@echo "== Setup: Creating Docker volumes =="
+	@bash scripts/setup-volumes.sh
+	@echo ""
+	@echo "== Setup: Checking secrets permissions =="
+	@if [ -d secrets ]; then chmod 700 secrets && chmod 600 secrets/* 2>/dev/null; echo "Permissions fixed"; fi
+	@echo ""
+	@echo "== Setup complete =="
+
+preflight-prod: ## Verify prod config is safe (no dev passwords, IPs restricted)
+	@bash scripts/preflight-prod.sh
+
+deploy: ## Full deploy: setup + preflight + docker compose up -d
+	@echo "$(GREEN)== Deploy: Starting ==$(NC)"
+	@$(MAKE) setup
+	@echo ""
+	@$(MAKE) preflight-prod
+	@echo ""
+	@echo "== Deploy: Starting services =="
+	@docker compose -f $(COMPOSE_PROD) up -d --remove-orphans
+	@echo ""
+	@echo "$(GREEN)== Deploy: Complete ==$(NC)"
+	@$(MAKE) status
+
+status: ## Show container status + healthchecks
+	@echo "== Service Status =="
+	@docker compose -f $(COMPOSE_PROD) ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || \
+		docker compose -f $(COMPOSE_PROD) ps
+	@echo ""
+	@echo "== Healthcheck Summary =="
+	@docker compose -f $(COMPOSE_PROD) ps --format json 2>/dev/null | \
+		python3 -c "import sys,json; [print(f'  {d[\"Name\"]:30s} {d.get(\"Health\",d.get(\"Status\",\"unknown\"))}') for line in sys.stdin for d in [json.loads(line)]]" 2>/dev/null || \
+		docker compose -f $(COMPOSE_PROD) ps
+
+logs: ## Aggregated logs from critical services (last 100 lines)
+	@docker compose -f $(COMPOSE_PROD) logs --tail=100 postgres n8n-main n8n-worker gateway db-migrate
+
+rollback: ## Rollback: stop and restart with previous images
+	@echo "$(YELLOW)== Rollback: Stopping services ==$(NC)"
+	@docker compose -f $(COMPOSE_PROD) down
+	@echo ""
+	@echo "$(YELLOW)== Rollback: Restarting with cached images ==$(NC)"
+	@docker compose -f $(COMPOSE_PROD) up -d --no-build
+	@echo ""
+	@echo "$(GREEN)== Rollback: Complete ==$(NC)"
+	@$(MAKE) status

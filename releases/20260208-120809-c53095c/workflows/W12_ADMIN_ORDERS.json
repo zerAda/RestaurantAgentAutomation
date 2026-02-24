@@ -1,0 +1,327 @@
+{
+  "name": "W12 - ADMIN Orders (List + Timeline)",
+  "active": false,
+  "settings": {
+    "executionTimeout": 60,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/admin/orders",
+        "responseMode": "responseNode"
+      },
+      "id": "998b1f8b-23d1-4de8-9906-7d326da77664",
+      "name": "IN - Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\n\nconst headers = ($json.headers ?? {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst headerToken = (headers['x-api-token'] || headers['X-Api-Token'] || headers['x-webhook-token'] || headers['X-Webhook-Token'] || '').toString().trim();\n\nconst token = (headerToken || bearer || '').toString().trim();\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\nconst ipRaw = (headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\n\nreturn [{\n  json: {\n    channel: 'admin',\n    userId: 'admin',\n    metadata: { ip, userAgent: (headers['user-agent'] || headers['User-Agent'] || '').toString() },\n    _auth: { tokenPresent: !!token, tokenHash }\n  }\n}];\n"
+      },
+      "id": "898144ff-aea0-4426-9157-ac63f1292c4a",
+      "name": "B0 - Parse Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
+        "additionalFields": {
+          "queryParams": "={{[$json._auth.tokenHash]}}"
+        }
+      },
+      "id": "d8ab298b-ee0c-485b-91b9-9f1bc61e7107",
+      "name": "B0 - Resolve Client (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $items(\"B0 - Parse Auth\")[0].json;\nconst r = $json;\n\nconst matched = !!r.matched;\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && r.tenant_id && r.restaurant_id) {\n  tenantId = r.tenant_id.toString();\n  restaurantId = r.restaurant_id.toString();\n  authMode = 'api_client';\n  try { scopes = Array.isArray(r.scopes) ? r.scopes : (typeof r.scopes === 'string' ? JSON.parse(r.scopes) : (r.scopes?.scopes || [])); } catch { scopes = []; }\n}\n\nconst authOk = authMode !== 'deny';\n\nconst requiredScopes = ['admin:read'];\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\nconst scopeOk = authOk && (requiredScopes.length === 0 || requiredScopes.some(rq => hasScope(rq, scopes)));\n\nconst endpoint_group = 'admin';\nconst endpoint_path = '/v1/admin/orders';\n\nconst denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    _auth: {\n      ...e._auth,\n      authOk,\n      scopeOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (r.client_id || null) : null,\n      clientName: matched ? (r.client_name || null) : null\n    }\n  }\n}];\n"
+      },
+      "id": "4bf781c1-2e23-4bb6-adaa-f71f46d40d74",
+      "name": "B0 - Apply Auth Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._auth.authOk}}",
+              "operation": "isTrue"
+            },
+            {
+              "value1": "={{$json._auth.scopeOk}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "175f9c4e-220c-4c20-ba0f-c14397ae124b",
+      "name": "B0 - Access OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,$6,'HIGH', jsonb_build_object('token_hash',$7,'ip',$8,'ua',$9,'auth_mode',$10,'required_scopes',$11::jsonb,'scopes',$12::jsonb,'endpoint_group',$13,'endpoint_path',$14)) RETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId||null,$json.restaurantId||null,null,$json.channel,$json.userId,($json._auth.denyReason||'AUTH_DENY'),$json._auth.tokenHash,$json.metadata.ip,$json.metadata.userAgent,$json._auth.authMode,JSON.stringify($json._auth.requiredScopes||[]),JSON.stringify($json._auth.scopes||[]),$json._auth.endpoint_group,$json._auth.endpoint_path]}}"
+        }
+      },
+      "id": "140c1332-ebcd-44fb-a35b-ecd63221a888",
+      "name": "B0 - Log Deny (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": 403,
+        "responseData": "={{ { ok: false, error: ($json._auth.denyReason || 'AUTH_DENY'), message: 'Forbidden' } }}"
+      },
+      "id": "961b9a67-cda8-402e-9446-2a97396b1987",
+      "name": "RESP - 403 Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        220,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO admin_audit_log(tenant_id, restaurant_id, actor_client_id, actor_name, action, object_type, object_id, ip, user_agent, payload_json) VALUES ($1,$2,$3,$4,'ADMIN_ORDERS_LIST',NULL,NULL,$5,$6,jsonb_build_object('scopes',$7::jsonb)) RETURNING id;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId||null,$json.restaurantId||null,$json._auth.clientId||null,$json._auth.clientName||null,$json.metadata.ip,$json.metadata.userAgent,JSON.stringify($json._auth.scopes||[])]}}"
+        }
+      },
+      "id": "eeefd920-827e-495e-b152-a2158bcf1443",
+      "name": "B0 - Log Allow (Audit)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst q = (e.query || {});\n\nconst rawStatus = (q.status || '').toString().trim();\nconst rawFrom = (q.date_from || q.from || '').toString().trim();\nconst rawTo = (q.date_to || q.to || '').toString().trim();\nconst rawLimit = (q.limit || '').toString().trim();\nconst includeTimeline = ['1','true','yes','y','on'].includes(String(q.include_timeline || '').toLowerCase());\nconst exportFmt = (q.export || '').toString().trim().toLowerCase();\n\nconst limit = Math.max(1, Math.min(500, parseInt(rawLimit || '100', 10) || 100));\n\nfunction parseDate(s){\n  if(!s) return null;\n  const d = new Date(s);\n  if(!isNaN(d.getTime())) return d.toISOString();\n  return null;\n}\nlet dateFrom = parseDate(rawFrom);\nlet dateTo = parseDate(rawTo);\nif(!dateFrom){\n  const d = new Date(Date.now() - 7*24*3600*1000);\n  dateFrom = d.toISOString();\n}\n\nlet statusesPg = null;\nif(rawStatus){\n  const s = rawStatus.toUpperCase();\n  const map = {\n    'CONFIRMED':['ACCEPTED'],\n    'PREPARING':['IN_PROGRESS'],\n    'READY':['READY'],\n    'OUT_FOR_DELIVERY':['OUT_FOR_DELIVERY'],\n    'DELIVERED':['DONE','DELIVERED'],\n    'CANCELLED':['CANCELLED']\n  };\n  const arr = (map[s] || [s]).map(x => String(x).replace(/[^A-Z0-9_]/g,'')).filter(Boolean);\n  if(arr.length) statusesPg = '{' + arr.join(',') + '}';\n}\n\nreturn [{json:{...e,_filters:{rawStatus,dateFrom,dateTo,limit,includeTimeline,exportFmt,statusesPg}}}];"
+      },
+      "id": "d146b334-c03d-4a0e-bee0-f54f1bcafe7e",
+      "name": "Q1 - Parse Filters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  o.order_id,\n  o.status,\n  public.map_order_status_to_customer(o.status, o.service_mode) AS customer_status,\n  o.service_mode,\n  o.total_cents,\n  o.created_at,\n  o.updated_at,\n  o.channel,\n  o.user_id,\n  o.delivery_wilaya,\n  o.delivery_commune,\n  o.delivery_eta_min,\n  o.delivery_eta_max,\n  CASE WHEN $6::boolean THEN (\n    SELECT COALESCE(jsonb_agg(\n      jsonb_build_object('at', h.created_at,'internal_status', h.internal_status,'customer_status', h.customer_status)\n      ORDER BY h.created_at\n    ), '[]'::jsonb)\n    FROM order_status_history h\n    WHERE h.order_id = o.order_id\n  ) ELSE '[]'::jsonb END AS timeline\nFROM orders o\nWHERE o.tenant_id = $1\n  AND ($2::text[] IS NULL OR o.status = ANY($2::text[]))\n  AND ($3::timestamptz IS NULL OR o.created_at >= $3)\n  AND ($4::timestamptz IS NULL OR o.created_at <= $4)\nORDER BY o.created_at DESC\nLIMIT $5;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId,$json._filters.statusesPg,$json._filters.dateFrom,$json._filters.dateTo,$json._filters.limit,$json._filters.includeTimeline]}}"
+        }
+      },
+      "id": "b8bd7aec-55e1-4903-8617-16878f73075d",
+      "name": "Q2 - List Orders (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        460,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const ctx = $items('Q1 - Parse Filters')[0].json;\nconst rows = $items('Q2 - List Orders (DB)').map(i => i.json);\n\nfunction toCsv(rows){\n  const header=['order_id','status','customer_status','service_mode','total_cents','created_at','delivery_wilaya','delivery_commune','delivery_eta_min','delivery_eta_max'];\n  const esc=(v)=>{const s=(v===null||v===undefined)?'':String(v); if(/[\n\r\",]/.test(s)) return '\"'+s.replace(/\"/g,'\"\"')+'\"'; return s;};\n  const lines=[header.join(',')];\n  for(const r of rows){ lines.push(header.map(k=>esc(r[k])).join(',')); }\n  return lines.join('\n');\n}\n\nif((ctx._filters.exportFmt||'').toLowerCase()==='csv'){\n  return [{json:{...ctx,_response:{body:toCsv(rows),headers:{'Content-Type':'text/csv; charset=utf-8'}}}}];\n}\nreturn [{json:{...ctx,_response:{body:{ok:true,count:rows.length,filters:ctx._filters,orders:rows},headers:{'Content-Type':'application/json'}}}}];"
+      },
+      "id": "028d7d1e-9315-4858-96ec-8b23be10b9ca",
+      "name": "Q3 - Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{$json._response.body}}",
+        "options": {
+          "responseHeaders": "={{$json._response.headers}}"
+        }
+      },
+      "id": "749ca270-a37e-4a57-a9b4-85f70dfcc6ea",
+      "name": "RESP - 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        940,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "IN - Webhook": {
+      "main": [
+        [
+          {
+            "node": "B0 - Parse Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Parse Auth": {
+      "main": [
+        [
+          {
+            "node": "B0 - Resolve Client (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Resolve Client (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Apply Auth Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Apply Auth Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Access OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Access OK?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Log Allow (Audit)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B0 - Log Deny (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Deny (DB)": {
+      "main": [
+        [
+          {
+            "node": "RESP - 403 Forbidden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Allow (Audit)": {
+      "main": [
+        [
+          {
+            "node": "Q1 - Parse Filters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q1 - Parse Filters": {
+      "main": [
+        [
+          {
+            "node": "Q2 - List Orders (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q2 - List Orders (DB)": {
+      "main": [
+        [
+          {
+            "node": "Q3 - Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q3 - Build Response": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}

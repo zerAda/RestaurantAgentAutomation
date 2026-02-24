@@ -82,6 +82,12 @@
         },
         "delivery_address": {
             "type": "string"
+        },
+        "customer": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::customer.customer",
+            "inversedBy": "orders"
         }
     }
 }
