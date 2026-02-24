@@ -15,7 +15,12 @@
             "parameters": {
                 "operation": "get",
                 "collection": "restaurant-brand",
-                "id": "singleton"
+                "id": "singleton",
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
+                    }
+                }
             },
             "name": "Get Brand Config",
             "type": "n8n-nodes-base.strapi",

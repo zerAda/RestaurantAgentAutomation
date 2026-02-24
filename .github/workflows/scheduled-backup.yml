@@ -16,20 +16,20 @@ name: Scheduled Backup
 
 on:
   schedule:
-    - cron: '0 3 * * *'      # Daily at 3:00 AM UTC
-    - cron: '0 4 * * 0'      # Weekly full on Sundays at 4:00 AM UTC
+    - cron: "0 3 * * *" # Daily at 3:00 AM UTC
+    - cron: "0 4 * * 0" # Weekly full on Sundays at 4:00 AM UTC
   workflow_dispatch:
     inputs:
       backup_type:
-        description: 'Backup type'
+        description: "Backup type"
         required: true
-        default: 'daily'
+        default: "daily"
         type: choice
         options:
           - daily
           - full
       skip_prechecks:
-        description: 'Skip pre-checks (for debugging)'
+        description: "Skip pre-checks (for debugging)"
         type: boolean
         default: false
 
@@ -44,7 +44,7 @@ env:
   VPS_HOST: ${{ vars.VPS_HOST }}
   VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
   PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
-  BACKUP_DIR: ${{ vars.BACKUP_DIR || '/opt/resto/backups' }}
+  BACKUP_DIR: ${{ vars['BACKUP_DIR'] || '/opt/resto/backups' }}
   DAILY_RETENTION: 7
   WEEKLY_RETENTION: 4
   MIN_DISK_GB: 1
@@ -109,7 +109,7 @@ jobs:
           echo "=== Running VPS Pre-checks ==="
 
           # Execute pre-checks via SSH
-          RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+          RESULT=$(ssh -T -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
 
           set -e
@@ -230,7 +230,6 @@ jobs:
       needs.check-prerequisites.outputs.ssh_configured == 'true' &&
       (needs.pre-checks.outputs.prechecks_passed == 'true' || github.event.inputs.skip_prechecks == 'true')
     timeout-minutes: 30
-
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
       backup_type: ${{ steps.type.outputs.type }}

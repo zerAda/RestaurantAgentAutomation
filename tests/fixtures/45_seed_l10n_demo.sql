@@ -7,7 +7,7 @@ VALUES ('00000000-0000-0000-0000-000000000001', 'fixture-track', 'ar')
 ON CONFLICT (tenant_id, phone) DO UPDATE SET locale=EXCLUDED.locale, updated_at=now();
 
 -- Tenant override template example (does not touch _GLOBAL)
-INSERT INTO message_templates(tenant_id, key, locale, content, variables)
+INSERT INTO message_templates(tenant_id, template_key, locale, content, variables)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
   'CORE_CLARIFY',
@@ -15,4 +15,4 @@ VALUES (
   'لم أفهم. اكتب "menu" أو أرسل معرف الطبق (مثال: P01 x2).',
   '[]'::jsonb
 )
-ON CONFLICT (tenant_id, key, locale) DO UPDATE SET content=EXCLUDED.content, updated_at=now();
+ON CONFLICT (template_key, locale, tenant_id) DO UPDATE SET content=EXCLUDED.content;

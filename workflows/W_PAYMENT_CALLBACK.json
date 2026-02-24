@@ -17,7 +17,7 @@
         },
         {
             "parameters": {
-                "jsCode": "// Verify Chargily signature\nconst crypto = require('crypto');\nconst signature = $input.first().headers['signature'] || '';\nconst payload = JSON.stringify($input.first().json);\nconst secret = $env.CHARGILY_SECRET_KEY;\n\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(payload)\n  .digest('hex');\n\nconst isValid = signature === expectedSignature;\nconst event = $input.first().json;\n\nreturn {\n  json: {\n    is_valid: isValid,\n    event_type: event.type,\n    checkout_id: event.data?.id,\n    order_id: event.data?.metadata?.order_id,\n    status: event.data?.status\n  }\n};"
+                "jsCode": "// Verify Chargily signature (SEC-FIX: timing-safe comparison)\nconst crypto = require('crypto');\nconst signature = $input.first().headers['signature'] || '';\nconst payload = JSON.stringify($input.first().json);\nconst secret = $env.CHARGILY_SECRET_KEY || '';\n\nif (!secret) {\n  return { json: { is_valid: false, error: 'CHARGILY_SECRET_KEY not configured' } };\n}\n\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(payload)\n  .digest('hex');\n\n// SEC-FIX: Use timing-safe comparison to prevent timing attacks\nconst isValid = (() => {\n  try {\n    const a = Buffer.from(String(signature));\n    const b = Buffer.from(String(expectedSignature));\n    if (a.length !== b.length) return false;\n    return crypto.timingSafeEqual(a, b);\n  } catch { return false; }\n})();\nconst event = $input.first().json;\n\nreturn {\n  json: {\n    is_valid: isValid,\n    event_type: event.type,\n    checkout_id: event.data?.id,\n    order_id: event.data?.metadata?.order_id,\n    status: event.data?.status\n  }\n};"
             },
             "name": "Verify Signature",
             "type": "n8n-nodes-base.code",
@@ -69,10 +69,46 @@
         },
         {
             "parameters": {
+                "operation": "get",
+                "collection": "orders",
+                "id": "={{ $json.order_id }}",
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $node['Verify Signature'].json.event?.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    }
+                }
+            },
+            "name": "Fetch Order for Validation - TENANT ISOLATED",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                900,
+                100
+            ],
+            "notes": "SECURITY FIX (SEC-007): Fetch order to validate payment amount matches order total. Tenant isolation enforced."
+        },
+        {
+            "parameters": {
+                "jsCode": "// SECURITY: Validate that the amount paid matches the order total\nconst chargilyEvent = $node['Verify Signature'].json.event || $node['Chargily Webhook'].json;\nconst chargilyAmount = chargilyEvent?.data?.amount || 0;\n\nconst order = $json.data?.attributes || $json;\nconst orderTotal = order.total_amount || 0;\n\n// Convert to cents/centimes if needed (Chargily uses smallest currency unit)\nconst chargilyAmountInDA = chargilyAmount / 100; // Chargily sends amount in centimes\nconst tolerance = 1; // Allow 1 DA tolerance for rounding\n\nconst amountMatch = Math.abs(orderTotal - chargilyAmountInDA) <= tolerance;\n\nif (!amountMatch) {\n  throw new Error(\n    `SEC-007: Payment amount mismatch! ` +\n    `Order total: ${orderTotal} DA, Chargily paid: ${chargilyAmountInDA} DA. ` +\n    `Possible fraud attempt or integration error.`\n  );\n}\n\nreturn {\n  json: {\n    ...$node['Verify Signature'].json,\n    order_id: order.id || $node['Verify Signature'].json.order_id,\n    order_total: orderTotal,\n    chargily_amount: chargilyAmountInDA,\n    amount_validated: true,\n    _security: {\n      amount_validation_passed: true,\n      validation_timestamp: new Date().toISOString()\n    }\n  }\n};"
+            },
+            "name": "Validate Payment Amount (Anti-Fraud)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                100
+            ],
+            "notes": "SECURITY FIX (SEC-007): Ensure paid amount = order total. Prevents fake payment confirmations."
+        },
+        {
+            "parameters": {
                 "operation": "update",
                 "collection": "payments",
                 "filters": {
-                    "external_id": "={{ $json.checkout_id }}"
+                    "external_id": "={{ $json.checkout_id }}",
+                    "restaurant_id": {
+                        "$eq": "={{ $json.event.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    }
                 },
                 "fields": {
                     "status": "paid",
@@ -83,7 +119,7 @@
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                900,
+                1300,
                 100
             ]
         },
@@ -91,7 +127,12 @@
             "parameters": {
                 "operation": "update",
                 "collection": "orders",
-                "id": "={{ $json.order_id }}",
+                "filters": {
+                    "id": "={{ $json.order_id }}",
+                    "restaurant_id": {
+                        "$eq": "={{ $json.event?.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                    }
+                },
                 "fields": {
                     "payment_status": "paid",
                     "status": "confirmed"
@@ -101,7 +142,7 @@
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                1100,
+                1500,
                 100
             ]
         }
@@ -145,12 +186,34 @@
             "main": [
                 [
                     {
-                        "node": "Mark Payment Paid",
+                        "node": "Fetch Order for Validation - TENANT ISOLATED",
                         "type": "main",
                         "index": 0
                     }
                 ],
                 []
+            ]
+        },
+        "Fetch Order for Validation - TENANT ISOLATED": {
+            "main": [
+                [
+                    {
+                        "node": "Validate Payment Amount (Anti-Fraud)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate Payment Amount (Anti-Fraud)": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Payment Paid",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
             ]
         },
         "Mark Payment Paid": {

@@ -1,3 +1,100 @@
+# TEST_REPORT — RESTO BOT
+
+## v3.3.3 — Full CI/CD Green + VPS Health (2026-02-22)
+
+### CI Pipeline (13/13 GREEN) — commit f4159b1
+
+| Job | Status | Duration |
+|-----|--------|----------|
+| Security Scan (10 jobs) | PASS | ~30s |
+| Integrity Gate | PASS | ~15s |
+| Lint & Validate | PASS | ~20s |
+| Python Tests | PASS | ~25s |
+| Integration Tests (PG15/16) | PASS | ~45s |
+| Frontend Lint | PASS | ~15s |
+| Docker Build (cms, kiosk, admin) | PASS | ~2m |
+| Build & Push GHCR | PASS | ~9m |
+| **Test Harness (Full Stack)** | **PASS** | **1m39s** |
+| Performance Baseline | PASS | ~24s |
+
+#### Test Harness Details (run 22278334134)
+
+- webhook_entity DB records: 8 verified
+- Active workflows: 7 verified
+- All 7 webhook paths verified in DB (v1/inbound/whatsapp, instagram, messenger + admin/customer endpoints)
+- Tracking trigger: non-blocking warning (fn_ruthless_normalize type mismatch)
+
+### CD Pipeline (15/15 GREEN) — run 22278484906
+
+| Job | Status | Duration |
+|-----|--------|----------|
+| Validate Inputs | PASS | 3s |
+| Pre-flight Checks | PASS | 15s |
+| Security Gate | PASS | 9s |
+| Deploy to Staging | PASS | 53s |
+| Smoke Battery (Staging) | PASS | 6s |
+| Approve Production Deploy | PASS | 4s |
+| Pre-deploy Backup | PASS | 8s |
+| Deploy (vps-primary) | PASS | 28s |
+| Smoke (whatsapp) | PASS | 7s |
+| Smoke (internal) | PASS | 9s |
+| Smoke (instagram) | PASS | 5s |
+| Smoke (messenger) | PASS | 8s |
+| DORA Metrics | PASS | 9s |
+| Post-deploy Cleanup | PASS | 11s |
+| Post-deployment | PASS | 3s |
+
+### VPS Service Health (post-deploy, 2026-02-22 19:50 UTC)
+
+```text
+CONTAINER                   STATUS
+traefik-1                   Up (running)
+gateway-1                   Up (healthy)
+n8n-main-1                  Up (running, healthz OK via gateway)
+n8n-worker-1                Up (running)
+cms-1                       Up (healthy)
+adminer-1                   Up (running)
+postgres-1                  Up (healthy)
+redis-1                     Up (healthy, PONG)
+admin-dashboard-1           Up (healthy)
+kiosk-app-1                 Up (healthy)
+```
+
+### HTTPS Endpoint Verification
+
+| Endpoint | Expected | Actual |
+|----------|----------|--------|
+| `https://api.srv1258231.hstgr.cloud/healthz` | 200 | 200 |
+| `https://kiosk.srv1258231.hstgr.cloud/` | 200 | 200 |
+| `https://admin.srv1258231.hstgr.cloud/` | 401 (BasicAuth) | 401 |
+| `https://console.srv1258231.hstgr.cloud/` | 401 (BasicAuth) | 401 |
+| `https://cms.srv1258231.hstgr.cloud/` | 302 (Strapi redirect) | 302 |
+
+### Internal Service Health
+
+| Service | Check | Result |
+|---------|-------|--------|
+| n8n-main | `curl http://n8n-main:5678/healthz` (via gateway) | `{"status":"ok"}` |
+| postgres | `pg_isready -U n8n` | accepting connections |
+| redis | `redis-cli ping` | PONG |
+
+### VPS System Resources
+
+| Metric | Value |
+|--------|-------|
+| Disk | 23% (22G/96G) — was 94% before cleanup |
+| Memory | 1.6G used / 7.8G total (6.2G available) |
+| Load | 0.21 (1-min avg) |
+
+### Known Limitations
+
+- Cosign image signing: COSIGN_PASSWORD mismatch (warnings only, non-blocking)
+- `fn_ruthless_normalize` trigger: causes `text = uuid` type mismatch in tracking chain (non-blocking)
+- n8n workflow activation warnings: W4, W5, W6, W7, W12, W14 fail activation (sub-workflows without trigger nodes, invoked by parent workflows)
+- Broken SQL in `bootstrap.sql:2417` (pre-existing, non-blocking)
+
+---
+
 # TEST_REPORT — RESTO BOT v3.1 — 2026-01-22
 
 Couvre :

@@ -17,7 +17,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nconst isOtp = /^\\d{4}$/.test(text);\n\nreturn { json: { phone, otp: text, isOtp } };"
+                "jsCode": "const input = $input.first().json;\nconst phone = (input.from || input.phone || '').toString().trim();\nconst text = (input.text || input.message?.text || '').toString().trim();\n\nconst isOtp = /^\\d{6}$/.test(text);\n\nreturn { json: { phone, otp: text, isOtp } };"
             },
             "name": "Parse OTP",
             "type": "n8n-nodes-base.code",
@@ -146,6 +146,20 @@
                 1300,
                 100
             ]
+        },
+        {
+            "parameters": {
+                "amount": 3,
+                "unit": "seconds"
+            },
+            "name": "Brute Force Delay",
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1,
+            "position": [
+                1400,
+                300
+            ],
+            "notes": "SECURITY: Anti brute-force delay"
         },
         {
             "parameters": {
@@ -459,7 +473,7 @@
                         },
                         {
                             "name": "text",
-                            "value": "={{ { body: '⚠️ Format invalide. Envoyez un code à 4 chiffres.' } }}"
+                            "value": "={{ { body: '⚠️ Format invalide. Envoyez un code à 6 chiffres.' } }}"
                         }
                     ]
                 },
@@ -573,7 +587,7 @@
                 ],
                 [
                     {
-                        "node": "Increment Attempts",
+                        "node": "Brute Force Delay",
                         "type": "main",
                         "index": 0
                     }
@@ -636,6 +650,17 @@
                 [
                     {
                         "node": "Send Mismatch",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Brute Force Delay": {
+            "main": [
+                [
+                    {
+                        "node": "Increment Attempts",
                         "type": "main",
                         "index": 0
                     }

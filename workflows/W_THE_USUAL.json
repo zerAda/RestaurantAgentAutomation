@@ -1,0 +1,188 @@
+{
+    "name": "W_THE_USUAL",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/predict-order",
+                "options": {}
+            },
+            "name": "User Opens Menu",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT oi.label, count(*) as freq \nFROM orders o \nJOIN order_items oi ON o.order_id = oi.order_id \nWHERE o.user_id = $1 \nAND EXTRACT(HOUR FROM o.created_at) BETWEEN EXTRACT(HOUR FROM NOW()) - 4 AND EXTRACT(HOUR FROM NOW()) + 4 \nGROUP BY oi.label \nORDER BY freq DESC \nLIMIT 1;",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.body.user_id] }}"
+                }
+            },
+            "name": "Predict Favorite",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $items('Predict Favorite').length > 0 && $json.freq > 2 }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Has Usual?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const fav = $('Predict Favorite').item.json;\nreturn { json: { \n  text: `Comme d'habitude ? 🍔\\n(${fav.label})`,\n  buttons: [\n    { type: 'reply', reply: { id: 'ORDER_USUAL', title: 'Oui, envoyer !' } },\n    { type: 'reply', reply: { id: 'SHOW_MENU', title: 'Non, voir menu' } }\n  ]\n} };"
+            },
+            "name": "Format Magic Button",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return { json: { \n  text: `Bienvenue chez Ralphé ! 🍔`,\n  buttons: [\n    { type: 'reply', reply: { id: 'SHOW_MENU', title: 'Voir la carte' } }\n  ]\n} };"
+            },
+            "name": "Format Standard",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_ID }}/messages",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WHATSAPP_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $('User Opens Menu').item.json.body.user_id }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "interactive"
+                        },
+                        {
+                            "name": "interactive",
+                            "value": "={ \"type\": \"button\", \"body\": { \"text\": \"{{ $json.text }}\" }, \"action\": { \"buttons\": {{ JSON.stringify($json.buttons) }} } }"
+                        }
+                    ]
+                }
+            },
+            "name": "Send WhatsApp Reply",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "User Opens Menu": {
+            "main": [
+                [
+                    {
+                        "node": "Predict Favorite",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Predict Favorite": {
+            "main": [
+                [
+                    {
+                        "node": "Has Usual?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Usual?": {
+            "main": [
+                [
+                    {
+                        "node": "Format Magic Button",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Format Standard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Magic Button": {
+            "main": [
+                [
+                    {
+                        "node": "Send WhatsApp Reply",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Standard": {
+            "main": [
+                [
+                    {
+                        "node": "Send WhatsApp Reply",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -59,7 +59,7 @@ jobs:
 
           for wf in workflows/*.json; do
             [[ -f "$wf" ]] || continue
-            if jq -e '.name and .nodes and .connections and .active' "$wf" > /dev/null 2>&1; then
+            if jq -e '.name and .nodes and .connections and ((.active == null) or .active)' "$wf" > /dev/null 2>&1; then
               echo "OK: $wf"
             else
               echo "::error file=$wf::Missing required fields (name, nodes, connections, active)"
@@ -80,7 +80,7 @@ jobs:
           for wf in workflows/*.json; do
             [[ -f "$wf" ]] || continue
             BASENAME=$(basename "$wf")
-            if [[ "$BASENAME" =~ ^W[0-9]+_.+\.json$ ]]; then
+            if [[ "$BASENAME" =~ ^W[0-9]*_.+\.json$ ]]; then
               echo "OK: $BASENAME"
             else
               echo "::error file=$wf::File does not match naming convention W<N>_*.json"

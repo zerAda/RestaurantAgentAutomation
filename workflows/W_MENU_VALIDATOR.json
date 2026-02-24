@@ -18,11 +18,14 @@
                 "filters": {
                     "publishedAt": {
                         "$notNull": true
+                    },
+                    "restaurant_id": {
+                        "$eq": "={{$json.tenant_context?.restaurant_id || $json.restaurantId}}"
                     }
                 },
                 "limit": 100
             },
-            "name": "Get Menu (Published)",
+            "name": "Get Menu (Published) - TENANT ISOLATED",
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
@@ -34,7 +37,8 @@
                     "id": "STRAPI_CREDENTIAL_ID",
                     "name": "Strapi connection"
                 }
-            }
+            },
+            "notes": "SECURITY: Tenant isolation enforced via restaurant_id filter. Only products belonging to the authenticated restaurant are retrieved. DO NOT remove this filter."
         },
         {
             "parameters": {

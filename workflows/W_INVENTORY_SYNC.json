@@ -45,7 +45,7 @@
         },
         {
             "parameters": {
-                "url": "=http://localhost:1337/api/products?filters[code][$eq]={{$json.item_code}}&populate=ingredients",
+                "url": "=http://localhost:1337/api/products?filters[code][$eq]={{$json.item_code}}&filters[restaurant_id][$eq]={{$json.tenant_context?.restaurant_id || $item(0).$node[\"Start\"].json.restaurantId}}&populate=ingredients",
                 "method": "GET",
                 "authentication": "genericCredentialType",
                 "genericAuthType": "httpHeaderAuth",
@@ -54,13 +54,14 @@
                     "value": "=Bearer {{$env.N8N_API_TOKEN}}"
                 }
             },
-            "name": "Get Product & Ingredients",
+            "name": "Get Product & Ingredients - TENANT ISOLATED",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
                 850,
                 300
-            ]
+            ],
+            "notes": "SECURITY: Tenant isolation enforced via restaurant_id URL filter. Only products/ingredients belonging to the authenticated restaurant are retrieved. DO NOT remove this filter."
         },
         {
             "parameters": {

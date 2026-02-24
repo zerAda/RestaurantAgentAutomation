@@ -19,7 +19,12 @@
             "parameters": {
                 "operation": "get",
                 "collection": "creative_assets",
-                "id": "={{ $json.body.asset_id }}"
+                "id": "={{ $json.body.asset_id }}",
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.body?.tenant_context?.restaurant_id }}"
+                    }
+                }
             },
             "name": "Get Asset",
             "type": "n8n-nodes-base.strapi",
@@ -39,7 +44,12 @@
             "parameters": {
                 "operation": "get",
                 "collection": "restaurant-brand",
-                "id": "singleton"
+                "id": "singleton",
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.body?.tenant_context?.restaurant_id }}"
+                    }
+                }
             },
             "name": "Get Brand DNA",
             "type": "n8n-nodes-base.strapi",
@@ -144,6 +154,11 @@
                     "ai_prompt_used": "={{ $node[\"AI Vision & Brand Director\"].json.choices[0].message.content.prompt }}",
                     "generated_caption": "={{ $node[\"AI Vision & Brand Director\"].json.choices[0].message.content.caption }}",
                     "status": "processing"
+                },
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $node[\"Webhook (Internal)\"].json.body?.tenant_context?.restaurant_id }}"
+                    }
                 }
             },
             "name": "Update Meta Data",

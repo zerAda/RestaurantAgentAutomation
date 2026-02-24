@@ -7,18 +7,40 @@
                     "interval": [
                         {
                             "field": "hours",
-                            "hoursInterval": 1
+                            "hoursInterval": 4
                         }
                     ]
                 }
             },
-            "name": "Hourly Analysis",
+            "id": "trigger",
+            "name": "Every 4 Hours",
             "type": "n8n-nodes-base.scheduleTrigger",
             "typeVersion": 1,
             "position": [
-                100,
+                0,
                 300
             ]
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "collection": "restaurants",
+                "limit": 100,
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
+                    }
+                }
+            },
+            "id": "get-restaurants",
+            "name": "Get All Restaurants",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ],
+            "notes": "SECURITY: Entry point for multi-tenant batch processing"
         },
         {
             "parameters": {
@@ -27,27 +49,33 @@
                 "filters": {
                     "createdAt": {
                         "$gte": "={{ new Date(Date.now() - 86400000).toISOString() }}"
+                    },
+                    "restaurant_id": {
+                        "$eq": "={{ $json.id || $json.tenant_context?.restaurant_id }}"
                     }
                 },
                 "limit": 500
             },
+            "id": "get-orders",
             "name": "Get Last 24h Orders",
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                300,
+                400,
                 300
-            ]
+            ],
+            "notes": "SECURITY: Now filtered by restaurant_id (IDOR FIX)"
         },
         {
             "parameters": {
-                "jsCode": "const orders = $input.all().map(i => i.json);\n\n// Aggregate sales by product\nconst productSales = {};\norders.forEach(o => {\n  (o.items || []).forEach(item => {\n    const name = item.product_name || 'Unknown';\n    productSales[name] = (productSales[name] || 0) + (item.quantity || 1);\n  });\n});\n\n// Sort by sales\nconst sorted = Object.entries(productSales)\n  .sort((a, b) => b[1] - a[1]);\n\nconst top3 = sorted.slice(0, 3).map(([name, qty]) => ({ name, qty }));\nconst bottom3 = sorted.slice(-3).map(([name, qty]) => ({ name, qty }));\n\nreturn {\n  json: {\n    total_orders: orders.length,\n    top_sellers: top3,\n    low_performers: bottom3,\n    analysis_time: new Date().toISOString()\n  }\n};"
+                "jsCode": "const orders = $input.all().map(i => i.json);\nconst restaurant = $node['Get All Restaurants'].json;\n\n// Aggregate sales by product\nconst productSales = {};\norders.forEach(o => {\n  (o.items || []).forEach(item => {\n    const name = item.product_name || 'Unknown';\n    productSales[name] = (productSales[name] || 0) + (item.quantity || 1);\n  });\n});\n\n// Sort by sales\nconst sorted = Object.entries(productSales)\n  .sort((a, b) => b[1] - a[1]);\n\nconst top3 = sorted.slice(0, 3).map(([name, qty]) => ({ name, qty }));\nconst bottom3 = sorted.slice(-3).map(([name, qty]) => ({ name, qty }));\n\nreturn {\n  json: {\n    restaurant_id: restaurant.id,\n    restaurant_name: restaurant.name,\n    total_orders: orders.length,\n    top_sellers: top3,\n    low_performers: bottom3,\n    analysis_time: new Date().toISOString()\n  }\n};"
             },
+            "id": "analyze",
             "name": "Analyze Sales",
             "type": "n8n-nodes-base.code",
             "typeVersion": 1,
             "position": [
-                500,
+                600,
                 300
             ]
         },
@@ -68,16 +96,17 @@
                         },
                         {
                             "name": "messages",
-                            "value": "={{ [{ \"role\": \"system\", \"content\": \"Tu es un consultant stratégique pour restaurant. Analyse les données et donne UN conseil actionnable en 2 lignes max. Sois direct et parle comme un pote entrepreneur.\" }, { \"role\": \"user\", \"content\": `Voici les stats des dernières 24h:\n- Total commandes: ${$json.total_orders}\n- Top 3 ventes: ${$json.top_sellers.map(t => t.name + ' (' + t.qty + ')').join(', ')}\n- Flops: ${$json.low_performers.map(t => t.name + ' (' + t.qty + ')').join(', ')}\n\nDonne un conseil stratégique.` }] }}"
+                            "value": "={{ [{ \"role\": \"system\", \"content\": \"Tu es un consultant stratégique pour le restaurant '\" + $json.restaurant_name + \"'. Analyse les données et donne UN conseil actionnable en 2 lignes max. Sois direct et parle comme un pote entrepreneur algérien.\" }, { \"role\": \"user\", \"content\": `Voici les stats des dernières 24h:\n- Total commandes: ${$json.total_orders}\n- Top 3 ventes: ${$json.top_sellers.map(t => t.name + ' (' + t.qty + ')').join(', ')}\n- Flops: ${$json.low_performers.map(t => t.name + ' (' + t.qty + ')').join(', ')}\n\nDonne un conseil stratégique.` }] }}"
                         }
                     ]
                 }
             },
+            "id": "ai-advice",
             "name": "AI Strategy Advice",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
-                700,
+                800,
                 300
             ]
         },
@@ -88,6 +117,10 @@
                 "sendBody": true,
                 "bodyParameters": {
                     "parameters": [
+                        {
+                            "name": "restaurant_id",
+                            "value": "={{ $node['Analyze Sales'].json.restaurant_id }}"
+                        },
                         {
                             "name": "type",
                             "value": "strategy_insight"
@@ -103,17 +136,30 @@
                     ]
                 }
             },
+            "id": "push",
             "name": "Push Insight to Dashboard",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 3,
             "position": [
-                900,
+                1000,
                 300
-            ]
+            ],
+            "notes": "SECURITY: Pushes only to the correct restaurant dashboard"
         }
     ],
     "connections": {
-        "Hourly Analysis": {
+        "Every 4 Hours": {
+            "main": [
+                [
+                    {
+                        "node": "Get All Restaurants",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get All Restaurants": {
             "main": [
                 [
                     {
