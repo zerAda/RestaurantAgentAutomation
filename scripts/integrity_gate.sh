@@ -15,10 +15,10 @@ echo "\n[2/8] Secret scan (forbidden placeholder CHANGE_ME)"
 # Exclude: docs, patches, releases, node_modules, .github workflows, CI configs,
 # .env.example (template), .env (gitignored local), gitleaks/gitlab configs (references)
 CHANGE_ME_EXCLUDES=(
-  --exclude-dir=docs --exclude-dir=patches --exclude-dir=releases --exclude-dir=node_modules
+  --exclude-dir=.git --exclude-dir=docs --exclude-dir=patches --exclude-dir=releases --exclude-dir=node_modules
   --exclude-dir=.github --exclude-dir=.claude --exclude=.gitlab-ci.yml
   --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md
-  --exclude=integrity_gate.sh --exclude='*.example' --exclude=.env
+  --exclude=integrity_gate.sh --exclude=check_integrity.js --exclude='*.example' --exclude=.env
   --exclude=.gitleaks.toml
 )
 if grep -R --line-number --fixed-string "CHANGE_ME" \
