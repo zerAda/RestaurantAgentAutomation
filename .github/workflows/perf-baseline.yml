@@ -179,7 +179,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload baseline artifact
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.0
         with:
           name: perf-baseline
           path: /tmp/perf-baseline.json
