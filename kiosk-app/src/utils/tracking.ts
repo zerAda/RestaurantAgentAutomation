@@ -1,4 +1,4 @@
-export const trackEvent = async (eventType: string, metadata: any = {}) => {
+export const trackEvent = async (eventType: string, metadata: Record<string, unknown> = {}) => {
     try {
         const session_id = localStorage.getItem('kiosk_session') || `kiosk_${Date.now()}`;
         if (!localStorage.getItem('kiosk_session')) {

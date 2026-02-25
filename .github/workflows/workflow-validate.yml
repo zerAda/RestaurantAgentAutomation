@@ -59,7 +59,7 @@ jobs:
 
           for wf in workflows/*.json; do
             [[ -f "$wf" ]] || continue
-            if jq -e '.name and .nodes and .connections and ((.active == null) or .active)' "$wf" > /dev/null 2>&1; then
+            if jq -e '.name and .nodes and .connections and ((.active == null) or (.active | type == "boolean"))' "$wf" > /dev/null 2>&1; then
               echo "OK: $wf"
             else
               echo "::error file=$wf::Missing required fields (name, nodes, connections, active)"

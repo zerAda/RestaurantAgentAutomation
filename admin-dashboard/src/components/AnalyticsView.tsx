@@ -16,9 +16,9 @@ interface CampaignROI {
     roas: number;
 }
 
-export function AnalyticsView({ lang }: { lang: any }) {
+export function AnalyticsView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
-    const [loading, setLoading] = useState(true);
+    const [, setLoading] = useState(true);
     const [kpi, setKpi] = useState<KPIData>({ dailyRevenue: 0, activeOrders: 0, stockHealth: 0, avgPrepTime: 0 });
     const [roiData, setRoiData] = useState<CampaignROI[]>([]);
 

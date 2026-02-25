@@ -1,4 +1,4 @@
-import { getTranslation } from '../utils/i18n';
+import { getTranslation, type Language } from '../utils/i18n';
 
 interface Customer {
     id: string;
@@ -15,7 +15,7 @@ const MOCK_CUSTOMERS: Customer[] = [
     { id: 'C-3', phone: '+213 777 44 33 22', name: 'Omar M.', orders: 2, totalSpent: '1.800 DA', tier: 'Silver' },
 ];
 
-export function CustomerView({ lang }: { lang: any }) {
+export function CustomerView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
 
     return (

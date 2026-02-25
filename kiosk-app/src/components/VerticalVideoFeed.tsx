@@ -50,8 +50,8 @@ const FALLBACK_FEED: ProductVideo[] = [
     }
 ];
 
-function mapStrapiToFeed(data: any[]): ProductVideo[] {
-    return data.map((item: any) => {
+function mapStrapiToFeed(data: Record<string, unknown>[]): ProductVideo[] {
+    return data.map((item: Record<string, unknown>) => {
         const attrs = item.attributes || item;
         const img = attrs.image?.data?.attributes?.url;
         const imageUrl = img ? (img.startsWith('http') ? img : `${STRAPI_URL}${img}`) : FALLBACK_FEED[0].url;

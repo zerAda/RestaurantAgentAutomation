@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTranslation } from '../utils/i18n';
+import { getTranslation, type Language } from '../utils/i18n';
 import { strapi } from '../services/strapiClient';
 import { Sparkles, X, Loader2, Send } from 'lucide-react';
 
@@ -16,11 +16,11 @@ interface ContentAsset {
         caption_b: string;
         quality_score: number;
         status: 'draft' | 'ready' | 'published' | 'failed' | 'retry';
-        platforms_published: any;
+        platforms_published: string[] | null;
     };
 }
 
-export function MarketingView({ lang }: { lang: any }) {
+export function MarketingView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
     const [assets, setAssets] = useState<ContentAsset[]>([]);
     const [loading, setLoading] = useState(true);
@@ -111,8 +111,8 @@ export function MarketingView({ lang }: { lang: any }) {
 
                                     <div className="absolute top-4 inset-x-4 flex justify-between items-start">
                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg backdrop-blur-md ${attr.status === 'published' ? 'bg-green-500/90 text-white' :
-                                                attr.status === 'draft' || attr.status === 'ready' ? 'bg-indigo-500/90 text-white animate-pulse' :
-                                                    'bg-zinc-900/90 text-white'
+                                            attr.status === 'draft' || attr.status === 'ready' ? 'bg-indigo-500/90 text-white animate-pulse' :
+                                                'bg-zinc-900/90 text-white'
                                             }`}>
                                             {attr.status}
                                         </span>

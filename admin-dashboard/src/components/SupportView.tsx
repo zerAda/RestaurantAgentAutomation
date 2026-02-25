@@ -1,4 +1,4 @@
-import { getTranslation } from '../utils/i18n';
+import { getTranslation, type Language } from '../utils/i18n';
 
 interface Ticket {
     id: string;
@@ -15,7 +15,7 @@ const MOCK_TICKETS: Ticket[] = [
     { id: 'T-103', customer: '+213 777 44 33 22', status: 'resolved', subject: 'Order modification request', time: '1h ago', priority: 'low' },
 ];
 
-export function SupportView({ lang }: { lang: any }) {
+export function SupportView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
 
     return (

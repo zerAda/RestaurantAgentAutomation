@@ -221,6 +221,7 @@ function NavItem({ active, onClick, label, icon, lang }: { active: boolean, onCl
 
 // Removed AnalyticsPlaceholder and MetricCard (Now in components/AnalyticsView.tsx)
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TopItem({ name, sales, growth }: { name: string, sales: number, growth: string }) {
   return (
     <div className="flex items-center gap-4">

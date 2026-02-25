@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTranslation } from '../utils/i18n';
+import { getTranslation, type Language } from '../utils/i18n';
 import { Play, X, Loader2, Activity, Settings2, Code2 } from 'lucide-react';
 
 interface Workflow {
@@ -66,7 +66,7 @@ const WORKFLOWS: Workflow[] = [
     }
 ];
 
-export function AutomationView({ lang }: { lang: any }) {
+export function AutomationView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
     const [selectedWf, setSelectedWf] = useState<Workflow | null>(null);
     const [payload, setPayload] = useState('');
@@ -98,8 +98,8 @@ export function AutomationView({ lang }: { lang: any }) {
             } else {
                 setResult({ success: false, message: `Error ${res.status}: ${res.statusText}` });
             }
-        } catch (e: any) {
-            setResult({ success: false, message: e.message || 'Invalid JSON or Network Error' });
+        } catch (e: unknown) {
+            setResult({ success: false, message: e instanceof Error ? e.message : 'Invalid JSON or Network Error' });
         } finally {
             setIsTriggering(false);
         }
@@ -124,9 +124,9 @@ export function AutomationView({ lang }: { lang: any }) {
                     >
                         <div className="flex items-start gap-4">
                             <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-2xl ${wf.type === 'core' ? 'bg-indigo-500/10 text-indigo-500' :
-                                    wf.type === 'sync' ? 'bg-green-500/10 text-green-500' :
-                                        wf.type === 'marketing' ? 'bg-pink-500/10 text-pink-500' :
-                                            'bg-purple-500/10 text-purple-500'
+                                wf.type === 'sync' ? 'bg-green-500/10 text-green-500' :
+                                    wf.type === 'marketing' ? 'bg-pink-500/10 text-pink-500' :
+                                        'bg-purple-500/10 text-purple-500'
                                 }`}>
                                 {wf.type === 'core' ? '🤖' : wf.type === 'sync' ? '🔄' : wf.type === 'marketing' ? '🎨' : '🧠'}
                             </div>

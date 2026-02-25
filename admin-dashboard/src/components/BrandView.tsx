@@ -1,6 +1,6 @@
-import { getTranslation } from '../utils/i18n';
+import { getTranslation, type Language } from '../utils/i18n';
 
-export function BrandView({ lang }: { lang: any }) {
+export function BrandView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
 
     return (
