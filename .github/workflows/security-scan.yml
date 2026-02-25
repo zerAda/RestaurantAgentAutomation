@@ -18,7 +18,7 @@ on:
     branches: [main]
   schedule:
     # Run weekly on Sundays at 2:00 AM UTC
-    - cron: '0 2 * * 0'
+    - cron: "0 2 * * 0"
   workflow_dispatch:
 
 concurrency:
@@ -107,7 +107,7 @@ jobs:
       matrix:
         image:
           - name: n8n
-            ref: docker.n8n.io/n8nio/n8n:1.76.1
+            ref: docker.n8n.io/n8nio/n8n:1.80.0
           - name: postgres
             ref: postgres:15-alpine
           - name: redis
@@ -122,12 +122,12 @@ jobs:
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: ${{ matrix.image.ref }}
-          format: 'table'
-          exit-code: '0'  # Warn only: upstream base images may have unfixed CVEs
+          format: "table"
+          exit-code: "1" # Fail on CRITICAL/HIGH CVEs — no exceptions
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          output: 'trivy-${{ matrix.image.name }}.txt'
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          output: "trivy-${{ matrix.image.name }}.txt"
 
       - name: Upload scan results
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
@@ -249,7 +249,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install safety
         run: pip install safety pip-audit
@@ -338,6 +338,5 @@ jobs:
       - name: Check for critical issues
         if: needs.secret-scan.result == 'failure'
         run: |
-          echo "::error::Secret detection found issues - please review"
-          # Don't fail the workflow, just warn
-          echo "Review the secret-scan job output for details"
+          echo "::error::Secret detection found issues — BLOCKING BUILD."
+          exit 1

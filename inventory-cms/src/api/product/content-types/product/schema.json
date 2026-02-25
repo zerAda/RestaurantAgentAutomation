@@ -67,6 +67,36 @@
             "relation": "oneToMany",
             "target": "api::creative-asset.creative-asset",
             "mappedBy": "parent_product"
+        },
+        "available_extras": {
+            "type": "json",
+            "default": [],
+            "description": "Extras: [{name:'Cheddar', price:100, category:'fromage'}, {name:'Extra Viande', price:250, category:'viande'}]"
+        },
+        "available_sauces": {
+            "type": "json",
+            "default": [],
+            "description": "Sauces: [{name:'Algérienne', price:50, included_count:2}, {name:'Samurai', price:50}]. included_count = free sauces"
+        },
+        "available_sizes": {
+            "type": "json",
+            "default": [
+                {
+                    "name": "Normal",
+                    "price_modifier": 0
+                }
+            ],
+            "description": "Sizes: [{name:'Normal', price_modifier:0}, {name:'Maxi', price_modifier:200}, {name:'XXL', price_modifier:400}]"
+        },
+        "is_kiosk_visible": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show this product on the kiosk app"
+        },
+        "preparation_time_min": {
+            "type": "integer",
+            "default": 10,
+            "description": "Estimated preparation time in minutes"
         }
     }
 }

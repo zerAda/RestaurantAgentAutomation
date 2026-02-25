@@ -1,0 +1,479 @@
+{
+    "name": "W_CONTENT_SCHEDULER - AI-Timed Multi-Platform Publisher",
+    "active": true,
+    "settings": {
+        "executionTimeout": 180,
+        "saveManualExecutions": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 1
+                        }
+                    ]
+                }
+            },
+            "id": "trigger",
+            "name": "Hourly Check",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ai-learnings?sort=createdAt:desc&pagination[limit]=1",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch AI Learnings",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                200
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/content-library?filters[status][$eq]=ready&sort=quality_score:desc&pagination[limit]=3",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Ready Content",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/system-config",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Load Config",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                700
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const learningsRaw = $node['Fetch AI Learnings'].json?.data;\nconst learnings = (Array.isArray(learningsRaw) && learningsRaw.length > 0) ? (learningsRaw[0].attributes || learningsRaw[0]).learnings_json || {} : {};\nconst contentItems = $node['Fetch Ready Content'].json?.data || [];\nconst config = $node['Load Config'].json?.data?.attributes || $node['Load Config'].json?.data || {};\n\nconst peakHours = learnings.peak_hours || [10, 12, 19, 20];\nconst currentHour = new Date().getHours();\nconst isPeakHour = peakHours.includes(currentHour);\n\nif (!isPeakHour || contentItems.length === 0) {\n  return [{ json: { should_publish: false, reason: !isPeakHour ? `Hour ${currentHour} not in peak ${JSON.stringify(peakHours)}` : 'No ready content' } }];\n}\n\nconst graphVersion = config.graph_api_version || $env.GRAPH_API_VERSION || 'v21.0';\nconst fbPageToken = config.facebook_page_access_token || $env.FB_PAGE_ACCESS_TOKEN || '';\nconst igAccountId = config.instagram_business_account_id || $env.IG_BUSINESS_ACCOUNT_ID || '';\nconst fbPageId = config.facebook_page_id || $env.FB_PAGE_ID || '';\nconst waPhoneId = config.whatsapp_phone_number_id || $env.WA_PHONE_NUMBER_ID || '';\nconst waToken = config.whatsapp_access_token || $env.WA_API_TOKEN || '';\nconst tiktokToken = config.tiktok_access_token || $env.TIKTOK_ACCESS_TOKEN || '';\nconst adminPhone = config.admin_phone_number || $env.ADMIN_PHONE_NUMBER || '';\n\n// Pick best content item (highest quality score)\nconst best = contentItems[0];\nconst attr = best.attributes || best;\n\n// Use A/B test: alternate between caption_a and caption_b based on hour\nconst caption = currentHour % 2 === 0 ? (attr.caption_a || attr.caption_b) : (attr.caption_b || attr.caption_a);\nconst hashtags = Array.isArray(attr.hashtags) ? attr.hashtags.join(' ') : '';\nconst fullCaption = caption + '\\n\\n' + hashtags;\n\nreturn [{ json: {\n  should_publish: true,\n  content_id: best.id,\n  dish_name: attr.dish_name,\n  brand_name: attr.brand_name,\n  image_square_url: attr.image_square_url,\n  image_vertical_url: attr.image_vertical_url,\n  video_url: attr.video_url,\n  caption: fullCaption,\n  caption_variant: currentHour % 2 === 0 ? 'A' : 'B',\n  quality_score: attr.quality_score,\n  graph_version: graphVersion,\n  fb_page_token: fbPageToken,\n  ig_account_id: igAccountId,\n  fb_page_id: fbPageId,\n  wa_phone_id: waPhoneId,\n  wa_token: waToken,\n  tiktok_token: tiktokToken,\n  admin_phone: adminPhone,\n  platforms_to_publish: ['instagram', 'facebook', 'tiktok', 'whatsapp'],\n  results: {}\n}}];"
+            },
+            "name": "Smart Publish Gate",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                500,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.should_publish }}",
+                            "operation": "equal",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Should Publish?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                750,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ `https://graph.facebook.com/${$json.graph_version}/${$json.ig_account_id}/media` }}",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json.video_url ? { video_url: $json.video_url, caption: $json.caption, media_type: 'REELS', access_token: $json.fb_page_token } : { image_url: $json.image_square_url || $json.image_vertical_url, caption: $json.caption, access_token: $json.fb_page_token }) }}"
+            },
+            "name": "IG Create Container",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1000,
+                100
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ `https://graph.facebook.com/${$node['Smart Publish Gate'].json.graph_version}/${$node['Smart Publish Gate'].json.ig_account_id}/media_publish` }}",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ creation_id: $json.id, access_token: $node['Smart Publish Gate'].json.fb_page_token }) }}"
+            },
+            "name": "IG Publish",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1250,
+                100
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ (() => { const g = $node['Smart Publish Gate'].json; const isVid = !!g.video_url; return `https://graph.facebook.com/${g.graph_version}/${g.fb_page_id}/${isVid ? 'videos' : 'photos'}`; })() }}",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($node['Smart Publish Gate'].json.video_url ? { file_url: $node['Smart Publish Gate'].json.video_url, description: $node['Smart Publish Gate'].json.caption, access_token: $node['Smart Publish Gate'].json.fb_page_token } : { url: $node['Smart Publish Gate'].json.image_square_url, caption: $node['Smart Publish Gate'].json.caption, access_token: $node['Smart Publish Gate'].json.fb_page_token }) }}"
+            },
+            "name": "FB Page Post",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1000,
+                350
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "https://open.tiktokapis.com/v2/post/publish/content/init/",
+                "method": "POST",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $node['Smart Publish Gate'].json.tiktok_token }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ post_info: { title: $node['Smart Publish Gate'].json.caption.substring(0, 150), privacy_level: 'PUBLIC_TO_EVERYONE' }, source_info: { source: 'PULL_FROM_URL', video_url: $node['Smart Publish Gate'].json.video_url || $node['Smart Publish Gate'].json.image_vertical_url } }) }}"
+            },
+            "name": "TikTok Publish",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1000,
+                550
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ `https://graph.facebook.com/${$node['Smart Publish Gate'].json.graph_version}/${$node['Smart Publish Gate'].json.wa_phone_id}/messages` }}",
+                "method": "POST",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $node['Smart Publish Gate'].json.wa_token }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $node['Smart Publish Gate'].json.admin_phone, type: 'image', image: { link: $node['Smart Publish Gate'].json.image_vertical_url || $node['Smart Publish Gate'].json.image_square_url, caption: '📢 Nouveau contenu publié!\\n' + $node['Smart Publish Gate'].json.caption.substring(0, 200) } }) }}"
+            },
+            "name": "WA Broadcast",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1000,
+                750
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const gate = $node['Smart Publish Gate'].json;\nconst ig = $node['IG Publish']?.json || {};\nconst fb = $node['FB Page Post']?.json || {};\nconst tt = $node['TikTok Publish']?.json || {};\nconst wa = $node['WA Broadcast']?.json || {};\n\nconst results = {\n  instagram: { success: !!ig.id, media_id: ig.id || null, error: ig.error?.message || null },\n  facebook: { success: !!fb.id || !!fb.post_id, post_id: fb.id || fb.post_id || null, error: fb.error?.message || null },\n  tiktok: { success: !!tt.data?.publish_id, publish_id: tt.data?.publish_id || null, error: tt.error?.message || null },\n  whatsapp: { success: !!wa.messages, message_id: wa.messages?.[0]?.id || null, error: wa.error?.message || null }\n};\n\nconst successCount = Object.values(results).filter(r => r.success).length;\n\nreturn [{ json: {\n  content_id: gate.content_id,\n  caption_variant: gate.caption_variant,\n  published_at: new Date().toISOString(),\n  success_count: successCount,\n  total_platforms: 4,\n  results\n}}];"
+            },
+            "name": "Aggregate Results",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/content-library/{{ $json.content_id }}",
+                "method": "PUT",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { status: $json.success_count > 0 ? 'published' : 'failed', platforms_published: $json.results, published_at: $json.published_at, caption_variant_used: $json.caption_variant } }) }}"
+            },
+            "name": "Update Content Status",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1750,
+                300
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/funnel-events",
+                "method": "POST",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { event_type: 'content_published_batch', channel: 'multi_platform', session_id: 'scheduler_' + Date.now(), metadata_json: { content_id: $json.content_id, success_count: $json.success_count, platforms: $json.results, caption_variant: $json.caption_variant } } }) }}"
+            },
+            "name": "Log to Funnel",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1750,
+                500
+            ],
+            "continueOnFail": true
+        }
+    ],
+    "connections": {
+        "Hourly Check": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch AI Learnings",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Fetch Ready Content",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Load Config",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch AI Learnings": {
+            "main": [
+                [
+                    {
+                        "node": "Smart Publish Gate",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Ready Content": {
+            "main": [
+                [
+                    {
+                        "node": "Smart Publish Gate",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Config": {
+            "main": [
+                [
+                    {
+                        "node": "Smart Publish Gate",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Smart Publish Gate": {
+            "main": [
+                [
+                    {
+                        "node": "Should Publish?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Should Publish?": {
+            "main": [
+                [
+                    {
+                        "node": "IG Create Container",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "FB Page Post",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "TikTok Publish",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "WA Broadcast",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "IG Create Container": {
+            "main": [
+                [
+                    {
+                        "node": "IG Publish",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "IG Publish": {
+            "main": [
+                [
+                    {
+                        "node": "Aggregate Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "FB Page Post": {
+            "main": [
+                [
+                    {
+                        "node": "Aggregate Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "TikTok Publish": {
+            "main": [
+                [
+                    {
+                        "node": "Aggregate Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "WA Broadcast": {
+            "main": [
+                [
+                    {
+                        "node": "Aggregate Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Aggregate Results": {
+            "main": [
+                [
+                    {
+                        "node": "Update Content Status",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Log to Funnel",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -29,7 +29,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $json.phone }}&filters[delivery_status][$eq]=DELIVERED&sort=delivered_at:desc&pagination[limit]=5",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $json.phone }}&filters[delivery_status][$eq]=DELIVERED&sort=delivered_at:desc&pagination[limit]=5",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [

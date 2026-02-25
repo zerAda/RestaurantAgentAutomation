@@ -29,7 +29,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/driver-order-ignores?filters[driver_phone][$eq]={{ $json.phone }}&populate=order&pagination[limit]=100",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/driver-order-ignores?filters[driver_phone][$eq]={{ $json.phone }}&populate=order&pagination[limit]=100",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -62,7 +62,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders?filters[delivery_status][$eq]=READY_FOR_DELIVERY&filters[driver][$null]=true&sort=createdAt:asc&pagination[limit]=10&populate=*",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[delivery_status][$eq]=READY_FOR_DELIVERY&filters[driver][$null]=true&sort=createdAt:asc&pagination[limit]=10&populate=*",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [

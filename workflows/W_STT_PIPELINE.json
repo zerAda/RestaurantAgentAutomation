@@ -1,0 +1,169 @@
+{
+    "name": "W_STT_PIPELINE - Speech-to-Text Audio Processing",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "saveManualExecutions": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "audio-inbound",
+                "options": {}
+            },
+            "id": "webhook-audio",
+            "name": "Webhook POST /audio-inbound",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "={{ $json.body.audio_url }}",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "responseFormat": "file",
+                "dataPropertyName": "audioData"
+            },
+            "id": "download-audio",
+            "name": "Download Audio from WhatsApp",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                200,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.openai.com/v1/audio/transcriptions",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "contentType": "multipart-form-data",
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "={{ $('Webhook POST /audio-inbound').item.json.body?._strapiConfig?.stt_model || 'whisper-1' }}"
+                        },
+                        {
+                            "name": "language",
+                            "value": "={{ $('Webhook POST /audio-inbound').item.json.body?._strapiConfig?.stt_language || 'ar' }}"
+                        }
+                    ]
+                },
+                "sendBinaryData": true,
+                "binaryPropertyName": "audioData:file"
+            },
+            "id": "call-whisper",
+            "name": "OpenAI Whisper Transcription",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                400,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/voice-interactions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { conversation_key: $json.body.conversation_key, audio_url: $json.body.audio_url, transcript: $json.response.text } }) }}"
+            },
+            "id": "log-stt",
+            "name": "Log to Strapi (voice-interactions)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                600,
+                0
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.WEBHOOK_URL || 'http://localhost:5678' }}/webhook/whatsapp",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({\n  object: 'whatsapp_business_account',\n  entry: [{\n    changes: [{\n      value: {\n        messages: [{\n          from: $json.body.from,\n          id: $json.body.message_id,\n          type: 'text',\n          text: { body: $json.response.text }\n        }]\n      }\n    }]\n  }]\n}) }}"
+            },
+            "id": "forward-to-core",
+            "name": "Forward to Core Webhook as Text",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                800,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook POST /audio-inbound": {
+            "main": [
+                [
+                    {
+                        "node": "Download Audio from WhatsApp",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Download Audio from WhatsApp": {
+            "main": [
+                [
+                    {
+                        "node": "OpenAI Whisper Transcription",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI Whisper Transcription": {
+            "main": [
+                [
+                    {
+                        "node": "Log to Postgres",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log to Postgres": {
+            "main": [
+                [
+                    {
+                        "node": "Forward to Core Webhook as Text",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

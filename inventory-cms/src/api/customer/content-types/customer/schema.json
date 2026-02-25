@@ -40,6 +40,13 @@
             "relation": "oneToMany",
             "target": "api::feedback.feedback",
             "mappedBy": "customer"
+        },
+        "preferences_json": {
+            "type": "json",
+            "description": "Long-term AI memory for personalized upselling mapping (e.g. loves spicy, vegan)"
+        },
+        "last_upsell_date": {
+            "type": "datetime"
         }
     }
 }

@@ -99,7 +99,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $node['Parse Driver'].json.driverId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $node['Parse Driver'].json.driverId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {

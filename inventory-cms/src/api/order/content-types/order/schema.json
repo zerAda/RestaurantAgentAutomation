@@ -21,6 +21,8 @@
             "enum": [
                 "pending",
                 "confirmed",
+                "preparing",
+                "ready",
                 "delivered",
                 "cancelled"
             ],
@@ -32,6 +34,10 @@
         "items_summary": {
             "type": "json",
             "description": "Snapshot of items bought"
+        },
+        "items_detailed": {
+            "type": "json",
+            "description": "Full breakdown: [{product_id, name, price, quantity, size:{name, price_modifier}, extras:[{name, price}], sauces:[{name, price, is_free}], subtotal}]"
         },
         "attributed_campaign": {
             "type": "string",
@@ -45,6 +51,45 @@
                 "online"
             ],
             "default": "cash"
+        },
+        "table_number": {
+            "type": "integer",
+            "description": "Table number for dine-in kiosk orders"
+        },
+        "order_type": {
+            "type": "enumeration",
+            "enum": [
+                "dine_in",
+                "takeaway",
+                "delivery"
+            ],
+            "default": "dine_in"
+        },
+        "source": {
+            "type": "enumeration",
+            "enum": [
+                "kiosk",
+                "whatsapp",
+                "instagram",
+                "tiktok",
+                "web"
+            ],
+            "default": "kiosk"
+        },
+        "kiosk_session_id": {
+            "type": "string",
+            "description": "Unique kiosk session to group orders"
+        },
+        "kitchen_ticket_sent": {
+            "type": "boolean",
+            "default": false
+        },
+        "preparation_started_at": {
+            "type": "datetime"
+        },
+        "estimated_ready_time": {
+            "type": "integer",
+            "description": "Estimated minutes until ready"
         },
         "delivery_status": {
             "type": "enumeration",

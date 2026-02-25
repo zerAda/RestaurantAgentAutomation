@@ -77,13 +77,13 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_ID }}/messages",
+                "url": "={{ 'https://graph.facebook.com/' + ($json.system_config?.graph_api_version || $env.GRAPH_API_VERSION || 'v21.0') + '/' + ($json.system_config?.whatsapp_phone_number_id || $env.WA_PHONE_NUMBER_ID) + '/messages' }}",
                 "sendHeaders": true,
                 "headerParameters": {
                     "parameters": [
                         {
                             "name": "Authorization",
-                            "value": "Bearer {{ $env.WHATSAPP_TOKEN }}"
+                            "value": "Bearer {{ $json.system_config?.whatsapp_access_token || $env.WA_API_TOKEN }}"
                         },
                         {
                             "name": "Content-Type",

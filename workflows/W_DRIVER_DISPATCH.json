@@ -17,23 +17,30 @@
         },
         {
             "parameters": {
-                "operation": "executeQuery",
-                "query": "SELECT * FROM drivers WHERE restaurant_id = $1 AND status = 'ONLINE' AND is_active = true;",
-                "additionalFields": {
-                    "queryParams": "={{ [$json.body.restaurant_id] }}"
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers?filters[restaurant_id][$eq]={{ $json.body.restaurant_id }}&filters[status][$eq]=ONLINE&filters[is_active][$eq]=true",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
                 }
             },
-            "name": "Find Online Drivers",
-            "type": "n8n-nodes-base.postgres",
-            "typeVersion": 1,
+            "name": "Find Online Drivers (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
             "position": [
                 300,
                 300
-            ]
+            ],
+            "continueOnFail": true
         },
         {
             "parameters": {
-                "jsCode": "// Score drivers based on proximity (mock) or round-robin\n// For Diamond Grade, we would integrate Google Maps API here\n\nconst drivers = $items.map(item => item.json);\nconst order = $('On New Order').item.json.body;\n\n// Simple Logic: Take first 3 available drivers\nreturn drivers.slice(0, 3).map(driver => ({\n  json: {\n    driver_id: driver.driver_id,\n    driver_phone: driver.user_id,\n    driver_name: driver.name,\n    order_id: order.order_id,\n    order_total: order.total_cents\n  }\n}));"
+                "jsCode": "// Score drivers based on proximity (mock) or round-robin\nconst drivers = ($json.data || []).map(d => d.attributes || d);\nconst order = $('On New Order').item.json.body;\n\nif (drivers.length === 0) {\n  return [{ json: { skip: true, reason: 'NO_DRIVERS_AVAILABLE' } }];\n}\n\n// Simple Logic: Take first 3 available drivers\nreturn drivers.slice(0, 3).map(driver => ({\n  json: {\n    driver_id: driver.driver_id || driver.id,\n    driver_phone: driver.user_id || driver.phone_number,\n    driver_name: driver.name || driver.first_name,\n    order_id: order.order_id,\n    order_total: order.total_cents\n  }\n}));"
             },
             "name": "Scoring Logic",
             "type": "n8n-nodes-base.code",
@@ -45,28 +52,44 @@
         },
         {
             "parameters": {
-                "tableName": "delivery_assignments",
-                "columns": "order_id, driver_id, status, offered_at",
-                "additionalFields": {}
-            },
-            "name": "Create Assignment",
-            "type": "n8n-nodes-base.postgres",
-            "typeVersion": 1,
-            "position": [
-                700,
-                300
-            ]
-        },
-        {
-            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/delivery-assignments",
                 "method": "POST",
-                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_ID }}/messages",
                 "sendHeaders": true,
                 "headerParameters": {
                     "parameters": [
                         {
                             "name": "Authorization",
-                            "value": "Bearer {{ $env.WHATSAPP_TOKEN }}"
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { order_id: $json.order_id, driver_id: $json.driver_id, status: 'OFFERED', offered_at: new Date().toISOString() } }) }}"
+            },
+            "name": "Create Assignment (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                700,
+                300
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
                         },
                         {
                             "name": "Content-Type",
@@ -98,7 +121,7 @@
             },
             "name": "Send WhatsApp Offer",
             "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 1,
+            "typeVersion": 3,
             "position": [
                 900,
                 300
@@ -110,14 +133,14 @@
             "main": [
                 [
                     {
-                        "node": "Find Online Drivers",
+                        "node": "Find Online Drivers (Strapi)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Find Online Drivers": {
+        "Find Online Drivers (Strapi)": {
             "main": [
                 [
                     {
@@ -132,14 +155,14 @@
             "main": [
                 [
                     {
-                        "node": "Create Assignment",
+                        "node": "Create Assignment (Strapi)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Create Assignment": {
+        "Create Assignment (Strapi)": {
             "main": [
                 [
                     {

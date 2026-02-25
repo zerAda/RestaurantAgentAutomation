@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingBag, Heart, ChevronDown, Plus, X, Search, Globe } from "lucide-react";
+import { ShoppingBag, Heart, ChevronDown, Plus, Search } from "lucide-react";
 import { playSound } from "../utils/SoundManager";
 import { useCart } from "../context/CartContext";
+import { trackEvent } from "../utils/tracking";
 import { getTranslation, setPageDirection, type Language } from "../utils/i18n";
 import { Cart } from "./Cart";
 import CustomizerModal from "./CustomizerModal";
@@ -17,7 +18,9 @@ interface ProductVideo {
     desc: string;
 }
 
-const MOCK_FEED: ProductVideo[] = [
+const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || 'https://cms.' + (import.meta.env.VITE_DOMAIN || 'localhost');
+
+const FALLBACK_FEED: ProductVideo[] = [
     {
         id: "1",
         url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=1899&auto=format&fit=crop",
@@ -47,7 +50,52 @@ const MOCK_FEED: ProductVideo[] = [
     }
 ];
 
+function mapStrapiToFeed(data: any[]): ProductVideo[] {
+    return data.map((item: any) => {
+        const attrs = item.attributes || item;
+        const img = attrs.image?.data?.attributes?.url;
+        const imageUrl = img ? (img.startsWith('http') ? img : `${STRAPI_URL}${img}`) : FALLBACK_FEED[0].url;
+        return {
+            id: String(item.id),
+            url: imageUrl,
+            type: 'image' as const,
+            title: attrs.name || attrs.title || 'Untitled',
+            price: attrs.price_cents ? attrs.price_cents / 100 : (attrs.price || 0),
+            rawPrice: `${attrs.price_cents ? attrs.price_cents / 100 : (attrs.price || 0)} DA`,
+            desc: attrs.description || '',
+        };
+    });
+}
+
+function useLiveFeed() {
+    const [feed, setFeed] = useState<ProductVideo[]>(FALLBACK_FEED);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch(`${STRAPI_URL}/api/menu-items?populate=*&pagination[pageSize]=10&sort=createdAt:desc`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const json = await res.json();
+                const items = json.data;
+                if (!cancelled && Array.isArray(items) && items.length > 0) {
+                    setFeed(mapStrapiToFeed(items));
+                }
+            } catch (err) {
+                console.warn('[Kiosk] Strapi fetch failed, using fallback feed:', err);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    return { feed, loading };
+}
+
 export default function VerticalVideoFeed() {
+    const { feed, loading } = useLiveFeed();
     const [index, setIndex] = useState(0);
     const { cartCount, addItem } = useCart();
     const [showCart, setShowCart] = useState(false);
@@ -61,7 +109,7 @@ export default function VerticalVideoFeed() {
 
     const nextSlide = () => {
         playSound('swipe');
-        setIndex((prev) => (prev + 1) % MOCK_FEED.length);
+        setIndex((prev) => (prev + 1) % feed.length);
     };
 
     const handlePreOrder = () => {
@@ -69,15 +117,23 @@ export default function VerticalVideoFeed() {
         setShowCustomizer(true);
     };
 
-    const confirmAddition = (extras: { name: string; price: number }[]) => {
-        const product = MOCK_FEED[index];
+    const confirmAddition = (extras: { name: string; price: number }[], sauces: { name: string; price: number; is_free: boolean }[], size: { name: string; price_modifier: number }, quantity: number) => {
+        const product = feed[index];
         addItem({
             id: product.id,
             name: product.title,
             price: product.price,
             category: 'specials',
-            image: product.url
-        }, extras);
+            image: product.url,
+            inStock: true,
+            extras: [],
+            sauces: [],
+            sizes: [{ name: 'Normal', price_modifier: 0 }],
+            preparationTime: 10
+        }, extras, sauces, size, quantity);
+
+        // Omnichannel Funnel Tracking
+        trackEvent('add_to_cart', { item_name: product.title, price: product.price, extras, sauces, size, quantity });
 
         setShowCustomizer(false);
         // Fly-in effect
@@ -94,6 +150,14 @@ export default function VerticalVideoFeed() {
         setLang(next);
     };
 
+    if (loading) {
+        return (
+            <div className="w-full h-screen bg-black flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-white/20 border-t-[#FFB800] rounded-full animate-spin" />
+            </div>
+        );
+    }
+
     return (
         <div className="relative w-full h-screen bg-black overflow-hidden select-none">
             {/* Background Feed */}
@@ -108,8 +172,8 @@ export default function VerticalVideoFeed() {
                 >
                     <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 z-10" />
                     <img
-                        src={MOCK_FEED[index].url}
-                        alt={MOCK_FEED[index].title}
+                        src={feed[index].url}
+                        alt={feed[index].title}
                         className="w-full h-full object-cover"
                     />
                 </motion.div>
@@ -165,10 +229,10 @@ export default function VerticalVideoFeed() {
                         {getTranslation('diamond_selection', lang)}
                     </div>
                     <h2 className="text-6xl font-black text-white mb-4 leading-tight">
-                        {MOCK_FEED[index].title}
+                        {feed[index].title}
                     </h2>
                     <p className="text-xl text-white/70 mb-8 leading-relaxed font-light">
-                        {MOCK_FEED[index].desc}
+                        {feed[index].desc}
                     </p>
                     <div className="flex items-center gap-6">
                         <button
@@ -176,7 +240,7 @@ export default function VerticalVideoFeed() {
                             className="bg-white text-black px-12 py-5 rounded-full font-black text-xl shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
                         >
                             <Plus className="w-6 h-6" />
-                            {getTranslation('pre_order', lang)} {MOCK_FEED[index].rawPrice}
+                            {getTranslation('pre_order', lang)} {feed[index].rawPrice}
                         </button>
                         <div className="w-16 h-16 rounded-full border-2 border-white/30 flex items-center justify-center text-white hover:bg-white hover:text-black transition-colors cursor-pointer">
                             <Heart className="w-8 h-8" />
@@ -187,7 +251,7 @@ export default function VerticalVideoFeed() {
 
             {/* Navigation Indicators */}
             <div className={`absolute ${lang === 'ar' ? 'left-8' : 'right-8'} top-1/2 -translate-y-1/2 z-30 flex flex-col gap-4`}>
-                {MOCK_FEED.map((_, i) => (
+                {feed.map((_, i) => (
                     <div
                         key={i}
                         onClick={() => setIndex(i)}
@@ -241,11 +305,16 @@ export default function VerticalVideoFeed() {
                 {showCustomizer && (
                     <CustomizerModal
                         product={{
-                            id: MOCK_FEED[index].id,
-                            name: MOCK_FEED[index].title,
-                            price: MOCK_FEED[index].price,
+                            id: feed[index].id,
+                            name: feed[index].title,
+                            price: feed[index].price,
                             category: 'specials',
-                            image: MOCK_FEED[index].url
+                            image: feed[index].url,
+                            inStock: true,
+                            extras: [],
+                            sauces: [],
+                            sizes: [{ name: 'Normal', price_modifier: 0 }],
+                            preparationTime: 10
                         }}
                         lang={lang}
                         onClose={() => setShowCustomizer(false)}

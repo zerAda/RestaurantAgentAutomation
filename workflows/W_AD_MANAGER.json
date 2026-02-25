@@ -1,0 +1,285 @@
+{
+    "name": "W_AD_MANAGER - AI-Driven Ads Engine",
+    "active": true,
+    "settings": {
+        "executionTimeout": 180,
+        "saveManualExecutions": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 6
+                        }
+                    ]
+                }
+            },
+            "id": "trigger",
+            "name": "Every 6 Hours",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/system-config",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Load Config",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ai-learnings?sort=createdAt:desc&pagination[limit]=1",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch AI Learnings",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                400
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/content-library?filters[status][$eq]=published&sort=quality_score:desc&pagination[limit]=3&populate=*",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Top Content",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ad-campaigns?filters[status][$in]=pending,active&pagination[limit]=10",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Ad Campaigns",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                800
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const config = $node['Load Config'].json?.data?.attributes || $node['Load Config'].json?.data || {};\nconst learningsRaw = $node['Fetch AI Learnings'].json?.data;\nconst learnings = (Array.isArray(learningsRaw) && learningsRaw.length > 0) ? (learningsRaw[0].attributes || learningsRaw[0]).learnings_json || {} : {};\nconst topContent = ($node['Fetch Top Content'].json?.data || []).map(c => c.attributes || c);\nconst adCampaigns = $node['Fetch Ad Campaigns'].json?.data || [];\n\nconst graphVersion = config.graph_api_version || $env.GRAPH_API_VERSION || 'v21.0';\nconst adAccountId = config.meta_ad_account_id || $env.META_AD_ACCOUNT_ID || '';\nconst fbToken = config.facebook_page_access_token || $env.FB_PAGE_ACCESS_TOKEN || '';\nconst tiktokAdToken = config.tiktok_ads_access_token || $env.TIKTOK_ADS_TOKEN || '';\nconst tiktokAdvertiserId = config.tiktok_advertiser_id || $env.TIKTOK_ADVERTISER_ID || '';\n\nconst campaignScore = learnings.campaign_score || 50;\nconst bestChannel = learnings.best_channel || 'instagram';\nconst peakHours = learnings.peak_hours || [12, 19, 20];\n\n// --- Process pending campaigns: create ads ---\nconst pendingCampaigns = adCampaigns.filter(c => (c.attributes || c).status === 'pending');\nconst activeCampaigns = adCampaigns.filter(c => (c.attributes || c).status === 'active');\n\n// Auto-select best content for new ads if no image specified\nconst bestMedia = topContent.length > 0 ? topContent[0] : null;\n\nconst toCreate = pendingCampaigns.map(c => {\n  const attr = c.attributes || c;\n  const budgetMultiplier = campaignScore >= 80 ? 2.0 : campaignScore >= 60 ? 1.5 : 1.0;\n  const baseBudget = attr.daily_budget_cents || 500;\n  \n  return {\n    strapi_id: c.id,\n    name: attr.name || `Auto Ad ${new Date().toLocaleDateString('fr-FR')}`,\n    objective: attr.objective || 'OUTCOME_ENGAGEMENT',\n    daily_budget: Math.round(baseBudget * budgetMultiplier),\n    image_url: attr.image_url || (bestMedia ? bestMedia.image_square_url : null),\n    video_url: attr.video_url || (bestMedia ? bestMedia.video_url : null),\n    ad_text: attr.ad_text || (bestMedia ? bestMedia.caption_a : '🔥 Commandez maintenant!'),\n    targeting: {\n      geo_locations: { countries: ['DZ'], cities: attr.target_cities ? attr.target_cities.map(c => ({ key: c })) : [] },\n      age_min: attr.age_min || 18,\n      age_max: attr.age_max || 55,\n      publisher_platforms: bestChannel === 'instagram' ? ['instagram', 'facebook'] : ['facebook', 'instagram'],\n      interests: attr.interests || [{ id: '6003139266461', name: 'Food & Dining' }]\n    },\n    platform: 'meta'\n  };\n});\n\n// --- Check active campaigns for performance ---\nconst toCheck = activeCampaigns.filter(c => (c.attributes || c).meta_campaign_id).map(c => {\n  const attr = c.attributes || c;\n  return {\n    strapi_id: c.id,\n    meta_campaign_id: attr.meta_campaign_id,\n    meta_adset_id: attr.meta_adset_id,\n    launched_at: attr.launched_at,\n    hours_active: (Date.now() - new Date(attr.launched_at).getTime()) / 3600000\n  };\n});\n\nreturn [{ json: {\n  ad_account_id: adAccountId,\n  fb_token: fbToken,\n  graph_version: graphVersion,\n  tiktok_ad_token: tiktokAdToken,\n  tiktok_advertiser_id: tiktokAdvertiserId,\n  campaign_score: campaignScore,\n  to_create: toCreate,\n  to_check: toCheck,\n  has_pending: toCreate.length > 0,\n  has_active: toCheck.length > 0\n}}];"
+            },
+            "name": "Build Ad Strategy",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                500,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "// Process each pending campaign - create on Meta\nconst strategy = $json;\nconst results = [];\n\nfor (const campaign of strategy.to_create) {\n  try {\n    // Create campaign\n    const campaignRes = await fetch(`https://graph.facebook.com/${strategy.graph_version}/act_${strategy.ad_account_id}/campaigns`, {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({\n        name: campaign.name,\n        objective: campaign.objective,\n        status: 'PAUSED',\n        special_ad_categories: ['NONE'],\n        access_token: strategy.fb_token\n      })\n    });\n    const campaignData = await campaignRes.json();\n\n    // Create ad set\n    let adsetData = {};\n    if (campaignData.id) {\n      const adsetRes = await fetch(`https://graph.facebook.com/${strategy.graph_version}/act_${strategy.ad_account_id}/adsets`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          name: campaign.name + ' - AdSet',\n          campaign_id: campaignData.id,\n          daily_budget: campaign.daily_budget,\n          billing_event: 'IMPRESSIONS',\n          optimization_goal: 'REACH',\n          targeting: campaign.targeting,\n          status: 'PAUSED',\n          access_token: strategy.fb_token\n        })\n      });\n      adsetData = await adsetRes.json();\n    }\n\n    // Create ad creative + ad\n    let adData = {};\n    if (adsetData.id && (campaign.image_url || campaign.video_url)) {\n      const creativeRes = await fetch(`https://graph.facebook.com/${strategy.graph_version}/act_${strategy.ad_account_id}/adcreatives`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          name: campaign.name + ' - Creative',\n          object_story_spec: {\n            link_data: {\n              message: campaign.ad_text,\n              link: campaign.image_url || campaign.video_url,\n              image_url: campaign.image_url\n            }\n          },\n          access_token: strategy.fb_token\n        })\n      });\n      const creativeData = await creativeRes.json();\n\n      if (creativeData.id) {\n        const adRes = await fetch(`https://graph.facebook.com/${strategy.graph_version}/act_${strategy.ad_account_id}/ads`, {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({\n            name: campaign.name + ' - Ad',\n            adset_id: adsetData.id,\n            creative: { creative_id: creativeData.id },\n            status: 'PAUSED',\n            access_token: strategy.fb_token\n          })\n        });\n        adData = await adRes.json();\n      }\n    }\n\n    results.push({\n      strapi_id: campaign.strapi_id,\n      meta_campaign_id: campaignData.id || null,\n      meta_adset_id: adsetData.id || null,\n      meta_ad_id: adData.id || null,\n      budget: campaign.daily_budget,\n      success: !!campaignData.id,\n      error: campaignData.error?.message || null\n    });\n  } catch(e) {\n    results.push({ strapi_id: campaign.strapi_id, success: false, error: e.message });\n  }\n}\n\nreturn [{ json: { ...strategy, creation_results: results } }];"
+            },
+            "name": "Create Meta Ads",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                200
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "// Pull performance metrics for active campaigns\nconst strategy = $json;\nconst metrics = [];\n\nfor (const campaign of strategy.to_check) {\n  try {\n    const res = await fetch(`https://graph.facebook.com/${strategy.graph_version}/${campaign.meta_campaign_id}/insights?fields=impressions,clicks,spend,actions&access_token=${strategy.fb_token}`);\n    const data = await res.json();\n    const insight = data.data?.[0] || {};\n    \n    const impressions = parseInt(insight.impressions || 0);\n    const clicks = parseInt(insight.clicks || 0);\n    const spend = parseFloat(insight.spend || 0);\n    const purchases = (insight.actions || []).find(a => a.action_type === 'purchase')?.value || 0;\n    const ctr = impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) : 0;\n    const roas = spend > 0 ? (purchases * 1000 / spend).toFixed(2) : 0; // Simplified ROAS\n    \n    // Auto-pause if ROAS < 1 after 24h\n    const shouldPause = campaign.hours_active > 24 && parseFloat(roas) < 1 && spend > 0;\n    \n    if (shouldPause) {\n      await fetch(`https://graph.facebook.com/${strategy.graph_version}/${campaign.meta_adset_id}`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ status: 'PAUSED', access_token: strategy.fb_token })\n      });\n    }\n    \n    metrics.push({\n      strapi_id: campaign.strapi_id,\n      impressions, clicks, spend, purchases: parseInt(purchases),\n      ctr: parseFloat(ctr), roas: parseFloat(roas),\n      hours_active: Math.round(campaign.hours_active),\n      auto_paused: shouldPause\n    });\n  } catch(e) {\n    metrics.push({ strapi_id: campaign.strapi_id, error: e.message });\n  }\n}\n\nreturn [{ json: { ...strategy, performance_metrics: metrics } }];"
+            },
+            "name": "Pull Performance & Auto-Pause",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                600
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "// Update Strapi with all results\nconst data = $json;\nconst updates = [];\n\n// Update created campaigns\nfor (const result of (data.creation_results || [])) {\n  if (result.strapi_id) {\n    try {\n      await fetch(`${$env.STRAPI_URL || 'http://strapi:1337'}/api/ad-campaigns/${result.strapi_id}`, {\n        method: 'PUT',\n        headers: { 'Authorization': `Bearer ${$env.STRAPI_API_TOKEN}`, 'Content-Type': 'application/json' },\n        body: JSON.stringify({ data: {\n          status: result.success ? 'active' : 'failed',\n          meta_campaign_id: result.meta_campaign_id,\n          meta_adset_id: result.meta_adset_id,\n          meta_ad_id: result.meta_ad_id,\n          actual_budget: result.budget,\n          launched_at: result.success ? new Date().toISOString() : null,\n          error_message: result.error\n        }})\n      });\n      updates.push({ id: result.strapi_id, action: 'created', success: result.success });\n    } catch(e) { updates.push({ id: result.strapi_id, action: 'create_update_failed', error: e.message }); }\n  }\n}\n\n// Update performance metrics\nfor (const metric of (data.performance_metrics || [])) {\n  if (metric.strapi_id && !metric.error) {\n    try {\n      await fetch(`${$env.STRAPI_URL || 'http://strapi:1337'}/api/ad-campaigns/${metric.strapi_id}`, {\n        method: 'PUT',\n        headers: { 'Authorization': `Bearer ${$env.STRAPI_API_TOKEN}`, 'Content-Type': 'application/json' },\n        body: JSON.stringify({ data: {\n          impressions: metric.impressions,\n          clicks: metric.clicks,\n          spend_cents: Math.round(metric.spend * 100),\n          ctr: metric.ctr,\n          roas: metric.roas,\n          status: metric.auto_paused ? 'paused' : 'active',\n          auto_paused: metric.auto_paused,\n          last_metrics_pull: new Date().toISOString()\n        }})\n      });\n      updates.push({ id: metric.strapi_id, action: 'metrics_updated', auto_paused: metric.auto_paused });\n    } catch(e) { updates.push({ id: metric.strapi_id, action: 'metrics_update_failed', error: e.message }); }\n  }\n}\n\n// Log to funnel\ntry {\n  await fetch(`${$env.STRAPI_URL || 'http://strapi:1337'}/api/funnel-events`, {\n    method: 'POST',\n    headers: { 'Authorization': `Bearer ${$env.STRAPI_API_TOKEN}`, 'Content-Type': 'application/json' },\n    body: JSON.stringify({ data: {\n      event_type: 'ad_management_cycle',\n      channel: 'meta_ads',\n      session_id: 'ad_mgr_' + Date.now(),\n      metadata_json: {\n        created: data.creation_results?.length || 0,\n        checked: data.performance_metrics?.length || 0,\n        auto_paused: (data.performance_metrics || []).filter(m => m.auto_paused).length,\n        campaign_score: data.campaign_score\n      }\n    }})\n  });\n} catch(e) {}\n\nreturn [{ json: { updates, total_created: data.creation_results?.length || 0, total_checked: data.performance_metrics?.length || 0 } }];"
+            },
+            "name": "Sync to Strapi & Log",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1100,
+                400
+            ],
+            "continueOnFail": true
+        }
+    ],
+    "connections": {
+        "Every 6 Hours": {
+            "main": [
+                [
+                    {
+                        "node": "Load Config",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Fetch AI Learnings",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Fetch Top Content",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Fetch Ad Campaigns",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Config": {
+            "main": [
+                [
+                    {
+                        "node": "Build Ad Strategy",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch AI Learnings": {
+            "main": [
+                [
+                    {
+                        "node": "Build Ad Strategy",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Top Content": {
+            "main": [
+                [
+                    {
+                        "node": "Build Ad Strategy",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Ad Campaigns": {
+            "main": [
+                [
+                    {
+                        "node": "Build Ad Strategy",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Ad Strategy": {
+            "main": [
+                [
+                    {
+                        "node": "Create Meta Ads",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Pull Performance & Auto-Pause",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Meta Ads": {
+            "main": [
+                [
+                    {
+                        "node": "Sync to Strapi & Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Pull Performance & Auto-Pause": {
+            "main": [
+                [
+                    {
+                        "node": "Sync to Strapi & Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -42,9 +42,6 @@
             "type": "text",
             "default": "Generate a high-end, appetizing image of {dish_name} with a luxury minimalist aesthetic."
         },
-        "system_prompt_video_gen": {
-            "type": "text"
-        },
         "maintenance_mode": {
             "type": "boolean",
             "default": false
@@ -55,6 +52,181 @@
         },
         "global_contact_phone": {
             "type": "string"
+        },
+        "llm_model": {
+            "type": "string",
+            "default": "llama3.1"
+        },
+        "llm_temperature": {
+            "type": "decimal",
+            "default": 0.1
+        },
+        "llm_max_tokens": {
+            "type": "integer",
+            "default": 512
+        },
+        "agent_system_prompt": {
+            "type": "text",
+            "default": "You are Ralphé, a professional AI assistant for an Algerian restaurant chain. You MUST only answer questions related to the restaurant menu, orders, delivery, and promotions. Never invent menu items. If unsure, say 'Let me check with the team.'"
+        },
+        "system_prompt_video_gen": {
+            "type": "text",
+            "default": "Create a 5-second cinematic food reveal video. Camera slowly orbits the dish. Warm golden lighting. Shallow depth of field. Steam rising. Brand: {brand_name}."
+        },
+        "video_aspect_ratio": {
+            "type": "string",
+            "default": "9:16"
+        },
+        "enable_tiktok": {
+            "type": "boolean",
+            "default": false
+        },
+        "enable_snapchat": {
+            "type": "boolean",
+            "default": false
+        },
+        "enable_instagram": {
+            "type": "boolean",
+            "default": true
+        },
+        "enable_facebook": {
+            "type": "boolean",
+            "default": true
+        },
+        "enable_whatsapp_stories": {
+            "type": "boolean",
+            "default": true
+        },
+        "stt_model": {
+            "type": "string",
+            "default": "whisper-1"
+        },
+        "stt_language": {
+            "type": "string",
+            "default": "ar"
+        },
+        "tiktok_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "instagram_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "snapchat_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "wa_send_url": {
+            "type": "string",
+            "default": "https://graph.facebook.com/v21.0"
+        },
+        "graph_api_version": {
+            "type": "string",
+            "default": "v21.0"
+        },
+        "meta_app_secret": {
+            "type": "string",
+            "private": true
+        },
+        "chargily_secret_key": {
+            "type": "string",
+            "private": true
+        },
+        "app_public_url": {
+            "type": "string"
+        },
+        "facebook_page_id": {
+            "type": "string"
+        },
+        "facebook_page_token": {
+            "type": "string",
+            "private": true
+        },
+        "instagram_business_id": {
+            "type": "string"
+        },
+        "tiktok_open_id": {
+            "type": "string"
+        },
+        "strapi_internal_token": {
+            "type": "string",
+            "private": true
+        },
+        "n8n_webhook_base_url": {
+            "type": "string",
+            "default": "http://n8n:5678"
+        },
+        "ollama_api_url": {
+            "type": "string",
+            "default": "http://ollama:11434/api/chat"
+        },
+        "openweather_api_key": {
+            "type": "string",
+            "private": true
+        },
+        "admin_phone_number": {
+            "type": "string"
+        },
+        "default_tenant_id": {
+            "type": "string"
+        },
+        "default_restaurant_id": {
+            "type": "string"
+        },
+        "vip_churn_days": {
+            "type": "integer",
+            "default": 30
+        },
+        "driver_otp_max_attempts": {
+            "type": "integer",
+            "default": 3
+        },
+        "facebook_page_access_token": {
+            "type": "string",
+            "private": true,
+            "description": "Facebook Page access token for publishing and ads"
+        },
+        "instagram_business_account_id": {
+            "type": "string",
+            "description": "Instagram Business Account ID for publishing via Graph API"
+        },
+        "meta_ad_account_id": {
+            "type": "string",
+            "description": "Meta Ads account ID (without act_ prefix)"
+        },
+        "tiktok_refresh_token": {
+            "type": "string",
+            "private": true
+        },
+        "tiktok_client_key": {
+            "type": "string"
+        },
+        "tiktok_client_secret": {
+            "type": "string",
+            "private": true
+        },
+        "tiktok_advertiser_id": {
+            "type": "string"
+        },
+        "tiktok_ads_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "content_quality_threshold": {
+            "type": "integer",
+            "default": 7,
+            "description": "Minimum quality score (1-10) for auto-publishing"
+        },
+        "auto_ad_budget_multiplier": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "Global multiplier for AI ad budget calculations"
+        },
+        "ad_roas_pause_threshold": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "ROAS below this after 24h triggers auto-pause"
         }
     }
 }

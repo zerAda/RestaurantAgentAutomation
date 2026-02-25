@@ -13,7 +13,10 @@
       "name": "IN - From CORE",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [-2400, 0]
+      "position": [
+        -2400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -24,7 +27,10 @@
       "name": "B0 - Prepare Outbox",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-2150, 0]
+      "position": [
+        -2150,
+        0
+      ]
     },
     {
       "parameters": {
@@ -38,7 +44,10 @@
       "name": "B0 - Store in Outbox",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-1900, 0],
+      "position": [
+        -1900,
+        0
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -50,13 +59,16 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "/**\n * W6 - Instagram DM Sender (Meta Graph API)\n * P0-07: Production-ready with retries, backoff, token masking\n * \n * Instagram Messaging API:\n *   POST https://graph.facebook.com/{VERSION}/{PAGE_ID}/messages\n *   Body: { recipient: { id: 'IGSID' }, message: { text: 'MSG' } }\n */\n\nconst payload = $json;\nconst timestamp = new Date().toISOString();\n\n// Configuration\nconst graphVersion = ($env.GRAPH_API_VERSION || 'v21.0').toString().trim();\nconst sendUrl = ($env.IG_SEND_URL || '').toString().trim();\nconst pageId = ($env.IG_PAGE_ID || '').toString().trim();\nconst token = ($env.IG_API_TOKEN || '').toString().trim();\nconst maxRetries = parseInt($env.OUTBOX_MAX_ATTEMPTS || '3', 10);\nconst baseDelay = parseInt($env.OUTBOX_BASE_DELAY_SEC || '1', 10) * 1000;\nconst maxDelay = parseInt($env.OUTBOX_MAX_DELAY_SEC || '60', 10) * 1000;\n\n// Detect if using Meta API (production) or mock\nconst isMetaApi = sendUrl.includes('graph.facebook.com') || !!pageId;\nlet url = sendUrl;\n\nif (!url && pageId) {\n  url = `https://graph.facebook.com/${graphVersion}/${pageId}/messages`;\n}\n\nif (!url) {\n  return [{ json: { \n    ...payload,\n    sent: false, \n    error: 'IG_SEND_URL_NOT_SET',\n    reason: 'IG_SEND_URL or IG_PAGE_ID must be configured',\n    timestamp\n  }}];\n}\n\nif (!token) {\n  return [{ json: { \n    ...payload,\n    sent: false, \n    error: 'IG_API_TOKEN_NOT_SET',\n    reason: 'IG_API_TOKEN must be configured',\n    timestamp\n  }}];\n}\n\nconst recipientId = (payload.userId || '').toString().trim();\nif (!recipientId) {\n  return [{ json: { \n    ...payload,\n    sent: false, \n    error: 'RECIPIENT_MISSING',\n    reason: 'userId (Instagram Scoped ID) is required',\n    timestamp\n  }}];\n}\n\n// Build request body for Meta Graph API\nlet body;\nif (isMetaApi) {\n  const text = (payload.replyText || '').toString().trim();\n  \n  if (Array.isArray(payload.buttons) && payload.buttons.length > 0) {\n    // Quick replies (Instagram supports up to 13)\n    body = {\n      recipient: { id: recipientId },\n      message: {\n        text: text || 'Choose an option:',\n        quick_replies: payload.buttons.slice(0, 13).map((btn, i) => ({\n          content_type: 'text',\n          title: (btn.title || btn.label || '').slice(0, 20),\n          payload: btn.id || `btn_${i}`\n        }))\n      }\n    };\n  } else {\n    body = {\n      recipient: { id: recipientId },\n      message: { text: text || '(empty message)' }\n    };\n  }\n} else {\n  // Mock API format\n  body = {\n    channel: 'instagram',\n    to: recipientId,\n    restaurantId: payload.restaurantId || '',\n    text: payload.replyText || '',\n    buttons: Array.isArray(payload.buttons) ? payload.buttons : [],\n    attachments: Array.isArray(payload.attachments) ? payload.attachments : []\n  };\n}\n\n// Send with exponential backoff retry\nlet lastError = null;\nlet response = null;\nlet finalAttempt = 0;\n\nfor (let attempt = 1; attempt <= maxRetries; attempt++) {\n  finalAttempt = attempt;\n  try {\n    response = await $httpRequest({\n      method: 'POST',\n      url,\n      headers: {\n        'Authorization': `Bearer ${token}`,\n        'Content-Type': 'application/json'\n      },\n      body,\n      json: true,\n      timeout: 30000,\n      returnFullResponse: true\n    });\n    \n    const statusCode = response.statusCode || response.status || 200;\n    \n    // Success\n    if (statusCode >= 200 && statusCode < 300) {\n      const responseBody = response.body || response.data || response;\n      return [{ json: {\n        ...payload,\n        sent: true,\n        provider: isMetaApi ? 'meta_ig_api' : 'mock',\n        messageId: responseBody?.message_id || responseBody?.recipient_id || null,\n        recipient: recipientId,\n        timestamp,\n        attempt: finalAttempt,\n        response: responseBody\n      }}];\n    }\n    \n    // Rate limited - wait and retry\n    if (statusCode === 429) {\n      const retryAfter = parseInt(response.headers?.['retry-after'] || '60', 10);\n      lastError = { statusCode, error: 'RATE_LIMITED', retryAfter };\n      if (attempt < maxRetries) {\n        const delay = Math.min(retryAfter * 1000, maxDelay);\n        await new Promise(r => setTimeout(r, delay));\n        continue;\n      }\n    }\n    \n    // Server error - retry with backoff\n    if (statusCode >= 500) {\n      lastError = { statusCode, error: 'SERVER_ERROR', body: response.body };\n      if (attempt < maxRetries) {\n        const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);\n        await new Promise(r => setTimeout(r, delay));\n        continue;\n      }\n    }\n    \n    // Client error - don't retry (except 429)\n    if (statusCode >= 400) {\n      // Mask token in error response for security\n      const safeResponse = response.body || response;\n      return [{ json: {\n        ...payload,\n        sent: false,\n        error: 'CLIENT_ERROR',\n        statusCode,\n        provider: isMetaApi ? 'meta_ig_api' : 'mock',\n        response: safeResponse,\n        timestamp,\n        attempt: finalAttempt,\n        requestBody: body\n      }}];\n    }\n    \n  } catch (err) {\n    lastError = { error: 'REQUEST_FAILED', message: err.message };\n    if (attempt < maxRetries) {\n      const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);\n      await new Promise(r => setTimeout(r, delay));\n      continue;\n    }\n  }\n}\n\n// All retries exhausted\nreturn [{ json: {\n  ...payload,\n  sent: false,\n  error: 'MAX_RETRIES_EXHAUSTED',\n  lastError,\n  provider: isMetaApi ? 'meta_ig_api' : 'mock',\n  timestamp,\n  attempts: maxRetries,\n  requestBody: body\n}}];\n"
+        "jsCode": "/**\n * W6 - Instagram DM Sender (Meta Graph API)\n * STRAPI GOD MODE: Config reads from _strapiConfig first, $env fallback\n */\nconst payload = $json;\nconst timestamp = new Date().toISOString();\nconst cfg = payload._strapiConfig || {};\n\nconst graphVersion = (cfg.graph_api_version || $env.GRAPH_API_VERSION || 'v21.0').toString().trim();\nconst sendUrl = (cfg.ig_send_url || $env.IG_SEND_URL || '').toString().trim();\nconst pageId = (cfg.ig_page_id || $env.IG_PAGE_ID || '').toString().trim();\nconst token = (cfg.ig_api_token || $env.IG_API_TOKEN || '').toString().trim();\nconst maxRetries = parseInt($env.OUTBOX_MAX_ATTEMPTS || '3', 10);\nconst baseDelay = parseInt($env.OUTBOX_BASE_DELAY_SEC || '1', 10) * 1000;\nconst maxDelay = parseInt($env.OUTBOX_MAX_DELAY_SEC || '60', 10) * 1000;\n\nconst isMetaApi = sendUrl.includes('graph.facebook.com') || !!pageId;\nlet url = sendUrl;\nif (!url && pageId) { url = `https://graph.facebook.com/${graphVersion}/${pageId}/messages`; }\nif (!url) { return [{ json: { ...payload, sent: false, error: 'IG_SEND_URL_NOT_SET', timestamp }}]; }\nif (!token) { return [{ json: { ...payload, sent: false, error: 'IG_API_TOKEN_NOT_SET', timestamp }}]; }\n\nconst recipientId = (payload.userId || '').toString().trim();\nif (!recipientId) { return [{ json: { ...payload, sent: false, error: 'RECIPIENT_MISSING', timestamp }}]; }\n\nlet body;\nif (isMetaApi) {\n  const text = (payload.replyText || '').toString().trim();\n  if (Array.isArray(payload.buttons) && payload.buttons.length > 0) {\n    body = { recipient: { id: recipientId }, message: { text: text || 'Choose an option:', quick_replies: payload.buttons.slice(0, 13).map((btn, i) => ({ content_type: 'text', title: (btn.title || btn.label || '').slice(0, 20), payload: btn.id || `btn_${i}` })) } };\n  } else {\n    body = { recipient: { id: recipientId }, message: { text: text || '(empty message)' } };\n  }\n} else {\n  body = { channel: 'instagram', to: recipientId, restaurantId: payload.restaurantId || '', text: payload.replyText || '', buttons: Array.isArray(payload.buttons) ? payload.buttons : [], attachments: Array.isArray(payload.attachments) ? payload.attachments : [] };\n}\n\nlet lastError = null; let response = null; let finalAttempt = 0;\nfor (let attempt = 1; attempt <= maxRetries; attempt++) {\n  finalAttempt = attempt;\n  try {\n    response = await $httpRequest({ method: 'POST', url, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body, json: true, timeout: 30000, returnFullResponse: true });\n    const sc = response.statusCode || response.status || 200;\n    if (sc >= 200 && sc < 300) { const rb = response.body || response.data || response; return [{ json: { ...payload, sent: true, provider: isMetaApi ? 'meta_ig_api' : 'mock', messageId: rb?.message_id || null, recipient: recipientId, timestamp, attempt: finalAttempt, response: rb }}]; }\n    if (sc === 429) { lastError = { statusCode: sc, error: 'RATE_LIMITED' }; if (attempt < maxRetries) { await new Promise(r => setTimeout(r, Math.min(60000, maxDelay))); continue; } }\n    if (sc >= 500) { lastError = { statusCode: sc, error: 'SERVER_ERROR' }; if (attempt < maxRetries) { await new Promise(r => setTimeout(r, Math.min(baseDelay * Math.pow(2, attempt-1), maxDelay))); continue; } }\n    if (sc >= 400) { return [{ json: { ...payload, sent: false, error: 'CLIENT_ERROR', statusCode: sc, timestamp }}]; }\n  } catch (err) {\n    lastError = { error: 'REQUEST_FAILED', message: err.message };\n    if (attempt < maxRetries) { await new Promise(r => setTimeout(r, Math.min(baseDelay * Math.pow(2, attempt-1), maxDelay))); continue; }\n  }\n}\nreturn [{ json: { ...payload, sent: false, error: 'MAX_RETRIES_EXHAUSTED', lastError, timestamp, attempts: maxRetries }}];\n"
       },
       "id": "af69ff79-fe60-4cfb-aa29-b43b0d7114f0",
       "name": "OUT - Send Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-1650, 0]
+      "position": [
+        -1650,
+        0
+      ]
     },
     {
       "parameters": {
@@ -73,7 +85,10 @@
       "name": "B1 - Send OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-1400, 0]
+      "position": [
+        -1400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -84,7 +99,10 @@
       "name": "B1 - Clear Outbox (Success)",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-1150, -100],
+      "position": [
+        -1150,
+        -100
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -96,13 +114,16 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "/**\n * P0-07: Prepare DLQ entry for failed message\n * Token is masked for security\n */\nconst payload = $json;\nconst timestamp = new Date().toISOString();\n\nconst dlqEntry = {\n  channel: 'instagram',\n  outboxMsgId: payload._outbox?.msgId,\n  outboxKey: payload._outbox?.key,\n  failedAt: timestamp,\n  error: payload.error,\n  lastError: payload.lastError,\n  statusCode: payload.statusCode,\n  attempts: payload.attempts || payload.attempt || 1,\n  payload: {\n    userId: payload.userId,\n    restaurantId: payload.restaurantId,\n    replyText: payload.replyText,\n    buttons: payload.buttons\n  },\n  requestBody: payload.requestBody,\n  response: payload.response\n};\n\nreturn [{\n  json: {\n    ...payload,\n    _dlq: {\n      entry: JSON.stringify(dlqEntry)\n    }\n  }\n}];\n"
+        "jsCode": "/**\n * P0-07: Prepare DLQ entry for failed message\n */\nconst payload = $json;\nconst timestamp = new Date().toISOString();\n\nconst dlqEntry = {\n  channel: 'instagram',\n  outboxMsgId: payload._outbox?.msgId,\n  outboxKey: payload._outbox?.key,\n  failedAt: timestamp,\n  error: payload.error,\n  lastError: payload.lastError,\n  statusCode: payload.statusCode,\n  attempts: payload.attempts || payload.attempt || 1,\n  payload: {\n    userId: payload.userId,\n    restaurantId: payload.restaurantId,\n    replyText: payload.replyText,\n    buttons: payload.buttons\n  },\n  requestBody: payload.requestBody,\n  response: payload.response\n};\n\nreturn [{\n  json: {\n    ...payload,\n    _dlq: {\n      entry: JSON.stringify(dlqEntry)\n    }\n  }\n}];\n"
       },
       "id": "dlq-prepare-ig",
       "name": "B1 - Prepare DLQ Entry",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-1150, 100]
+      "position": [
+        -1150,
+        100
+      ]
     },
     {
       "parameters": {
@@ -114,7 +135,10 @@
       "name": "B1 - Push to DLQ",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-900, 100],
+      "position": [
+        -900,
+        100
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -132,7 +156,10 @@
       "name": "B1 - Clear Outbox (Fail)",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-650, 100],
+      "position": [
+        -650,
+        100
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -150,7 +177,10 @@
       "name": "END - Success",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-900, -100]
+      "position": [
+        -900,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -161,7 +191,10 @@
       "name": "END - DLQ",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-400, 100]
+      "position": [
+        -400,
+        100
+      ]
     },
     {
       "parameters": {
@@ -178,7 +211,10 @@
       "name": "B0 - Async Mode?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-1650, 0]
+      "position": [
+        -1650,
+        0
+      ]
     },
     {
       "parameters": {
@@ -191,7 +227,10 @@
       "name": "B0 - LPUSH Pending Queue",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [-1400, 100],
+      "position": [
+        -1400,
+        100
+      ],
       "credentials": {
         "redis": {
           "id": "REDIS_CREDENTIAL_ID",
@@ -209,7 +248,10 @@
       "name": "END - Queued",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-1150, 100]
+      "position": [
+        -1150,
+        100
+      ]
     }
   ],
   "connections": {

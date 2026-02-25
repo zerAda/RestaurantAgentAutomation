@@ -49,7 +49,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $json.phone }}&filters[delivery_status][$eq]=OUT_FOR_DELIVERY&pagination[limit]=1&populate=driver",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $json.phone }}&filters[delivery_status][$eq]=OUT_FOR_DELIVERY&pagination[limit]=1&populate=driver",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -90,7 +90,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const crypto = require('crypto');\n\nconst order = $json.data[0];\nconst attr = order.attributes || order;\nconst orderId = order.id;\nconst phone = $node['Parse OTP'].json.phone;\nconst inputOtp = $node['Parse OTP'].json.otp;\n\nconst maxAttempts = parseInt($env.DRIVER_OTP_MAX_ATTEMPTS || '3', 10);\nconst currentAttempts = attr.otp_attempts || 0;\nconst otpHash = attr.otp_hash || '';\nconst otpExpiresAt = attr.otp_expires_at ? new Date(attr.otp_expires_at) : null;\nconst totalAmount = attr.total_amount || 0;\nconst driverId = attr.driver?.data?.id || attr.driver?.id || null;\n\n// Check attempts exceeded\nif (currentAttempts >= maxAttempts) {\n  return { json: { phone, orderId, status: 'BLOCKED', message: '🔒 *Code bloqué*\\n\\nTrop de tentatives. Contactez le support.' } };\n}\n\n// Check expiry\nif (otpExpiresAt && otpExpiresAt < new Date()) {\n  return { json: { phone, orderId, status: 'EXPIRED', message: '⏰ *Code expiré*\\n\\nLe code OTP a expiré. Demandez un nouveau code au support.' } };\n}\n\n// Hash input and compare\nconst inputHash = crypto.createHash('sha256').update(inputOtp).digest('hex');\n\nif (inputHash !== otpHash) {\n  const newAttempts = currentAttempts + 1;\n  const remaining = maxAttempts - newAttempts;\n  return {\n    json: {\n      phone,\n      orderId,\n      status: 'MISMATCH',\n      newAttempts,\n      message: `❌ *Code incorrect*\\n\\nTentative ${newAttempts}/${maxAttempts}.${remaining > 0 ? ` Il vous reste ${remaining} essai(s).` : ' Code bloqué.'}`\n    }\n  };\n}\n\n// OTP matches!\nreturn {\n  json: {\n    phone,\n    orderId,\n    driverId,\n    totalAmount,\n    status: 'MATCH'\n  }\n};"
+                "jsCode": "const crypto = require('crypto');\n\nconst order = $json.data[0];\nconst attr = order.attributes || order;\nconst orderId = order.id;\nconst phone = $node['Parse OTP'].json.phone;\nconst inputOtp = $node['Parse OTP'].json.otp;\n\nconst maxAttempts = parseInt($json._strapiConfig?.driver_otp_max_attempts || $env.DRIVER_OTP_MAX_ATTEMPTS || '3', 10);\nconst currentAttempts = attr.otp_attempts || 0;\nconst otpHash = attr.otp_hash || '';\nconst otpExpiresAt = attr.otp_expires_at ? new Date(attr.otp_expires_at) : null;\nconst totalAmount = attr.total_amount || 0;\nconst driverId = attr.driver?.data?.id || attr.driver?.id || null;\n\n// Check attempts exceeded\nif (currentAttempts >= maxAttempts) {\n  return { json: { phone, orderId, status: 'BLOCKED', message: '🔒 *Code bloqué*\\n\\nTrop de tentatives. Contactez le support.' } };\n}\n\n// Check expiry\nif (otpExpiresAt && otpExpiresAt < new Date()) {\n  return { json: { phone, orderId, status: 'EXPIRED', message: '⏰ *Code expiré*\\n\\nLe code OTP a expiré. Demandez un nouveau code au support.' } };\n}\n\n// Hash input and compare\nconst inputHash = crypto.createHash('sha256').update(inputOtp).digest('hex');\n\nif (inputHash !== otpHash) {\n  const newAttempts = currentAttempts + 1;\n  const remaining = maxAttempts - newAttempts;\n  return {\n    json: {\n      phone,\n      orderId,\n      status: 'MISMATCH',\n      newAttempts,\n      message: `❌ *Code incorrect*\\n\\nTentative ${newAttempts}/${maxAttempts}.${remaining > 0 ? ` Il vous reste ${remaining} essai(s).` : ' Code bloqué.'}`\n    }\n  };\n}\n\n// OTP matches!\nreturn {\n  json: {\n    phone,\n    orderId,\n    driverId,\n    totalAmount,\n    status: 'MATCH'\n  }\n};"
             },
             "name": "Verify OTP Hash",
             "type": "n8n-nodes-base.code",
@@ -163,7 +163,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders/{{ $json.orderId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {
@@ -193,7 +193,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $node['Verify OTP Hash'].json.driverId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $node['Verify OTP Hash'].json.driverId }}",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -226,7 +226,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $json.driverId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $json.driverId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {
@@ -298,7 +298,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders/{{ $json.orderId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {
@@ -493,6 +493,26 @@
                 700,
                 400
             ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/driver-delivered",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ driver_phone: $node['Verify OTP Hash'].json.phone, driver_id: $node['Verify OTP Hash'].json.driverId, order_id: $node['Verify OTP Hash'].json.orderId, total_amount: $node['Verify OTP Hash'].json.totalAmount }) }}",
+                "options": {
+                    "timeout": 5000
+                }
+            },
+            "name": "Trigger Gamification",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2500,
+                0
+            ],
+            "continueOnFail": true
         }
     ],
     "connections": {
@@ -639,6 +659,17 @@
                 [
                     {
                         "node": "Send Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Success": {
+            "main": [
+                [
+                    {
+                        "node": "Trigger Gamification",
                         "type": "main",
                         "index": 0
                     }

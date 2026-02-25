@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "inbound_messages",
+  "info": {
+    "singularName": "inbound-message",
+    "pluralName": "inbound-messages",
+    "displayName": "Inbound Message"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "conversation_key": {
+      "type": "string",
+      "required": true
+    },
+    "msg_id": {
+      "type": "string",
+      "required": true
+    },
+    "channel": {
+      "type": "string"
+    },
+    "message_type": {
+      "type": "string"
+    },
+    "meta_json": {
+      "type": "json"
+    }
+  }
+}

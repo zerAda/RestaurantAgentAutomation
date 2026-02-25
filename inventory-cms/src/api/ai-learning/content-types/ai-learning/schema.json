@@ -1,0 +1,42 @@
+{
+    "kind": "collectionType",
+    "collectionName": "ai_learnings",
+    "info": {
+        "singularName": "ai-learning",
+        "pluralName": "ai-learnings",
+        "displayName": "AI Learning",
+        "description": "AI-derived insights from funnel analysis, consumed by strategy, upsell, and marketing workflows"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "learnings_json": {
+            "type": "json",
+            "required": true,
+            "description": "Structured learnings: { best_channel, peak_hours, worst_drop_off, recommended_actions, upsell_timing, campaign_score }"
+        },
+        "raw_stats": {
+            "type": "json",
+            "description": "Raw aggregated funnel statistics for reference"
+        },
+        "generated_at": {
+            "type": "datetime",
+            "required": true
+        },
+        "model": {
+            "type": "string",
+            "default": "llama3.1",
+            "description": "LLM model used to generate learnings"
+        },
+        "llm_raw": {
+            "type": "richtext",
+            "description": "Raw LLM response for debugging"
+        },
+        "analysis_period": {
+            "type": "string",
+            "default": "24h"
+        }
+    }
+}

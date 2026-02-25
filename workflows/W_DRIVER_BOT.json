@@ -17,26 +17,33 @@
         },
         {
             "parameters": {
-                "operation": "executeQuery",
-                "query": "SELECT * FROM drivers WHERE user_id = $1;",
-                "additionalFields": {
-                    "queryParams": "={{ [$json.body.entry[0].changes[0].value.messages[0].from] }}"
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers?filters[user_id][$eq]={{ $json.body.entry[0].changes[0].value.messages[0].from }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
                 }
             },
-            "name": "Identify Driver",
-            "type": "n8n-nodes-base.postgres",
-            "typeVersion": 1,
+            "name": "Identify Driver (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
             "position": [
                 300,
                 300
-            ]
+            ],
+            "continueOnFail": true
         },
         {
             "parameters": {
                 "conditions": {
                     "boolean": [
                         {
-                            "value1": "={{ $items('Identify Driver').length > 0 }}",
+                            "value1": "={{ $json.data && $json.data.length > 0 }}",
                             "value2": true
                         }
                     ]
@@ -84,35 +91,63 @@
         },
         {
             "parameters": {
-                "operation": "executeQuery",
-                "query": "UPDATE drivers SET status = 'ONLINE', last_location_update = NOW() WHERE user_id = $1;",
-                "additionalFields": {
-                    "queryParams": "={{ $('Identify Driver').item.json.user_id }}"
-                }
+                "method": "PUT",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $('Identify Driver (Strapi)').item.json.data[0].id }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { status: 'ONLINE', last_location_update: new Date().toISOString() } }) }}"
             },
-            "name": "Set Online",
-            "type": "n8n-nodes-base.postgres",
-            "typeVersion": 1,
+            "name": "Set Online (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
             "position": [
                 1100,
                 200
-            ]
+            ],
+            "continueOnFail": true
         },
         {
             "parameters": {
-                "operation": "executeQuery",
-                "query": "UPDATE delivery_assignments SET status = 'ACCEPTED', accepted_at = NOW() WHERE order_id = $1 AND driver_id = $2;",
-                "additionalFields": {
-                    "queryParams": "={{ [$json.text.split(' ')[1], $('Identify Driver').item.json.driver_id] }}"
-                }
+                "method": "PUT",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/delivery-assignments/{{ $json.text.split(' ')[1] }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { status: 'ACCEPTED', accepted_at: new Date().toISOString(), driver: $('Identify Driver (Strapi)').item.json.data[0].id } }) }}"
             },
-            "name": "Accept Order",
-            "type": "n8n-nodes-base.postgres",
-            "typeVersion": 1,
+            "name": "Accept Order (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
             "position": [
                 1100,
                 400
-            ]
+            ],
+            "continueOnFail": true
         }
     ],
     "connections": {
@@ -120,14 +155,14 @@
             "main": [
                 [
                     {
-                        "node": "Identify Driver",
+                        "node": "Identify Driver (Strapi)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Identify Driver": {
+        "Identify Driver (Strapi)": {
             "main": [
                 [
                     {

@@ -1,0 +1,26 @@
+{
+  "kind": "collectionType",
+  "collectionName": "voice_interactions",
+  "info": {
+    "singularName": "voice-interaction",
+    "pluralName": "voice-interactions",
+    "displayName": "Voice Interaction"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "conversation_key": {
+      "type": "string"
+    },
+    "audio_url": {
+      "type": "string"
+    },
+    "transcript": {
+      "type": "text"
+    },
+    "confidence": {
+      "type": "decimal"
+    }
+  }
+}

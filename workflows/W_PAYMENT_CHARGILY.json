@@ -70,15 +70,15 @@
                         },
                         {
                             "name": "success_url",
-                            "value": "={{ $env.APP_URL }}/payment/success?order_id={{ $json.order_id }}"
+                            "value": "={{ $json.system_config?.app_public_url || $env.APP_URL }}/payment/success?order_id={{ $json.order_id }}"
                         },
                         {
                             "name": "failure_url",
-                            "value": "={{ $env.APP_URL }}/payment/failed?order_id={{ $json.order_id }}"
+                            "value": "={{ $json.system_config?.app_public_url || $env.APP_URL }}/payment/failed?order_id={{ $json.order_id }}"
                         },
                         {
                             "name": "webhook_endpoint",
-                            "value": "={{ $env.N8N_WEBHOOK_URL }}/webhook/chargily-callback"
+                            "value": "={{ $json.system_config?.n8n_webhook_base_url || $env.N8N_WEBHOOK_URL }}/webhook/chargily-callback"
                         },
                         {
                             "name": "description",
@@ -94,7 +94,7 @@
                     "parameters": [
                         {
                             "name": "Authorization",
-                            "value": "Bearer {{ $env.CHARGILY_SECRET_KEY }}"
+                            "value": "Bearer {{ $json.system_config?.chargily_secret_key || $env.CHARGILY_SECRET_KEY }}"
                         },
                         {
                             "name": "Content-Type",

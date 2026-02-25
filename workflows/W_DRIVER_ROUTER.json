@@ -29,7 +29,7 @@
         },
         {
             "parameters": {
-                "jsCode": "// Anti-spam cooldown (in-memory per execution context)\nconst phone = $json.phone;\nconst COOLDOWN_MS = parseInt($env.DRIVER_ANTI_SPAM_MS || '2000', 10);\n\n// n8n Code nodes don't persist state across executions,\n// so we rely on n8n's built-in rate limiting for true anti-spam.\n// This node validates basic input.\nif (!phone) {\n  return { json: { ...($json), skip: true, reason: 'NO_PHONE' } };\n}\n\nreturn { json: { ...($json), skip: false } };"
+                "jsCode": "// Anti-spam cooldown (in-memory per execution context)\nconst phone = $json.phone;\nconst COOLDOWN_MS = parseInt($json._strapiConfig?.driver_anti_spam_ms || $env.DRIVER_ANTI_SPAM_MS || '2000', 10);\n\n// n8n Code nodes don't persist state across executions,\n// so we rely on n8n's built-in rate limiting for true anti-spam.\n// This node validates basic input.\nif (!phone) {\n  return { json: { ...($json), skip: true, reason: 'NO_PHONE' } };\n}\n\nreturn { json: { ...($json), skip: false } };"
             },
             "name": "Validate Input",
             "type": "n8n-nodes-base.code",
@@ -61,7 +61,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers?filters[phone_number][$eq]={{ $json.phone }}&filters[is_active][$eq]=true",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers?filters[phone_number][$eq]={{ $json.phone }}&filters[is_active][$eq]=true",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -114,7 +114,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $json.driverId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $json.driverId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {
@@ -175,7 +175,7 @@
                         },
                         {
                             "name": "interactive",
-                            "value": "={{ { type: 'button', body: { text: $json.menuText }, action: { buttons: [{ type: 'reply', reply: { id: 'LIVRABLES', title: '📦 Livrables' } }, { type: 'reply', reply: { id: 'EN_COURS', title: '🚚 En cours' } }, { type: 'reply', reply: { id: 'HISTORIQUE', title: '🕘 Historique' } }] } } }}"
+                            "value": "={{ { type: 'button', body: { text: $json.menuText }, action: { buttons: [{ type: 'reply', reply: { id: 'LIVRABLES', title: '📦 Livrables' } }, { type: 'reply', reply: { id: 'EN_COURS', title: '🚚 En cours' } }, { type: 'reply', reply: { id: 'GAINS', title: '💰 Gains' } }] } } }}"
                         }
                     ]
                 },
@@ -235,6 +235,82 @@
             "typeVersion": 3,
             "position": [
                 1300,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $node['Extract Driver Info'].json.phone }}&filters[delivery_status][$eq]=DELIVERED&filters[delivered_at][$gte]={{ new Date(new Date().setHours(0,0,0,0)).toISOString() }}&pagination[limit]=50",
+                "method": "GET",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Fetch Today Earnings",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1700,
+                400
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "jsCode": "const orders = $json.data || [];\nconst deliveries = orders.length;\nconst firstName = $node['Extract Driver Info'].json.firstName;\nconst phone = $node['Extract Driver Info'].json.phone;\n\nlet totalEarnings = 0;\norders.forEach(o => {\n  const attr = o.attributes || o;\n  totalEarnings += Number(attr.delivery_fee || attr.driver_commission || 0);\n});\n\nconst msg = deliveries === 0\n  ? `💰 *Gains du jour*\\n\\nSalut ${firstName} !\\n\\n📊 Aucune livraison aujourd'hui.\\nLes commandes arrivent bientôt 🚀`\n  : `💰 *Gains du jour*\\n\\nSalut ${firstName} !\\n\\n📊 *${deliveries}* livraison(s) complétée(s)\\n💵 Total gagné : *${totalEarnings.toFixed(0)} DA*\\n\\nContinue comme ça ! 🔥`;\n\nreturn { json: { phone, earningsMessage: msg } };"
+            },
+            "name": "Build Earnings Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1900,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.phone }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "text"
+                        },
+                        {
+                            "name": "text",
+                            "value": "={{ { body: $json.earningsMessage } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Send Earnings",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                2100,
                 400
             ]
         }

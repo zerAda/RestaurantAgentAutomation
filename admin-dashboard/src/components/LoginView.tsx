@@ -2,20 +2,25 @@ import { useState } from 'react';
 import { authService } from '../services/authService';
 
 export function LoginView({ onLogin }: { onLogin: () => void }) {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState(false);
+    const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!email.trim() || !password.trim()) {
+            setError('Both fields are required');
+            return;
+        }
         setLoading(true);
-        setError(false);
+        setError('');
 
-        const success = await authService.login(password);
+        const success = await authService.login(email, password);
         if (success) {
             onLogin();
         } else {
-            setError(true);
+            setError('Invalid credentials or Strapi unreachable');
             setPassword('');
         }
         setLoading(false);
@@ -42,23 +47,35 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
                         <p className="text-zinc-500 text-sm">Secure Management Console</p>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
+                    <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">Access Key</label>
+                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                autoFocus
+                                autoComplete="email"
+                                className="w-full bg-white/5 border-2 border-white/5 focus:border-indigo-500/50 rounded-2xl px-6 py-4 text-white placeholder-white/20 outline-none transition-all duration-300"
+                                placeholder="admin@restaurant.com"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">Password</label>
                             <input
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                autoFocus
-                                className={`w-full bg-white/5 border-2 ${error ? 'border-red-500/50 pr-12' : 'border-white/5 focus:border-indigo-500/50'} rounded-2xl px-6 py-4 text-white placeholder-white/10 outline-none transition-all duration-300 font-mono tracking-widest`}
+                                autoComplete="current-password"
+                                className={`w-full bg-white/5 border-2 ${error ? 'border-red-500/50' : 'border-white/5 focus:border-indigo-500/50'} rounded-2xl px-6 py-4 text-white placeholder-white/10 outline-none transition-all duration-300 font-mono tracking-widest`}
                                 placeholder="••••••••••••"
                             />
-                            {error && <p className="text-red-500 text-[10px] font-bold mt-2 ml-2 uppercase animate-bounce">Invalid Key</p>}
+                            {error && <p className="text-red-500 text-[10px] font-bold mt-2 ml-2 uppercase animate-bounce">{error}</p>}
                         </div>
 
                         <button
                             disabled={loading}
-                            className="w-full py-4 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-black text-sm tracking-widest shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                            className="w-full py-4 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-black text-sm tracking-widest shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-2"
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />

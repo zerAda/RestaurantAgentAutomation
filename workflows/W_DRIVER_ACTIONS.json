@@ -19,7 +19,7 @@
         },
         {
             "parameters": {
-                "jsCode": "// =============================================================================\n// SECURITY FIX (SEC-009): WhatsApp Webhook Signature Validation\n// =============================================================================\n// Validates X-Hub-Signature-256 from Meta to prevent webhook spoofing.\n// Without this, attackers could send fake driver actions (claim orders, mark delivered, etc.)\n// =============================================================================\n\nconst crypto = require('crypto');\n\nconst headers = $json.headers || {};\nconst body = $json.body || $json;\nconst rawBody = $json.rawBody;\n\n// Extract Meta signature from headers\nconst metaSig = (\n  headers['x-hub-signature-256'] || \n  headers['X-Hub-Signature-256'] || \n  ''\n).toString().trim();\n\nconst metaSecret = ($env.META_APP_SECRET || '').toString();\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'enforce').toString().toLowerCase();\nconst metaSigRequired = (metaSigMode === 'enforce' || metaSigMode === 'true');\nconst metaSigWarn = (metaSigMode === 'warn');\n\n// Timing-safe comparison function\nfunction timingSafeEq(a, b) {\n  try {\n    const ba = Buffer.from(String(a));\n    const bb = Buffer.from(String(b));\n    if (ba.length !== bb.length) return false;\n    return crypto.timingSafeEqual(ba, bb);\n  } catch {\n    return false;\n  }\n}\n\nlet metaSigValid = null;\nlet metaSigReason = '';\nlet sigEnforceReject = false;\n\nif (!metaSig) {\n  metaSigValid = metaSigRequired ? false : null;\n  metaSigReason = 'signature_missing';\n  sigEnforceReject = metaSigRequired;\n} else if (!metaSecret) {\n  metaSigValid = false;\n  metaSigReason = 'secret_missing';\n  sigEnforceReject = metaSigRequired;\n} else {\n  // Use raw body for signature verification\n  const raw = (rawBody && typeof rawBody === 'string') ? rawBody : JSON.stringify(body || {});\n  const expected = 'sha256=' + crypto.createHmac('sha256', metaSecret).update(raw, 'utf8').digest('hex');\n  metaSigValid = timingSafeEq(expected, metaSig);\n  metaSigReason = metaSigValid ? 'ok' : 'invalid';\n  sigEnforceReject = metaSigRequired && !metaSigValid;\n}\n\nreturn {\n  json: {\n    body,\n    headers,\n    _webhook_security: {\n      metaSigPresent: !!metaSig,\n      metaSigMode,\n      metaSigRequired,\n      metaSigWarn,\n      metaSigValid,\n      metaSigReason,\n      sigEnforceReject,\n      validation_timestamp: new Date().toISOString()\n    }\n  }\n};"
+                "jsCode": "// =============================================================================\n// SECURITY FIX (SEC-009): WhatsApp Webhook Signature Validation\n// =============================================================================\n// Validates X-Hub-Signature-256 from Meta to prevent webhook spoofing.\n// Without this, attackers could send fake driver actions (claim orders, mark delivered, etc.)\n// =============================================================================\n\nconst crypto = require('crypto');\n\nconst headers = $json.headers || {};\nconst body = $json.body || $json;\nconst rawBody = $json.rawBody;\n\n// Extract Meta signature from headers\nconst metaSig = (\n  headers['x-hub-signature-256'] || \n  headers['X-Hub-Signature-256'] || \n  ''\n).toString().trim();\n\nconst metaSecret = ($json._strapiConfig?.meta_app_secret || $env.META_APP_SECRET || '').toString();\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'enforce').toString().toLowerCase();\nconst metaSigRequired = (metaSigMode === 'enforce' || metaSigMode === 'true');\nconst metaSigWarn = (metaSigMode === 'warn');\n\n// Timing-safe comparison function\nfunction timingSafeEq(a, b) {\n  try {\n    const ba = Buffer.from(String(a));\n    const bb = Buffer.from(String(b));\n    if (ba.length !== bb.length) return false;\n    return crypto.timingSafeEqual(ba, bb);\n  } catch {\n    return false;\n  }\n}\n\nlet metaSigValid = null;\nlet metaSigReason = '';\nlet sigEnforceReject = false;\n\nif (!metaSig) {\n  metaSigValid = metaSigRequired ? false : null;\n  metaSigReason = 'signature_missing';\n  sigEnforceReject = metaSigRequired;\n} else if (!metaSecret) {\n  metaSigValid = false;\n  metaSigReason = 'secret_missing';\n  sigEnforceReject = metaSigRequired;\n} else {\n  // Use raw body for signature verification\n  const raw = (rawBody && typeof rawBody === 'string') ? rawBody : JSON.stringify(body || {});\n  const expected = 'sha256=' + crypto.createHmac('sha256', metaSecret).update(raw, 'utf8').digest('hex');\n  metaSigValid = timingSafeEq(expected, metaSig);\n  metaSigReason = metaSigValid ? 'ok' : 'invalid';\n  sigEnforceReject = metaSigRequired && !metaSigValid;\n}\n\nreturn {\n  json: {\n    body,\n    headers,\n    _webhook_security: {\n      metaSigPresent: !!metaSig,\n      metaSigMode,\n      metaSigRequired,\n      metaSigWarn,\n      metaSigValid,\n      metaSigReason,\n      sigEnforceReject,\n      validation_timestamp: new Date().toISOString()\n    }\n  }\n};"
             },
             "name": "Verify Webhook Signature (Anti-Spoofing)",
             "type": "n8n-nodes-base.code",
@@ -140,7 +140,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}?populate=driver",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders/{{ $json.orderId }}?populate=driver",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -193,7 +193,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const crypto = require('crypto');\n\n// Generate 4-digit OTP\nconst otp = String(Math.floor(100000 + Math.random() * 900000));\nconst otpHash = crypto.createHash('sha256').update(otp).digest('hex');\n\n// Expiry: 30 minutes from now\nconst expiryMinutes = parseInt($env.DRIVER_OTP_EXPIRY_MINUTES || '30', 10);\nconst otpExpiresAt = new Date(Date.now() + expiryMinutes * 60000).toISOString();\n\nreturn {\n  json: {\n    ...($json),\n    otp,\n    otpHash,\n    otpExpiresAt\n  }\n};"
+                "jsCode": "const crypto = require('crypto');\n\n// Generate 4-digit OTP\nconst otp = String(Math.floor(100000 + Math.random() * 900000));\nconst otpHash = crypto.createHash('sha256').update(otp).digest('hex');\n\n// Expiry: 30 minutes from now\nconst expiryMinutes = parseInt($json._strapiConfig?.driver_otp_expiry_minutes || $env.DRIVER_OTP_EXPIRY_MINUTES || '30', 10);\nconst otpExpiresAt = new Date(Date.now() + expiryMinutes * 60000).toISOString();\n\nreturn {\n  json: {\n    ...($json),\n    otp,\n    otpHash,\n    otpExpiresAt\n  }\n};"
             },
             "name": "Generate & Hash OTP",
             "type": "n8n-nodes-base.code",
@@ -205,7 +205,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers?filters[phone_number][$eq]={{ $json.phone }}&filters[is_active][$eq]=true",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers?filters[phone_number][$eq]={{ $json.phone }}&filters[is_active][$eq]=true",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -238,7 +238,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/orders/{{ $json.orderId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders/{{ $json.orderId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {
@@ -384,7 +384,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/drivers/{{ $json.driverId }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $json.driverId }}",
                 "method": "PUT",
                 "sendBody": true,
                 "bodyParameters": {
@@ -456,7 +456,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://inventory-cms:1337' }}/api/driver-order-ignores",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/driver-order-ignores",
                 "method": "POST",
                 "sendBody": true,
                 "bodyParameters": {

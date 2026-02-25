@@ -1,0 +1,110 @@
+{
+    "name": "W_LLM_INTENT - AI Intent Classification (Ollama)",
+    "active": false,
+    "settings": {
+        "executionTimeout": 15,
+        "saveManualExecutions": true
+    },
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "llm-trigger-01",
+            "name": "IN - From Core",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const e = $json;\nconst userText = (e.userText || e.message?.text || '').toString().trim();\nconst locale = (e.l10n?.detectedLocale || e.state?.locale || 'fr');\nconst cartItems = (e.cart?.items || []).map(i => i.name).join(', ');\nconst stage = (e.state?.stage || 'START');\n\nconst systemPrompt = `You are RestoBot, a restaurant ordering assistant for an Algerian restaurant.\nYou classify customer messages into exactly ONE intent.\nValid intents: GREET, VIEW_MENU, ADD_ITEM, REMOVE_ITEM, VIEW_CART, CHECKOUT, DELIVERY, SUPPORT, FAQ, LANG_SWITCH, UNKNOWN.\nRespond ONLY with a JSON object: {\"intent\": \"...\", \"confidence\": 0.0-1.0, \"entities\": {}}\nDo NOT include any other text.`;\n\nconst userPrompt = `Customer message (locale: ${locale}, stage: ${stage}, cart: [${cartItems}]):\n\"${userText.substring(0, 500)}\"`;\n\nreturn [{ json: { ...e, _llm: { systemPrompt, userPrompt, userText } } }];"
+            },
+            "id": "llm-prepare-02",
+            "name": "Prepare LLM Prompt",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                220,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $json._strapiConfig?.ollama_api_url || $env.LLM_API_URL || 'http://ollama:11434/api/chat' }}",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: $json._strapiConfig?.llm_model || $env.LLM_MODEL || 'llama3.1', messages: [{ role: 'system', content: $json._llm.systemPrompt }, { role: 'user', content: $json._llm.userPrompt }], stream: false, options: { temperature: $json._strapiConfig?.llm_temperature || 0.1, num_predict: $json._strapiConfig?.llm_max_tokens || 100 } }) }}",
+                "options": {
+                    "timeout": 10000,
+                    "response": {
+                        "response": {
+                            "fullResponse": true
+                        }
+                    }
+                }
+            },
+            "id": "llm-call-03",
+            "name": "Call Ollama API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                440,
+                0
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const e = $json;\nconst fallback = { intent: 'UNKNOWN', confidence: 0, entities: {}, llm_used: false };\n\ntry {\n  const body = e.body || e.data || e;\n  const content = (body?.message?.content || '').toString().trim();\n  if (!content) return [{ json: { ...e, llmResult: { ...fallback, reason: 'empty_response' } } }];\n\n  // Try to parse JSON from the LLM response\n  const jsonMatch = content.match(/\\{[^}]+\\}/);\n  if (!jsonMatch) return [{ json: { ...e, llmResult: { ...fallback, reason: 'no_json_in_response' } } }];\n\n  const parsed = JSON.parse(jsonMatch[0]);\n  const validIntents = ['GREET','VIEW_MENU','ADD_ITEM','REMOVE_ITEM','VIEW_CART','CHECKOUT','DELIVERY','SUPPORT','FAQ','LANG_SWITCH','UNKNOWN'];\n  const intent = validIntents.includes(parsed.intent) ? parsed.intent : 'UNKNOWN';\n  const confidence = Math.min(1, Math.max(0, Number(parsed.confidence) || 0));\n\n  return [{ json: { ...e, llmResult: { intent, confidence, entities: parsed.entities || {}, llm_used: true } } }];\n} catch (err) {\n  return [{ json: { ...e, llmResult: { ...fallback, reason: 'parse_error', error: err.message } } }];\n}"
+            },
+            "id": "llm-parse-04",
+            "name": "Parse LLM Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                660,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "IN - From Core": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare LLM Prompt",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare LLM Prompt": {
+            "main": [
+                [
+                    {
+                        "node": "Call Ollama API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call Ollama API": {
+            "main": [
+                [
+                    {
+                        "node": "Parse LLM Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -13,7 +13,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const ing = $json.data.attributes;\nreturn [{\n  json: {\n    channel: 'whatsapp',\n    to: $env.ADMIN_PHONE_NUMBER, // Needs to be set in env\n    text: `⚠️ ALERTE STOCK: ${ing.name} est bas (${ing.current_stock} ${ing.unit || 'unités'}).`\n  }\n}];"
+                "jsCode": "const ing = $json.data.attributes;\nreturn [{\n  json: {\n    channel: 'whatsapp',\n    to: $json.system_config?.admin_phone_number || $env.ADMIN_PHONE_NUMBER,\n    text: `⚠️ ALERTE STOCK: ${ing.name} est bas (${ing.current_stock} ${ing.unit || 'unités'}).`\n  }\n}];"
             },
             "name": "Format Alert",
             "type": "n8n-nodes-base.code",
