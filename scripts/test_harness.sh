@@ -126,9 +126,20 @@ done
 echo "[5/8] Import workflows"
 
 # Login helper: saves session cookies to jar
+# n8n 1.80 uses "email"; n8n 1.100+ uses "emailOrLdapLoginId" — try both
 n8n_login() {
   rm -f "$N8N_JAR"
   local resp_code
+  # Try n8n 1.80 format first (field: "email")
+  resp_code="$(curl -s -o /tmp/n8n_login_resp.json -w "%{http_code}" -c "$N8N_JAR" \
+    -X POST "http://localhost:25678/rest/login" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"test@example.com","password":"TestPassw0rd!"}')"
+  if [[ "$resp_code" == "200" ]]; then
+    return 0
+  fi
+  # Fallback: try n8n 1.100+ format (field: "emailOrLdapLoginId")
+  rm -f "$N8N_JAR"
   resp_code="$(curl -s -o /tmp/n8n_login_resp.json -w "%{http_code}" -c "$N8N_JAR" \
     -X POST "http://localhost:25678/rest/login" \
     -H "Content-Type: application/json" \
