@@ -135,7 +135,7 @@ services:
   db-migrate:
     image: postgres:15-alpine
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres: { condition: service_started }
     environment:
       PGHOST: postgres
       PGUSER: n8n

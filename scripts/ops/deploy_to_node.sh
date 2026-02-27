@@ -218,13 +218,21 @@ if [ "$ROLE" = "primary" ]; then
   echo ">>> Step 5b: Running migrations (primary node)..."
   docker compose up -d postgres redis
   echo "Waiting for PostgreSQL..."
+  PG_READY=false
   for i in $(seq 1 30); do
     if docker compose exec -T postgres pg_isready -U n8n -d n8n >/dev/null 2>&1; then
       echo "PostgreSQL ready"
+      PG_READY=true
       break
     fi
     sleep 2
   done
+
+  if [ "$PG_READY" = "false" ]; then
+    echo "::error::PostgreSQL failed to become ready! Dumping logs:"
+    docker compose logs postgres --tail=100
+    exit 1
+  fi
 
   docker compose up db-migrate 2>&1 || true
   MIGRATE_EXIT=$(docker compose ps db-migrate --format '{{.ExitCode}}' 2>/dev/null || echo "0")
