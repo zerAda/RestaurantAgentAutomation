@@ -18,7 +18,7 @@ CHANGE_ME_EXCLUDES=(
   --exclude-dir=.git --exclude-dir=docs --exclude-dir=patches --exclude-dir=releases --exclude-dir=node_modules
   --exclude-dir=.github --exclude-dir=.claude --exclude=.gitlab-ci.yml
   --exclude=PATCH.diff --exclude=PATCHLOG.md --exclude=TEST_REPORT.md --exclude=ROLLBACK.md
-  --exclude=integrity_gate.sh --exclude=check_integrity.js --exclude='*.example' --exclude=.env
+  --exclude=integrity_gate.sh --exclude=preflight-prod.sh --exclude=check_integrity.js --exclude='*.example' --exclude=.env
   --exclude=.gitleaks.toml
 )
 if grep -R --line-number --fixed-string "CHANGE_ME" \
