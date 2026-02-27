@@ -1,6 +1,6 @@
 {
   "description": "Deployment inventory - Diamond Grade Pro One Multi-Node System",
-  "version": "1.0",
+  "version": "1.1",
   "nodes": [
     {
       "name": "vps-primary",
@@ -10,6 +10,15 @@
       "project_dir": "__FROM_VARS__",
       "backup_dir": "__FROM_VARS__",
       "log_dir": "__FROM_VARS__"
+    },
+    {
+      "name": "client-beta",
+      "host": "beta.example.com",
+      "user": "deploy",
+      "role": "replica",
+      "project_dir": "/opt/resto",
+      "backup_dir": "/opt/resto/backups",
+      "log_dir": "/var/log/resto-bot"
     }
   ]
 }

@@ -47,6 +47,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./secrets/traefik_usersfile:/run/secrets/traefik_usersfile:ro
     networks: [ proxy ]
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -101,6 +103,8 @@ services:
       retries: 10
       start_period: 30s
     networks: [ internal ]
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -122,6 +126,8 @@ services:
       timeout: 3s
       retries: 10
     networks: [ internal ]
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -200,6 +206,8 @@ services:
         echo "=== DB Migration Complete ==="
     networks: [ internal ]
     restart: "no"
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -240,6 +248,8 @@ services:
       - "traefik.http.middlewares.adminer-headers.headers.referrerPolicy=no-referrer"
       - "traefik.http.middlewares.adminer-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=()"
       - "traefik.http.middlewares.adminer-chain.chain.middlewares=adminer-allowlist,adminer-auth,adminer-headers"
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "5m", max-file: "3" }
@@ -306,6 +316,8 @@ services:
       - "traefik.http.middlewares.cms-headers.headers.stsPreload=true"
       - "traefik.http.middlewares.cms-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
       - "traefik.http.middlewares.cms-chain.chain.middlewares=cms-allowlist,cms-headers"
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -346,6 +358,8 @@ services:
       - "traefik.http.middlewares.admin-dash-headers.headers.stsPreload=true"
       - "traefik.http.middlewares.admin-dash-headers.headers.referrerPolicy=no-referrer"
       - "traefik.http.middlewares.admin-dash-chain.chain.middlewares=admin-dash-allowlist,admin-dash-auth,admin-dash-headers"
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "5m", max-file: "3" }
@@ -386,6 +400,8 @@ services:
       - "traefik.http.middlewares.kiosk-headers.headers.stsPreload=true"
       - "traefik.http.middlewares.kiosk-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
       - "traefik.http.middlewares.kiosk-chain.chain.middlewares=kiosk-ratelimit,kiosk-headers"
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "5m", max-file: "3" }
@@ -442,6 +458,8 @@ services:
       - "traefik.http.middlewares.api-internal-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
       - "traefik.http.middlewares.api-internal-auth.basicauth.usersfile=/run/secrets/traefik_usersfile"
       - "traefik.http.middlewares.api-internal-chain.chain.middlewares=api-internal-allowlist,api-internal-auth,api-public-headers"
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -570,6 +588,8 @@ services:
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
       - ./secrets/n8n_encryption_key:/run/secrets/n8n_encryption_key:ro
       - ./schemas:/opt/resto/schemas:ro
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -655,6 +675,8 @@ services:
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
       - ./secrets/n8n_encryption_key:/run/secrets/n8n_encryption_key:ro
       - ./schemas:/opt/resto/schemas:ro
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }
@@ -666,6 +688,8 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     networks: [ internal ]
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "5" }

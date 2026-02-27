@@ -46,6 +46,14 @@ on:
         required: false
         default: false
         type: boolean
+      instance_name:
+        description: "Target instance name from inventory.json (or 'all')"
+        required: true
+        default: "all"
+      version_ref:
+        description: "Branch, tag, or SHA to deploy (leave blank for default)"
+        required: false
+        default: ""
 
 concurrency:
   group: deploy-${{ github.event.inputs.environment || 'production' }}
@@ -57,7 +65,7 @@ env:
   RETRY_INTERVAL: 10
   # For workflow_run triggers, github.sha is HEAD of default branch (not the
   # triggering commit). Use workflow_run.head_sha to match GHCR-built images.
-  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  DEPLOY_SHA: ${{ github.event.inputs.version_ref || github.event.workflow_run.head_sha || github.sha }}
 
 permissions:
   contents: read
@@ -179,10 +187,11 @@ jobs:
 
           if [ -f "infra/inventory.json" ]; then
             echo "Using inventory file: infra/inventory.json"
+            INSTANCE="${{ github.event.inputs.instance_name || 'all' }}"
 
-            # Replace __FROM_VARS__ sentinels with actual values
-            MATRIX=$(jq -c '{
-              "include": [.nodes[] | {
+            # Replace __FROM_VARS__ sentinels with actual values and filter by instance
+            MATRIX=$(jq -c --arg target "$INSTANCE" '{
+              "include": [.nodes[] | select($target == "all" or .name == $target) | {
                 "name": .name,
                 "host": (if .host == "__FROM_VARS__" then "'"$VPS_HOST"'" else .host end),
                 "user": (if .user == "__FROM_VARS__" then "'"$VPS_USER"'" else .user end),
