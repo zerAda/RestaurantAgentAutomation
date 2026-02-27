@@ -378,7 +378,10 @@ jobs:
   # JOB 3: Deploy to Staging
   # ============================================================================
   deploy-staging:
-    name: Deploy to Staging
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Deploy to Staging (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [preflight, security-gate]
     timeout-minutes: 20
@@ -396,17 +399,17 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
-          vps-host: ${{ needs.preflight.outputs.vps_host }}
+          vps-host: ${{ matrix.host }}
 
       - name: Create staging directory
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} \
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} \
             "mkdir -p $STAGING_DIR"
 
       - name: Sync code to staging
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
           rsync -avz --delete \
             --exclude='.git' \
@@ -418,14 +421,14 @@ jobs:
             --exclude='*.pyc' \
             --exclude='.DS_Store' \
             -e "ssh -o StrictHostKeyChecking=no" \
-            ./ ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }}:$STAGING_DIR/
+            ./ ${{ matrix.user }}@${{ matrix.host }}:$STAGING_DIR/
 
       - name: Prepare and start staging services
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
-          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          PROJECT_DIR="${{ matrix.project_dir }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             set -e
 
             STAGING_DIR="$STAGING_DIR"
@@ -524,8 +527,8 @@ jobs:
       - name: Chaos Resilience Test (Staging)
         continue-on-error: true
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             cd $STAGING_DIR
             export COMPOSE_PROJECT_NAME=resto-staging
             if [ -f .env ]; then set -a; source .env; set +a; fi
@@ -543,9 +546,9 @@ jobs:
       - name: Run staging smoke tests
         id: staging-smoke
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             set -e
             cd $STAGING_DIR
             if [ -f .env ]; then set -a; source .env; set +a; fi
@@ -567,9 +570,9 @@ jobs:
       - name: Stop staging services
         if: always()
         run: |
-          STAGING_DIR="${{ needs.preflight.outputs.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ needs.preflight.outputs.vps_user }}@${{ needs.preflight.outputs.vps_host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             if [ -d "$STAGING_DIR" ]; then
               cd "$STAGING_DIR"
               if [ -f docker-compose.staging-override.yml ]; then
@@ -585,7 +588,10 @@ jobs:
   # JOB 4: Staging Smoke Battery
   # ============================================================================
   smoke-battery-staging:
-    name: Smoke Battery (Staging)
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Smoke Battery (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [preflight, deploy-staging]
     timeout-minutes: 10
@@ -600,7 +606,7 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
-          vps-host: ${{ needs.preflight.outputs.vps_host }}
+          vps-host: ${{ matrix.host }}
 
       - name: Validate staging deployment result
         run: |
@@ -633,7 +639,10 @@ jobs:
   # JOB 6: Pre-deployment backup
   # ============================================================================
   backup:
-    name: Pre-deploy Backup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Pre-deploy Backup (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [preflight, approve-production]
     if: |
@@ -643,18 +652,18 @@ jobs:
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
     env:
-      BACKUP_DIR: ${{ format('{0}', needs.preflight.outputs.backup_dir) }}
-      PROJECT_DIR: ${{ format('{0}', needs.preflight.outputs.project_dir) }}
+      BACKUP_DIR: ${{ format('{0}', matrix.backup_dir) }}
+      PROJECT_DIR: ${{ format('{0}', matrix.project_dir) }}
 
     steps:
       - name: Resolve configuration
         id: config
         run: |
-          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
-          echo "backup_dir=${{ needs.preflight.outputs.backup_dir }}" >> $GITHUB_OUTPUT
-          echo "log_dir=${{ needs.preflight.outputs.log_dir }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ matrix.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ matrix.log_dir }}" >> $GITHUB_OUTPUT
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -676,8 +685,8 @@ jobs:
           BACKUP_NAME="deploy-${{ needs.preflight.outputs.deploy_id }}"
           VERSION="${{ needs.preflight.outputs.version }}"
           COMMIT="${{ env.DEPLOY_SHA }}"
-          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
-          BACKUP_DIR="${{ needs.preflight.outputs.backup_dir }}"
+          PROJECT_DIR="${{ matrix.project_dir }}"
+          BACKUP_DIR="${{ matrix.backup_dir }}"
 
           echo "Using backup script: scripts/ops/backup.sh"
 
@@ -849,7 +858,7 @@ jobs:
   # JOB 8: Production Smoke Battery
   # ============================================================================
   smoke-battery-prod:
-    name: Smoke (${{ matrix.check }})
+    name: Smoke (${{ matrix.node.name }} - ${{ matrix.check }})
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production]
     if: always() && needs.deploy-production.result == 'success'
@@ -858,14 +867,15 @@ jobs:
       fail-fast: false
       matrix:
         check: [internal, whatsapp, instagram, messenger]
+        node: ${{ fromJson(needs.preflight.outputs.nodes_matrix).include }}
 
     steps:
       - name: Resolve configuration
         id: config
         run: |
-          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ matrix.node.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.node.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.node.project_dir }}" >> $GITHUB_OUTPUT
           echo "domain=${{ needs.preflight.outputs.domain }}" >> $GITHUB_OUTPUT
 
       - name: Checkout code
@@ -922,25 +932,28 @@ jobs:
   # JOB 9: DORA Metrics
   # ============================================================================
   dora-metrics:
-    name: DORA Metrics
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: DORA Metrics (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production, smoke-battery-prod]
     if: always() && needs.deploy-production.result == 'success'
     continue-on-error: true
     timeout-minutes: 5
     env:
-      LOG_DIR: ${{ format('{0}', needs.preflight.outputs.log_dir) }}
-      PROJECT_DIR: ${{ format('{0}', needs.preflight.outputs.project_dir) }}
+      LOG_DIR: ${{ format('{0}', matrix.log_dir) }}
+      PROJECT_DIR: ${{ format('{0}', matrix.project_dir) }}
 
     steps:
       - name: Resolve configuration
         id: config
         run: |
-          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
-          echo "backup_dir=${{ needs.preflight.outputs.backup_dir }}" >> $GITHUB_OUTPUT
-          echo "log_dir=${{ needs.preflight.outputs.log_dir }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ matrix.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ matrix.log_dir }}" >> $GITHUB_OUTPUT
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -1004,7 +1017,10 @@ jobs:
   # JOB 10: Cleanup
   # ============================================================================
   cleanup:
-    name: Post-deploy Cleanup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Cleanup (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [preflight, deploy-production, smoke-battery-prod]
     if: always() && needs.deploy-production.result == 'success'
@@ -1014,11 +1030,11 @@ jobs:
       - name: Resolve configuration
         id: config
         run: |
-          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
-          echo "backup_dir=${{ needs.preflight.outputs.backup_dir }}" >> $GITHUB_OUTPUT
-          echo "log_dir=${{ needs.preflight.outputs.log_dir }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ matrix.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ matrix.log_dir }}" >> $GITHUB_OUTPUT
 
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -1114,9 +1130,9 @@ jobs:
         id: config
         run: |
           # Non-secret values only — secrets are referenced directly where needed
-          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
-          echo "vps_user=${{ needs.preflight.outputs.vps_user }}" >> $GITHUB_OUTPUT
-          echo "project_dir=${{ needs.preflight.outputs.project_dir }}" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
 
           # Calculate deploy duration
           if [ -n "${{ needs.deploy-production.outputs.deploy_start }}" ]; then
@@ -1144,9 +1160,9 @@ jobs:
         run: |
           echo "::warning::Deployment failed — initiating rollback"
 
-          PROJECT_DIR="${{ needs.preflight.outputs.project_dir }}"
-          VPS_USER="${{ needs.preflight.outputs.vps_user }}"
-          VPS_HOST="${{ needs.preflight.outputs.vps_host }}"
+          PROJECT_DIR="${{ matrix.project_dir }}"
+          VPS_USER="${{ matrix.user }}"
+          VPS_HOST="${{ matrix.host }}"
 
           if [ -f "scripts/ops/rollback.sh" ]; then
              chmod +x scripts/ops/rollback.sh
