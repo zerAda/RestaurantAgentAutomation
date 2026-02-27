@@ -430,6 +430,236 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiAdCampaignAdCampaign extends Struct.CollectionTypeSchema {
+  collectionName: 'ad_campaigns';
+  info: {
+    description: 'Paid advertising campaigns on Meta and TikTok with AI-optimized performance tracking';
+    displayName: 'Ad Campaign';
+    pluralName: 'ad-campaigns';
+    singularName: 'ad-campaign';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    actual_budget: Schema.Attribute.Integer;
+    ad_text: Schema.Attribute.Text;
+    age_max: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<55>;
+    age_min: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<18>;
+    auto_paused: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    clicks: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    content_library_item: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::content-library.content-library'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    ctr: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    daily_budget_cents: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<500>;
+    error_message: Schema.Attribute.Text;
+    image_url: Schema.Attribute.String;
+    impressions: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    interests: Schema.Attribute.JSON;
+    last_metrics_pull: Schema.Attribute.DateTime;
+    launched_at: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::ad-campaign.ad-campaign'
+    > &
+      Schema.Attribute.Private;
+    meta_ad_id: Schema.Attribute.String;
+    meta_adset_id: Schema.Attribute.String;
+    meta_campaign_id: Schema.Attribute.String;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    objective: Schema.Attribute.Enumeration<
+      [
+        'OUTCOME_ENGAGEMENT',
+        'OUTCOME_AWARENESS',
+        'OUTCOME_TRAFFIC',
+        'OUTCOME_LEADS',
+        'OUTCOME_SALES',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'OUTCOME_ENGAGEMENT'>;
+    platform: Schema.Attribute.Enumeration<['meta', 'tiktok', 'both']> &
+      Schema.Attribute.DefaultTo<'meta'>;
+    publishedAt: Schema.Attribute.DateTime;
+    roas: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    spend_cents: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    status: Schema.Attribute.Enumeration<
+      ['pending', 'active', 'paused', 'completed', 'failed']
+    > &
+      Schema.Attribute.DefaultTo<'pending'>;
+    target_cities: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    video_url: Schema.Attribute.String;
+  };
+}
+
+export interface ApiAiLearningAiLearning extends Struct.CollectionTypeSchema {
+  collectionName: 'ai_learnings';
+  info: {
+    description: 'AI-derived insights from funnel analysis, consumed by strategy, upsell, and marketing workflows';
+    displayName: 'AI Learning';
+    pluralName: 'ai-learnings';
+    singularName: 'ai-learning';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    analysis_period: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'24h'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    generated_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    learnings_json: Schema.Attribute.JSON & Schema.Attribute.Required;
+    llm_raw: Schema.Attribute.RichText;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::ai-learning.ai-learning'
+    > &
+      Schema.Attribute.Private;
+    model: Schema.Attribute.String & Schema.Attribute.DefaultTo<'llama3.1'>;
+    publishedAt: Schema.Attribute.DateTime;
+    raw_stats: Schema.Attribute.JSON;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiCartCart extends Struct.CollectionTypeSchema {
+  collectionName: 'carts';
+  info: {
+    displayName: 'Cart';
+    pluralName: 'carts';
+    singularName: 'cart';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    cart_json: Schema.Attribute.JSON;
+    conversation_key: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::cart.cart'> &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurant_id: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiContentLibraryContentLibrary
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'content_library';
+  info: {
+    description: 'AI-generated marketing content assets with quality control and publishing status';
+    displayName: 'Content Library';
+    pluralName: 'content-libraries';
+    singularName: 'content-library';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    best_channel: Schema.Attribute.String;
+    brand_name: Schema.Attribute.String;
+    caption_a: Schema.Attribute.Text;
+    caption_b: Schema.Attribute.Text;
+    caption_variant_used: Schema.Attribute.Enumeration<['A', 'B']>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    dish_name: Schema.Attribute.String & Schema.Attribute.Required;
+    generated_at: Schema.Attribute.DateTime;
+    hashtags: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    image_square_url: Schema.Attribute.String;
+    image_vertical_url: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::content-library.content-library'
+    > &
+      Schema.Attribute.Private;
+    peak_hours: Schema.Attribute.JSON;
+    performance_json: Schema.Attribute.JSON;
+    platforms_published: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<{}>;
+    published_at: Schema.Attribute.DateTime;
+    publishedAt: Schema.Attribute.DateTime;
+    quality_reasoning: Schema.Attribute.Text;
+    quality_score: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 10;
+          min: 1;
+        },
+        number
+      >;
+    status: Schema.Attribute.Enumeration<
+      ['draft', 'ready', 'published', 'failed', 'retry']
+    > &
+      Schema.Attribute.DefaultTo<'draft'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    video_url: Schema.Attribute.String;
+  };
+}
+
+export interface ApiConversationStateConversationState
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'conversation_states';
+  info: {
+    displayName: 'Conversation State';
+    pluralName: 'conversation-states';
+    singularName: 'conversation-state';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    channel: Schema.Attribute.Enumeration<
+      ['whatsapp', 'instagram', 'messenger']
+    >;
+    conversation_key: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::conversation-state.conversation-state'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurant_id: Schema.Attribute.String;
+    state_json: Schema.Attribute.JSON;
+    tenant_id: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user_id: Schema.Attribute.String;
+  };
+}
+
 export interface ApiCreativeAssetCreativeAsset
   extends Struct.CollectionTypeSchema {
   collectionName: 'creative_assets';
@@ -481,6 +711,122 @@ export interface ApiCreativeAssetCreativeAsset
       ['draft', 'processing', 'approved', 'published']
     > &
       Schema.Attribute.DefaultTo<'draft'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiCustomerCustomer extends Struct.CollectionTypeSchema {
+  collectionName: 'customers';
+  info: {
+    description: 'Patron profiles linked to loyalty and orders';
+    displayName: 'Customer';
+    pluralName: 'customers';
+    singularName: 'customer';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    feedbacks: Schema.Attribute.Relation<'oneToMany', 'api::feedback.feedback'>;
+    last_upsell_date: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::customer.customer'
+    > &
+      Schema.Attribute.Private;
+    loyalty_tier: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::loyalty-tier.loyalty-tier'
+    >;
+    name: Schema.Attribute.String;
+    orders: Schema.Attribute.Relation<'oneToMany', 'api::order.order'>;
+    phone: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    points: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    preferences_json: Schema.Attribute.JSON;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiDeliveryAssignmentDeliveryAssignment
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'delivery_assignments';
+  info: {
+    description: 'Assigns drivers to orders for delivery dispatch';
+    displayName: 'Delivery Assignment';
+    pluralName: 'delivery-assignments';
+    singularName: 'delivery-assignment';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    accepted_at: Schema.Attribute.DateTime;
+    assigned_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    delivered_at: Schema.Attribute.DateTime;
+    delivery_fee_dzd: Schema.Attribute.Integer;
+    distance_km: Schema.Attribute.Decimal;
+    driver: Schema.Attribute.Relation<'manyToOne', 'api::driver.driver'>;
+    estimated_delivery_time: Schema.Attribute.Integer;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::delivery-assignment.delivery-assignment'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Relation<'manyToOne', 'api::order.order'>;
+    otp_hash: Schema.Attribute.String & Schema.Attribute.Private;
+    picked_up_at: Schema.Attribute.DateTime;
+    publishedAt: Schema.Attribute.DateTime;
+    status: Schema.Attribute.Enumeration<
+      ['pending', 'accepted', 'picked_up', 'delivered', 'cancelled', 'expired']
+    > &
+      Schema.Attribute.DefaultTo<'pending'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiDeliveryZoneDeliveryZone
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'delivery_zones';
+  info: {
+    displayName: 'Delivery Zone';
+    pluralName: 'delivery-zones';
+    singularName: 'delivery-zone';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::delivery-zone.delivery-zone'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    polygon_kml: Schema.Attribute.Text;
+    price_cents: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -560,6 +906,140 @@ export interface ApiDriverDriver extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiFeedbackFeedback extends Struct.CollectionTypeSchema {
+  collectionName: 'feedbacks';
+  info: {
+    displayName: 'Feedback';
+    pluralName: 'feedbacks';
+    singularName: 'feedback';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    comment: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    customer: Schema.Attribute.Relation<'manyToOne', 'api::customer.customer'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::feedback.feedback'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Relation<'oneToOne', 'api::order.order'>;
+    publishedAt: Schema.Attribute.DateTime;
+    rating: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 5;
+          min: 1;
+        },
+        number
+      >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiFunnelEventFunnelEvent extends Struct.CollectionTypeSchema {
+  collectionName: 'funnel_events';
+  info: {
+    description: 'Tracks conversion funnel events across all channels';
+    displayName: 'Funnel Event';
+    pluralName: 'funnel-events';
+    singularName: 'funnel-event';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    channel: Schema.Attribute.Enumeration<
+      [
+        'whatsapp',
+        'instagram',
+        'tiktok',
+        'web',
+        'facebook',
+        'meta_ads',
+        'multi_platform',
+        'unknown',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'unknown'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    customer: Schema.Attribute.Relation<'manyToOne', 'api::customer.customer'>;
+    event_type: Schema.Attribute.Enumeration<
+      [
+        'page_view',
+        'view',
+        'click',
+        'add_to_cart',
+        'checkout',
+        'order_confirmed',
+        'purchase',
+        'content_published',
+        'content_published_batch',
+        'ad_launched',
+        'ad_management_cycle',
+        'campaign_sent',
+      ]
+    > &
+      Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::funnel-event.funnel-event'
+    > &
+      Schema.Attribute.Private;
+    metadata_json: Schema.Attribute.JSON;
+    order: Schema.Attribute.Relation<'manyToOne', 'api::order.order'>;
+    publishedAt: Schema.Attribute.DateTime;
+    session_id: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiInboundMessageInboundMessage
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'inbound_messages';
+  info: {
+    displayName: 'Inbound Message';
+    pluralName: 'inbound-messages';
+    singularName: 'inbound-message';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    channel: Schema.Attribute.String;
+    conversation_key: Schema.Attribute.String & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::inbound-message.inbound-message'
+    > &
+      Schema.Attribute.Private;
+    message_type: Schema.Attribute.String;
+    meta_json: Schema.Attribute.JSON;
+    msg_id: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiIngredientIngredient extends Struct.CollectionTypeSchema {
   collectionName: 'ingredients';
   info: {
@@ -595,6 +1075,38 @@ export interface ApiIngredientIngredient extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiLoyaltyTierLoyaltyTier extends Struct.CollectionTypeSchema {
+  collectionName: 'loyalty-tiers';
+  info: {
+    displayName: 'Loyalty Tier';
+    pluralName: 'loyalty-tiers';
+    singularName: 'loyalty-tier';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    customers: Schema.Attribute.Relation<'oneToMany', 'api::customer.customer'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::loyalty-tier.loyalty-tier'
+    > &
+      Schema.Attribute.Private;
+    min_points: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    multiplier: Schema.Attribute.Float & Schema.Attribute.DefaultTo<1>;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    perks: Schema.Attribute.JSON;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiMarketingCampaignMarketingCampaign
   extends Struct.CollectionTypeSchema {
   collectionName: 'marketing_campaigns';
@@ -609,6 +1121,13 @@ export interface ApiMarketingCampaignMarketingCampaign
   };
   attributes: {
     ai_brief: Schema.Attribute.Text;
+    audience_ig_ids: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    audience_phones: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    audience_tiktok_ids: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    channel: Schema.Attribute.Enumeration<
+      ['whatsapp', 'instagram', 'tiktok', 'all']
+    > &
+      Schema.Attribute.DefaultTo<'all'>;
     channels: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -626,12 +1145,15 @@ export interface ApiMarketingCampaignMarketingCampaign
       'api::marketing-campaign.marketing-campaign'
     > &
       Schema.Attribute.Private;
+    media_url: Schema.Attribute.String;
+    message_text: Schema.Attribute.Text;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     promotional_rules: Schema.Attribute.JSON;
     publishedAt: Schema.Attribute.DateTime;
-    sceduled_at: Schema.Attribute.DateTime;
+    scheduled_at: Schema.Attribute.DateTime;
+    sent_at: Schema.Attribute.DateTime;
     status: Schema.Attribute.Enumeration<
-      ['draft', 'scheduled', 'active', 'completed']
+      ['draft', 'scheduled', 'active', 'sent', 'paused', 'completed', 'failed']
     > &
       Schema.Attribute.DefaultTo<'draft'>;
     target_segment: Schema.Attribute.Enumeration<
@@ -639,6 +1161,40 @@ export interface ApiMarketingCampaignMarketingCampaign
     > &
       Schema.Attribute.DefaultTo<'all_clients'>;
     tracking_code: Schema.Attribute.UID<'name'> & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiMarketingTriggerLogMarketingTriggerLog
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'marketing_trigger_logs';
+  info: {
+    description: 'Logs automated marketing actions triggered by W_MARKETING_AUTOPILOT';
+    displayName: 'Marketing Trigger Log';
+    pluralName: 'marketing-trigger-logs';
+    singularName: 'marketing-trigger-log';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    affected_users_count: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<0>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::marketing-trigger-log.marketing-trigger-log'
+    > &
+      Schema.Attribute.Private;
+    metadata_json: Schema.Attribute.JSON;
+    publishedAt: Schema.Attribute.DateTime;
+    rule_name: Schema.Attribute.String & Schema.Attribute.Required;
+    triggered_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -661,6 +1217,7 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    customer: Schema.Attribute.Relation<'manyToOne', 'api::customer.customer'>;
     customer_phone: Schema.Attribute.String;
     delivered_at: Schema.Attribute.DateTime;
     delivery_address: Schema.Attribute.String;
@@ -670,20 +1227,35 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     >;
     delivery_wilaya: Schema.Attribute.String;
     driver: Schema.Attribute.Relation<'manyToOne', 'api::driver.driver'>;
+    estimated_ready_time: Schema.Attribute.Integer;
+    items_detailed: Schema.Attribute.JSON;
     items_summary: Schema.Attribute.JSON;
+    kiosk_session_id: Schema.Attribute.String;
+    kitchen_ticket_sent: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::order.order'> &
       Schema.Attribute.Private;
+    order_type: Schema.Attribute.Enumeration<
+      ['dine_in', 'takeaway', 'delivery']
+    > &
+      Schema.Attribute.DefaultTo<'dine_in'>;
     otp_attempts: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     otp_expires_at: Schema.Attribute.DateTime;
     otp_hash: Schema.Attribute.String;
     payment_method: Schema.Attribute.Enumeration<['cash', 'card', 'online']> &
       Schema.Attribute.DefaultTo<'cash'>;
+    preparation_started_at: Schema.Attribute.DateTime;
     publishedAt: Schema.Attribute.DateTime;
+    source: Schema.Attribute.Enumeration<
+      ['kiosk', 'whatsapp', 'instagram', 'tiktok', 'web']
+    > &
+      Schema.Attribute.DefaultTo<'kiosk'>;
     status: Schema.Attribute.Enumeration<
-      ['pending', 'confirmed', 'delivered', 'cancelled']
+      ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled']
     > &
       Schema.Attribute.DefaultTo<'pending'>;
+    table_number: Schema.Attribute.Integer;
     total_amount: Schema.Attribute.Decimal & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -747,6 +1319,17 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
   };
   attributes: {
     aliases: Schema.Attribute.JSON;
+    available_extras: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    available_sauces: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    available_sizes: Schema.Attribute.JSON &
+      Schema.Attribute.DefaultTo<
+        [
+          {
+            name: 'Normal';
+            price_modifier: 0;
+          },
+        ]
+      >;
     category: Schema.Attribute.Enumeration<
       [
         'burgers',
@@ -776,6 +1359,8 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
       'manyToMany',
       'api::ingredient.ingredient'
     >;
+    is_kiosk_visible: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -784,9 +1369,42 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     marketing_name: Schema.Attribute.String;
     name: Schema.Attribute.String & Schema.Attribute.Required;
+    preparation_time_min: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<10>;
     price: Schema.Attribute.Decimal;
     publishedAt: Schema.Attribute.DateTime;
     stock_quantity: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiQuarantineQuarantine extends Struct.CollectionTypeSchema {
+  collectionName: 'quarantines';
+  info: {
+    displayName: 'Quarantine';
+    pluralName: 'quarantines';
+    singularName: 'quarantine';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    conversation_key: Schema.Attribute.String & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    expires_at: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::quarantine.quarantine'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    reason: Schema.Attribute.Text;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -886,6 +1504,176 @@ export interface ApiSupplierSupplier extends Struct.CollectionTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+  };
+}
+
+export interface ApiSystemConfigSystemConfig extends Struct.SingleTypeSchema {
+  collectionName: 'system_configs';
+  info: {
+    description: 'Centralized source of truth for AI prompts, API keys, and business settings';
+    displayName: 'System Configuration';
+    pluralName: 'system-configs';
+    singularName: 'system-config';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    ad_roas_pause_threshold: Schema.Attribute.Decimal &
+      Schema.Attribute.DefaultTo<1>;
+    admin_phone_number: Schema.Attribute.String;
+    agent_system_prompt: Schema.Attribute.Text &
+      Schema.Attribute.DefaultTo<"You are Ralph\u00E9, a professional AI assistant for an Algerian restaurant chain. You MUST only answer questions related to the restaurant menu, orders, delivery, and promotions. Never invent menu items. If unsure, say 'Let me check with the team.'">;
+    allowed_admin_ips: Schema.Attribute.Text &
+      Schema.Attribute.DefaultTo<'127.0.0.1/32'>;
+    app_public_url: Schema.Attribute.String;
+    auto_ad_budget_multiplier: Schema.Attribute.Decimal &
+      Schema.Attribute.DefaultTo<1>;
+    chargily_secret_key: Schema.Attribute.String & Schema.Attribute.Private;
+    content_quality_threshold: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<7>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    default_restaurant_id: Schema.Attribute.String;
+    default_tenant_id: Schema.Attribute.String;
+    driver_otp_max_attempts: Schema.Attribute.Integer &
+      Schema.Attribute.DefaultTo<3>;
+    enable_facebook: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<true>;
+    enable_instagram: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<true>;
+    enable_snapchat: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    enable_tiktok: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    enable_whatsapp_stories: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<true>;
+    facebook_page_access_token: Schema.Attribute.String &
+      Schema.Attribute.Private;
+    facebook_page_id: Schema.Attribute.String;
+    facebook_page_token: Schema.Attribute.String & Schema.Attribute.Private;
+    global_contact_phone: Schema.Attribute.String;
+    graph_api_version: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'v21.0'>;
+    instagram_access_token: Schema.Attribute.String & Schema.Attribute.Private;
+    instagram_business_account_id: Schema.Attribute.String;
+    instagram_business_id: Schema.Attribute.String;
+    llm_max_tokens: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<512>;
+    llm_model: Schema.Attribute.String & Schema.Attribute.DefaultTo<'llama3.1'>;
+    llm_temperature: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0.1>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::system-config.system-config'
+    > &
+      Schema.Attribute.Private;
+    maintenance_mode: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    meta_ad_account_id: Schema.Attribute.String;
+    meta_app_secret: Schema.Attribute.String & Schema.Attribute.Private;
+    n8n_webhook_base_url: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'http://n8n:5678'>;
+    ollama_api_url: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'http://ollama:11434/api/chat'>;
+    openai_key: Schema.Attribute.String & Schema.Attribute.Private;
+    openweather_api_key: Schema.Attribute.String & Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    replicate_token: Schema.Attribute.String & Schema.Attribute.Private;
+    snapchat_access_token: Schema.Attribute.String & Schema.Attribute.Private;
+    strapi_internal_token: Schema.Attribute.String & Schema.Attribute.Private;
+    stt_language: Schema.Attribute.String & Schema.Attribute.DefaultTo<'ar'>;
+    stt_model: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'whisper-1'>;
+    system_prompt_image_gen: Schema.Attribute.Text &
+      Schema.Attribute.DefaultTo<'Generate a high-end, appetizing image of {dish_name} with a luxury minimalist aesthetic.'>;
+    system_prompt_strategy: Schema.Attribute.Text &
+      Schema.Attribute.DefaultTo<'You are a professional restaurant marketing strategist specializing in Algerian market dynamics.'>;
+    system_prompt_video_gen: Schema.Attribute.Text &
+      Schema.Attribute.DefaultTo<'Create a 5-second cinematic food reveal video. Camera slowly orbits the dish. Warm golden lighting. Shallow depth of field. Steam rising. Brand: {brand_name}.'>;
+    tiktok_access_token: Schema.Attribute.String & Schema.Attribute.Private;
+    tiktok_ads_access_token: Schema.Attribute.String & Schema.Attribute.Private;
+    tiktok_advertiser_id: Schema.Attribute.String;
+    tiktok_client_key: Schema.Attribute.String;
+    tiktok_client_secret: Schema.Attribute.String & Schema.Attribute.Private;
+    tiktok_open_id: Schema.Attribute.String;
+    tiktok_refresh_token: Schema.Attribute.String & Schema.Attribute.Private;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    video_aspect_ratio: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'9:16'>;
+    vip_churn_days: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<30>;
+    wa_send_url: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'https://graph.facebook.com/v21.0'>;
+    whatsapp_access_token: Schema.Attribute.String & Schema.Attribute.Private;
+    whatsapp_business_account_id: Schema.Attribute.String;
+    whatsapp_phone_number_id: Schema.Attribute.String;
+    whatsapp_verify_token: Schema.Attribute.String & Schema.Attribute.Private;
+  };
+}
+
+export interface ApiVoiceInteractionVoiceInteraction
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'voice_interactions';
+  info: {
+    displayName: 'Voice Interaction';
+    pluralName: 'voice-interactions';
+    singularName: 'voice-interaction';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    audio_url: Schema.Attribute.String;
+    confidence: Schema.Attribute.Decimal;
+    conversation_key: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::voice-interaction.voice-interaction'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    transcript: Schema.Attribute.Text;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiWorkflowErrorWorkflowError
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'workflow_errors';
+  info: {
+    displayName: 'Workflow Error';
+    pluralName: 'workflow-errors';
+    singularName: 'workflow-error';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    error_message: Schema.Attribute.Text;
+    execution_id: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::workflow-error.workflow-error'
+    > &
+      Schema.Attribute.Private;
+    node_name: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    stack: Schema.Attribute.Text;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    workflow_name: Schema.Attribute.String;
   };
 }
 
@@ -1399,16 +2187,33 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::ad-campaign.ad-campaign': ApiAdCampaignAdCampaign;
+      'api::ai-learning.ai-learning': ApiAiLearningAiLearning;
+      'api::cart.cart': ApiCartCart;
+      'api::content-library.content-library': ApiContentLibraryContentLibrary;
+      'api::conversation-state.conversation-state': ApiConversationStateConversationState;
       'api::creative-asset.creative-asset': ApiCreativeAssetCreativeAsset;
+      'api::customer.customer': ApiCustomerCustomer;
+      'api::delivery-assignment.delivery-assignment': ApiDeliveryAssignmentDeliveryAssignment;
+      'api::delivery-zone.delivery-zone': ApiDeliveryZoneDeliveryZone;
       'api::driver-order-ignore.driver-order-ignore': ApiDriverOrderIgnoreDriverOrderIgnore;
       'api::driver.driver': ApiDriverDriver;
+      'api::feedback.feedback': ApiFeedbackFeedback;
+      'api::funnel-event.funnel-event': ApiFunnelEventFunnelEvent;
+      'api::inbound-message.inbound-message': ApiInboundMessageInboundMessage;
       'api::ingredient.ingredient': ApiIngredientIngredient;
+      'api::loyalty-tier.loyalty-tier': ApiLoyaltyTierLoyaltyTier;
       'api::marketing-campaign.marketing-campaign': ApiMarketingCampaignMarketingCampaign;
+      'api::marketing-trigger-log.marketing-trigger-log': ApiMarketingTriggerLogMarketingTriggerLog;
       'api::order.order': ApiOrderOrder;
       'api::payment.payment': ApiPaymentPayment;
       'api::product.product': ApiProductProduct;
+      'api::quarantine.quarantine': ApiQuarantineQuarantine;
       'api::restaurant-brand.restaurant-brand': ApiRestaurantBrandRestaurantBrand;
       'api::supplier.supplier': ApiSupplierSupplier;
+      'api::system-config.system-config': ApiSystemConfigSystemConfig;
+      'api::voice-interaction.voice-interaction': ApiVoiceInteractionVoiceInteraction;
+      'api::workflow-error.workflow-error': ApiWorkflowErrorWorkflowError;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;
