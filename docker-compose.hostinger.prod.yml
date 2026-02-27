@@ -53,9 +53,13 @@ services:
       options:
         max-file: "3"
         max-size: 5m
+    cap_drop:
+      - ALL
     networks:
       - proxy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
   # adminer: REMOVED — exposing a DB GUI tool in production violates Zero-Trust.
   # Use a secure SSH tunnel + local adminer for emergency debugging only.
   cms:
@@ -183,6 +187,10 @@ services:
   gateway:
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     depends_on:
       - n8n-main
     deploy:
@@ -298,9 +306,13 @@ services:
       options:
         max-file: "3"
         max-size: 5m
+    cap_drop:
+      - ALL
     networks:
       - proxy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
   mock-api:
     build:
       context: ./mock-api
@@ -632,6 +644,8 @@ services:
     networks:
       - internal
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
@@ -656,6 +670,7 @@ services:
     healthcheck:
       interval: 10s
       retries: 10
+      start_period: 10s
       test:
         - CMD
         - redis-cli
@@ -670,6 +685,8 @@ services:
     networks:
       - internal
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - redis_data:/data
   traefik:
@@ -700,11 +717,17 @@ services:
         max-size: 10m
     networks:
       - proxy
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - 80:80
       - 443:443
       - 127.0.0.1:8080:8080
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - traefik_data:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro

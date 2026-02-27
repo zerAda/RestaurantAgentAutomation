@@ -337,7 +337,7 @@ jobs:
           fi
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.3.0
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
 
       - name: Verify Image Signatures
         env:
@@ -440,11 +440,12 @@ jobs:
             cd "\$STAGING_DIR"
 
             # Set image tags for GHCR (lowercase owner required by GHCR)
+            # Variable names MUST match docker-compose.ghcr.yml
             GH_OWNER_LC=\$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             export GITHUB_REPOSITORY_OWNER="\$GH_OWNER_LC"
-            export CMS_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-cms:${{ env.DEPLOY_SHA }}"
-            export ADMIN_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-admin:${{ env.DEPLOY_SHA }}"
-            export KIOSK_IMAGE="ghcr.io/\$GH_OWNER_LC/resto-bot-kiosk:${{ env.DEPLOY_SHA }}"
+            export GHCR_IMAGE_CMS="ghcr.io/\$GH_OWNER_LC/resto-bot-cms:${{ env.DEPLOY_SHA }}"
+            export GHCR_IMAGE_ADMIN="ghcr.io/\$GH_OWNER_LC/resto-bot-admin:${{ env.DEPLOY_SHA }}"
+            export GHCR_IMAGE_KIOSK="ghcr.io/\$GH_OWNER_LC/resto-bot-kiosk:${{ env.DEPLOY_SHA }}"
 
             # Login to GHCR on VPS
             echo "${{ secrets['GITHUB_TOKEN'] }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin

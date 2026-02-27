@@ -1,5 +1,67 @@
 # TEST_REPORT — RESTO BOT
 
+## v3.3.4 — CI/CD Infrastructure Audit (2026-02-27)
+
+### Static Analysis (this environment)
+
+| Check | Result |
+| ----- | ------ |
+| `build-push-artifacts.yml` — all 8 actions SHA-pinned | PASS |
+| `cd-deploy.yml` — cosign-installer SHA-pinned | PASS |
+| `ci.yml` — N8N_VERSION matches .env (1.80.0) | PASS |
+| `ci.yml` — matrix simplified (no dead PG16 exclude) | PASS |
+| `docker-compose.hostinger.prod.yml` — all services have security_opt | PASS |
+| `docker-compose.hostinger.prod.yml` — all frontend services have cap_drop | PASS |
+| `docker-compose.hostinger.prod.yml` — redis healthcheck has start_period | PASS |
+| `docker-compose.hostinger.prod.yml` — traefik has NET_BIND_SERVICE cap | PASS |
+| `workflows/W0_META_VERIFY_WA.json.bak` — removed | PASS |
+| `docs/PROD_CHECKLIST.md` — updated to v3.3.0 | PASS |
+
+### Supply Chain Security Verification
+
+| Action | File | Pinned SHA |
+| ------ | ---- | ---------- |
+| `actions/checkout` | build-push-artifacts.yml | `11bd71901bbe5b1630ceea73d27597364c9af683` |
+| `docker/login-action` | build-push-artifacts.yml | `343f7c4344506bcbf9b4de18042ae17996df046d` |
+| `sigstore/cosign-installer` | build-push-artifacts.yml | `dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da` |
+| `docker/setup-buildx-action` | build-push-artifacts.yml | `988b5a0280414f521da01fcc63a27aeeb4b104db` |
+| `docker/metadata-action` | build-push-artifacts.yml | `8e5442c4ef9f78752691e2d8f8d19755c6f78e81` |
+| `docker/build-push-action` | build-push-artifacts.yml | `4a13e500e55cf31b7a5d59a38ab2040ab0f42f56` |
+| `anchore/sbom-action` | build-push-artifacts.yml | `f325610c9f50a54015d37c8d16cb3b0e2c8f4de0` |
+| `actions/attest-build-provenance` | build-push-artifacts.yml | `c074443f1aee8d4aeeae555aebba3282517141b2` |
+| `sigstore/cosign-installer` | cd-deploy.yml | `dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da` |
+
+### Container Hardening Verification
+
+| Service | cap_drop | cap_add | security_opt | healthcheck start_period |
+| ------- | -------- | ------- | ------------ | ------------------------ |
+| admin-dashboard | ALL | - | no-new-privileges | - |
+| kiosk-app | ALL | - | no-new-privileges | - |
+| postgres | - | - | no-new-privileges | - |
+| redis | - | - | no-new-privileges | 10s |
+| traefik | ALL | NET_BIND_SERVICE | no-new-privileges | - |
+
+### Audit Findings Summary
+
+| Severity | Found | Fixed | Documented |
+| -------- | ----- | ----- | ---------- |
+| P0 (Critical) | 8 | 1 (version drift) | 7 (VPS .env config in PROD_CHECKLIST.md) |
+| P1 (High) | 9 | 9 | - |
+| P2 (Medium) | 6 | 3 | 3 (no action needed) |
+| P3 (Info) | 17 | - | All OK |
+
+### Runtime Checks
+
+- `scripts/test_harness.sh` — not executable in this environment (requires Docker)
+- `docker compose -f docker-compose.hostinger.prod.yml config` — requires Docker; validate on VPS after deploy
+
+### Known Limitations
+
+- P0 .env items (META_SIGNATURE_REQUIRED, ADMIN_ALLOWED_IPS, workflow IDs, etc.) require manual VPS configuration per `docs/PROD_CHECKLIST.md`
+- Cosign image signing: COSIGN_PASSWORD mismatch still present (non-blocking warning)
+
+---
+
 ## v3.3.3 — Full CI/CD Green + VPS Health (2026-02-22)
 
 ### CI Pipeline (13/13 GREEN) — commit f4159b1

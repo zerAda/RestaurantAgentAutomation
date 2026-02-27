@@ -61,10 +61,11 @@ LOG_DIR="${LOG_DIR:-/var/log/resto-bot}"
 IS_FIRST="${IS_FIRST:-false}"
 
 # Image URIs (GHCR requires lowercase owner)
+# Variable names MUST match docker-compose.ghcr.yml: GHCR_IMAGE_CMS, GHCR_IMAGE_ADMIN, GHCR_IMAGE_KIOSK
 GH_OWNER_LC="${GH_OWNER,,}"
-CMS_IMAGE="ghcr.io/${GH_OWNER_LC}/resto-bot-cms:${IMAGE_SHA}"
-ADMIN_IMAGE="ghcr.io/${GH_OWNER_LC}/resto-bot-admin:${IMAGE_SHA}"
-KIOSK_IMAGE="ghcr.io/${GH_OWNER_LC}/resto-bot-kiosk:${IMAGE_SHA}"
+GHCR_IMAGE_CMS="ghcr.io/${GH_OWNER_LC}/resto-bot-cms:${IMAGE_SHA}"
+GHCR_IMAGE_ADMIN="ghcr.io/${GH_OWNER_LC}/resto-bot-admin:${IMAGE_SHA}"
+GHCR_IMAGE_KIOSK="ghcr.io/${GH_OWNER_LC}/resto-bot-kiosk:${IMAGE_SHA}"
 
 echo "============================================="
 echo "Deploy to Node — Role: $ROLE"
@@ -155,7 +156,7 @@ echo ">>> Step 4: Pulling Docker images..."
 cd "$RELEASE_DIR"
 
 export GITHUB_REPOSITORY_OWNER="$GH_OWNER"
-export CMS_IMAGE ADMIN_IMAGE KIOSK_IMAGE
+export GHCR_IMAGE_CMS GHCR_IMAGE_ADMIN GHCR_IMAGE_KIOSK
 
 echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 docker compose pull --quiet

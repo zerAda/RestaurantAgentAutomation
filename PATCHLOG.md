@@ -1,5 +1,56 @@
 # PATCHLOG — RESTO BOT
 
+## v3.3.4 — CI/CD Infrastructure Audit + Hardening (2026-02-27)
+
+### Scope
+
+Full audit of CI/CD pipeline, Docker infrastructure, and production compose. Fixed supply-chain security (SHA pinning), container hardening, version alignment, and dead code. Updated production checklist documentation.
+
+### Audit Summary
+
+- **8 P0** (critical .env configuration for VPS — documented in `docs/PROD_CHECKLIST.md`)
+- **9 P1** (CI/infrastructure fixes — all resolved)
+- **6 P2** (best practices — resolved)
+- **17 P3** (informational — all OK, no action needed)
+
+### Fixes Applied
+
+1. **N8N_VERSION alignment** (P0-01) — `ci.yml:44` changed from `1.123.21` to `1.80.0` to match production `.env` and `security-scan.yml`
+
+2. **SHA-pinned all actions in build-push-artifacts.yml** (P1-01) — All 8 action references changed from unpinned tags (`@v4`, `@v3`, `@v5`, `@v0`) to SHA-pinned versions with version comments
+
+3. **Container security hardening** (P1-02/03/04) — Added `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]` to `admin-dashboard`, `kiosk-app`, `postgres`, `redis`, `traefik`. Traefik also gets `cap_add: [NET_BIND_SERVICE]` for ports 80/443. Redis healthcheck gets `start_period: 10s`.
+
+4. **Removed stale .bak file** (P1-09) — Deleted `workflows/W0_META_VERIFY_WA.json.bak`
+
+5. **Cleaned up ci.yml matrix dead code** (P1-08) — Simplified confusing PG16 exclude/include pattern to clean single-entry matrix with comment
+
+6. **SHA-pinned cosign-installer in cd-deploy.yml** (P2-02) — Changed from `@v3.3.0` to SHA-pinned `@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da`
+
+7. **Updated PROD_CHECKLIST.md** (P0-02 to P0-08) — Comprehensive v3.3.0 checklist documenting all required .env production changes, secrets setup, deploy verification, and version alignment
+
+### Files Changed
+
+| File | Change |
+| ---- | ------ |
+| `.github/workflows/ci.yml` | N8N_VERSION 1.123.21 → 1.80.0; matrix simplification |
+| `.github/workflows/build-push-artifacts.yml` | All actions SHA-pinned |
+| `.github/workflows/cd-deploy.yml` | cosign-installer SHA-pinned |
+| `docker-compose.hostinger.prod.yml` | Security hardening for admin, kiosk, postgres, redis, traefik |
+| `workflows/W0_META_VERIFY_WA.json.bak` | Deleted |
+| `docs/PROD_CHECKLIST.md` | Rewritten to v3.3.0 with full VPS production checklist |
+
+### Risk
+
+Low. All changes are additive security hardening or documentation. No functional behavior changes. Container `cap_drop: [ALL]` may need `cap_add` if a service requires specific capabilities beyond what's already granted.
+
+### Rollback
+
+- Revert the commit containing these changes
+- No database or runtime state affected
+
+---
+
 ## v3.3.3 — Full CI/CD Green + VPS Production Hardening (2026-02-22)
 
 ### Scope

@@ -1,3 +1,9 @@
+# =============================================================================
+# Build and Push Artifacts to GHCR (Supply Chain Secured)
+# =============================================================================
+# Actions pinned to SHA for supply-chain security.
+# =============================================================================
+
 name: Build and Push Artifacts (GHCR)
 
 on:
@@ -41,7 +47,7 @@ jobs:
             echo "::error::Invalid commit SHA: '$SHA'"
             exit 1
           fi
-          echo "✅ Build inputs validated"
+          echo "Build inputs validated"
 
   # ============================================================================
   # JOB 1: Build, Push, Sign, SBOM, Attest
@@ -55,31 +61,31 @@ jobs:
         run: echo "lc=${OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.3.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       # ======================= CMS =======================
       - name: Build and push CMS
         id: build-cms
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
         with:
           context: ./inventory-cms
           push: true
@@ -97,7 +103,7 @@ jobs:
 
       - name: Generate SBOM for CMS
         continue-on-error: true
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
         with:
           image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-cms:${{ github.sha }}
           format: cyclonedx-json
@@ -116,7 +122,7 @@ jobs:
 
       - name: SLSA Provenance — CMS
         continue-on-error: true
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-cms
           subject-digest: ${{ steps.build-cms.outputs.digest }}
@@ -125,7 +131,7 @@ jobs:
       # ======================= Admin Dashboard =======================
       - name: Build and push Admin Dashboard
         id: build-admin
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
         with:
           context: .
           file: ./admin-dashboard/Dockerfile
@@ -144,7 +150,7 @@ jobs:
 
       - name: Generate SBOM for Admin Dashboard
         continue-on-error: true
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
         with:
           image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-admin:${{ github.sha }}
           format: cyclonedx-json
@@ -163,7 +169,7 @@ jobs:
 
       - name: SLSA Provenance — Admin
         continue-on-error: true
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-admin
           subject-digest: ${{ steps.build-admin.outputs.digest }}
@@ -172,7 +178,7 @@ jobs:
       # ======================= Kiosk App =======================
       - name: Build and push Kiosk App
         id: build-kiosk
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
         with:
           context: .
           file: ./kiosk-app/Dockerfile
@@ -191,7 +197,7 @@ jobs:
 
       - name: Generate SBOM for Kiosk App
         continue-on-error: true
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
         with:
           image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-kiosk:${{ github.sha }}
           format: cyclonedx-json
@@ -210,7 +216,7 @@ jobs:
 
       - name: SLSA Provenance — Kiosk
         continue-on-error: true
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-kiosk
           subject-digest: ${{ steps.build-kiosk.outputs.digest }}
@@ -221,13 +227,13 @@ jobs:
         if: always()
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
-          ## 🔐 Supply Chain Security Summary
+          ## Supply Chain Security Summary
 
           | Image | Signed | SBOM | SLSA Provenance |
           |-------|--------|------|-----------------|
-          | resto-bot-cms | ✅ Cosign | ✅ CycloneDX | ✅ SLSA L2 |
-          | resto-bot-admin | ✅ Cosign | ✅ CycloneDX | ✅ SLSA L2 |
-          | resto-bot-kiosk | ✅ Cosign | ✅ CycloneDX | ✅ SLSA L2 |
+          | resto-bot-cms | Cosign | CycloneDX | SLSA L2 |
+          | resto-bot-admin | Cosign | CycloneDX | SLSA L2 |
+          | resto-bot-kiosk | Cosign | CycloneDX | SLSA L2 |
 
           **Commit**: `${{ github.sha }}`
           **Registry**: `${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}`

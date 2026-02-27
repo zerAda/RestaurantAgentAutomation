@@ -41,7 +41,7 @@ env:
   POSTGRES_USER: n8n
   POSTGRES_PASSWORD: n8npass
   POSTGRES_DB: n8n
-  N8N_VERSION: "1.123.21"
+  N8N_VERSION: "1.80.0"
 
 jobs:
   # ==========================================================================
@@ -238,14 +238,7 @@ jobs:
         include:
           - postgres: "15-alpine"
             pg_major: "15"
-          - postgres: "16-alpine"
-            pg_major: "16"
-        # PG16 only on main/release branches
-        exclude:
-          - postgres: "16-alpine"
-    # Re-include PG16 conditionally
-    # Note: Matrix exclude/include cannot be conditional in GHA, so we use a
-    # separate approach: always define both, skip PG16 via job-level if
+        # PG16 tested in separate integration-tests-pg16 job (main/release only)
 
     services:
       postgres:
