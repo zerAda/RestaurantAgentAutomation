@@ -10,15 +10,6 @@
       "project_dir": "__FROM_VARS__",
       "backup_dir": "__FROM_VARS__",
       "log_dir": "__FROM_VARS__"
-    },
-    {
-      "name": "client-beta",
-      "host": "beta.example.com",
-      "user": "deploy",
-      "role": "replica",
-      "project_dir": "/opt/resto",
-      "backup_dir": "/opt/resto/backups",
-      "log_dir": "/var/log/resto-bot"
     }
   ]
 }
