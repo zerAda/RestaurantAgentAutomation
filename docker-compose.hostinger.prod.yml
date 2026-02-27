@@ -139,9 +139,8 @@ services:
   db-migrate:
     command:
       - "set -e\n# Read password from file\nexport PGPASSWORD=$$(cat /run/secrets/postgres_password)\n\
-        \necho \"=== DB Migration Service (P0-01) ===\"\necho \"Waiting for postgres...\"\
-        \n\n# Wait for postgres\nuntil pg_isready -h postgres -U n8n -d n8n; do\n  sleep\
-        \ 1\ndone\n\necho \"Postgres ready. Creating schema_migrations table...\"\n\n\
+        \necho \"=== DB Migration Service (P0-01) ===\"\necho \"Waiting for postgres...\"\n\n\
+        # Wait for postgres\n        TRIES=0\n        until pg_isready -h postgres -U n8n -d n8n; do\n          sleep 1\n          TRIES=$$((TRIES + 1))\n          if [ \"$$TRIES\" -ge 60 ]; then\n            echo \"::error::Postgres did not become ready in time for migrations.\"\n            exit 1\n          fi\n        done\n\necho \"Postgres ready. Creating schema_migrations table...\"\n\n\
         # Create tracking table\npsql -v ON_ERROR_STOP=1 <<'EOSQL'\nCREATE TABLE IF\
         \ NOT EXISTS schema_migrations (\n  id          serial PRIMARY KEY,\n  filename\
         \    text NOT NULL UNIQUE,\n  applied_at  timestamptz NOT NULL DEFAULT now(),\n\

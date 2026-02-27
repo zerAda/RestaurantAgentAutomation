@@ -147,8 +147,15 @@ services:
         echo "=== DB Migration Service (P0-01) ==="
         echo "Waiting for postgres..."
 
+        # Wait for postgres
+        TRIES=0
         until pg_isready -h postgres -U n8n -d n8n; do
           sleep 1
+          TRIES=$$((TRIES + 1))
+          if [ "$$TRIES" -ge 60 ]; then
+            echo "::error::Postgres did not become ready in time for migrations."
+            exit 1
+          fi
         done
 
         echo "Postgres ready. Creating schema_migrations table..."

@@ -85,6 +85,29 @@ mkdir -p "$BACKUP_DIR"
 mkdir -p "$LOG_DIR"
 
 # ---------------------------------------------------------------------------
+# Step 1.5: Initialize minimum secrets to prevent directory-mount errors on empty VPS
+# ---------------------------------------------------------------------------
+if [ "$IS_FIRST" = "true" ]; then
+  echo ">>> Step 1.5: Initializing minimum secrets on first deploy..."
+  
+  if [ ! -f "$PROJECT_DIR/shared/.env" ]; then
+    touch "$PROJECT_DIR/shared/.env"
+  fi
+  
+  if [ ! -f "$PROJECT_DIR/shared/secrets/postgres_password" ]; then
+    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/postgres_password"
+  fi
+  
+  if [ ! -f "$PROJECT_DIR/shared/secrets/n8n_encryption_key" ]; then
+    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/n8n_encryption_key"
+  fi
+  
+  if [ ! -f "$PROJECT_DIR/shared/secrets/traefik_usersfile" ]; then
+    touch "$PROJECT_DIR/shared/secrets/traefik_usersfile"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Step 2: Link shared resources
 # ---------------------------------------------------------------------------
 echo ">>> Step 2: Linking shared resources..."
@@ -109,8 +132,12 @@ fi
 # Step 3: Production compose file
 # ---------------------------------------------------------------------------
 echo ">>> Step 3: Setting up compose file..."
-if [ -f "$RELEASE_DIR/docker-compose.hostinger.prod.yml" ]; then
+if [ -f "$RELEASE_DIR/docker-compose.ghcr.yml" ]; then
+  cp "$RELEASE_DIR/docker-compose.ghcr.yml" "$RELEASE_DIR/docker-compose.yml"
+  echo "Using GHCR artifact compose file."
+elif [ -f "$RELEASE_DIR/docker-compose.hostinger.prod.yml" ]; then
   cp "$RELEASE_DIR/docker-compose.hostinger.prod.yml" "$RELEASE_DIR/docker-compose.yml"
+  echo "Using legacy hostinger prod compose file."
 fi
 
 # Create Docker volumes on first deploy

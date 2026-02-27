@@ -430,8 +430,10 @@ jobs:
               ln -sf "$PROJECT_DIR/shared/secrets" "\$STAGING_DIR/secrets"
             fi
 
-            # Use production compose file
-            if [ -f "\$STAGING_DIR/docker-compose.hostinger.prod.yml" ]; then
+            # Use production compose file (prefer GHCR, fallback to local build)
+            if [ -f "\$STAGING_DIR/docker-compose.ghcr.yml" ]; then
+              cp "\$STAGING_DIR/docker-compose.ghcr.yml" "\$STAGING_DIR/docker-compose.yml"
+            elif [ -f "\$STAGING_DIR/docker-compose.hostinger.prod.yml" ]; then
               cp "\$STAGING_DIR/docker-compose.hostinger.prod.yml" "\$STAGING_DIR/docker-compose.yml"
             fi
 
