@@ -21,8 +21,14 @@ REDIS_STATUS="healthy"
 N8N_STATUS="healthy"
 SYSTEM_STATUS="healthy"
 
+# Determine compose command prefix
+COMPOSE_CMD="docker compose"
+if [[ -n "$COMPOSE_PROJECT_NAME" ]]; then
+    COMPOSE_CMD="docker compose --project-name $COMPOSE_PROJECT_NAME"
+fi
+
 # 1. Check Postgres
-PG_READY=$(docker compose exec -T postgres pg_isready -U n8n -d n8n)
+PG_READY=$($COMPOSE_CMD exec -T postgres pg_isready -U n8n -d n8n)
 if [[ $? -ne 0 ]]; then
     POSTGRES_STATUS="critical"
     STATUS="critical"
@@ -30,7 +36,7 @@ fi
 
 # 2. Check Redis
 REDIS_PASS=$(cat ./secrets/redis_password 2>/dev/null || echo "")
-REDIS_PING=$(docker compose exec -T redis redis-cli ${REDIS_PASS:+-a "$REDIS_PASS"} ping 2>/dev/null)
+REDIS_PING=$($COMPOSE_CMD exec -T redis redis-cli ${REDIS_PASS:+-a "$REDIS_PASS"} ping 2>/dev/null)
 if [[ "$REDIS_PING" != "PONG" ]]; then
     REDIS_STATUS="critical"
     STATUS="critical"

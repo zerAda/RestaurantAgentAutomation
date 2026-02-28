@@ -115,4 +115,4 @@ echo "Staging services:"
 $STAGING_COMPOSE ps
 
 echo "=== Running Deep Health Check (Staging) ==="
-bash scripts/deep-health-check.sh
+COMPOSE_PROJECT_NAME=resto-staging bash scripts/deep-health-check.sh
