@@ -122,7 +122,7 @@ jobs:
   # ============================================================================
   preflight:
     name: Pre-flight Checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-primary]
     needs: validate-inputs
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 5
@@ -382,7 +382,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
     name: Deploy to Staging (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-primary]
     needs: [preflight, security-gate]
     timeout-minutes: 40
 
@@ -509,7 +509,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
     name: Smoke Battery (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-primary]
     needs: [preflight, deploy-staging]
     timeout-minutes: 10
 
@@ -560,7 +560,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
     name: Pre-deploy Backup (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-primary]
     needs: [preflight, approve-production]
     if: |
       needs.preflight.outputs.is_first_deploy != 'true' &&
@@ -626,7 +626,7 @@ jobs:
   # ============================================================================
   deploy-production:
     name: Deploy (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-primary]
     needs: [preflight, approve-production, backup]
     if: |
       always() &&
@@ -777,7 +777,7 @@ jobs:
   # ============================================================================
   smoke-battery-prod:
     name: Smoke (${{ matrix.node.name }} - ${{ matrix.check }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-primary]
     needs: [preflight, deploy-production]
     if: always() && needs.deploy-production.result == 'success'
     timeout-minutes: 10
