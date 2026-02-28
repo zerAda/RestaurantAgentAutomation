@@ -428,7 +428,7 @@ jobs:
           STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
           PROJECT_DIR="${{ matrix.project_dir }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             set -e
 
             STAGING_DIR="$STAGING_DIR"
@@ -528,7 +528,7 @@ jobs:
         continue-on-error: true
         run: |
           STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
-          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             cd $STAGING_DIR
             export COMPOSE_PROJECT_NAME=resto-staging
             if [ -f .env ]; then set -a; source .env; set +a; fi
@@ -548,7 +548,7 @@ jobs:
         run: |
           STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             set -e
             cd $STAGING_DIR
             if [ -f .env ]; then set -a; source .env; set +a; fi
@@ -572,7 +572,7 @@ jobs:
         run: |
           STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
 
-          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
             if [ -d "$STAGING_DIR" ]; then
               cd "$STAGING_DIR"
               if [ -f docker-compose.staging-override.yml ]; then
@@ -694,7 +694,8 @@ jobs:
             chmod +x scripts/ops/backup.sh
             # Execute remotely by piping the script
             # Pass encryption secrets if available
-            ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+              ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
               "export BACKUP_NAME='$BACKUP_NAME' VERSION='$VERSION' COMMIT='$COMMIT' PROJECT_DIR='$PROJECT_DIR' BACKUP_DIR='$BACKUP_DIR' BACKUP_ENCRYPT='$BACKUP_ENCRYPT' GPG_PASSPHRASE='$GPG_PASSPHRASE'; bash -s" < scripts/ops/backup.sh
           else
              echo "::error::scripts/ops/backup.sh not found"
@@ -715,7 +716,7 @@ jobs:
       needs.preflight.result == 'success' &&
       needs.approve-production.result == 'success' &&
       (needs.backup.result == 'success' || needs.backup.result == 'skipped' || needs.backup.result == 'failure')
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
       fail-fast: true
@@ -742,7 +743,7 @@ jobs:
       - name: Sync code to node
         run: |
           RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ConnectionAttempts=3"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectionAttempts=3"
 
           # Create release directory on target node (with retry)
           for attempt in 1 2 3; do
@@ -768,7 +769,7 @@ jobs:
       - name: Deploy to ${{ matrix.name }} via deploy_to_node.sh
         run: |
           RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ConnectionAttempts=3"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectionAttempts=3"
 
           if [ ! -f "scripts/ops/deploy_to_node.sh" ]; then
             echo "::error::scripts/ops/deploy_to_node.sh not found"

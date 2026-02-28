@@ -28,6 +28,13 @@
 
 set -euo pipefail
 
+# Force unbuffered output so SSH sessions flush each line immediately
+export PYTHONUNBUFFERED=1
+# Use line-buffered stdout for all commands (critical for SSH output visibility)
+if command -v stdbuf >/dev/null 2>&1; then
+  exec 1> >(stdbuf -oL cat)
+fi
+
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
@@ -150,16 +157,50 @@ if [ "$IS_FIRST" = "true" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Step 3.5: Pre-pull cleanup (free disk space for images)
+# ---------------------------------------------------------------------------
+echo ">>> Step 3.5: Pre-pull disk check and cleanup..."
+DISK_FREE_MB=$(df -BM / | tail -1 | awk '{print $4}' | tr -d 'M')
+echo "Disk free: ${DISK_FREE_MB}MB"
+if [ "$DISK_FREE_MB" -lt 2048 ]; then
+  echo "Low disk space — running Docker cleanup..."
+  docker system prune -f --volumes 2>/dev/null || true
+  docker image prune -a -f --filter "until=72h" 2>/dev/null || true
+  DISK_FREE_MB=$(df -BM / | tail -1 | awk '{print $4}' | tr -d 'M')
+  echo "Disk free after cleanup: ${DISK_FREE_MB}MB"
+  if [ "$DISK_FREE_MB" -lt 1024 ]; then
+    echo "::error::Insufficient disk space: ${DISK_FREE_MB}MB (need 1024MB minimum)"
+    exit 1
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Step 4: Pull images
 # ---------------------------------------------------------------------------
 echo ">>> Step 4: Pulling Docker images..."
 cd "$RELEASE_DIR"
 
+# Source .env for any additional compose variables (DOMAIN_NAME, N8N_VERSION, etc.)
+if [ -f .env ]; then set -a; source .env; set +a; fi
+
 export GITHUB_REPOSITORY_OWNER="$GH_OWNER"
 export GHCR_IMAGE_CMS GHCR_IMAGE_ADMIN GHCR_IMAGE_KIOSK
 
 echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-docker compose pull --quiet
+echo "GHCR login complete. Pulling images (this may take several minutes)..."
+
+# Pull WITHOUT --quiet so progress is visible through SSH
+# Use timeout to prevent infinite hangs on network issues
+timeout 600 docker compose pull 2>&1 || {
+  echo "::error::docker compose pull failed or timed out (10 min limit)"
+  echo "Retrying with individual image pulls..."
+  # Retry individual GHCR images (public images are usually cached)
+  for img in "$GHCR_IMAGE_CMS" "$GHCR_IMAGE_ADMIN" "$GHCR_IMAGE_KIOSK"; do
+    echo "Pulling $img ..."
+    timeout 300 docker pull "$img" 2>&1 || echo "::warning::Failed to pull $img"
+  done
+}
+echo "Image pull complete."
 
 # ---------------------------------------------------------------------------
 # Step 5a: Stop previous services (free ports + shared volumes)
@@ -170,7 +211,7 @@ echo ">>> Step 5a: Stopping previous services..."
 if [ -L "$PROJECT_DIR/current" ] && [ -d "$PROJECT_DIR/current" ]; then
   echo "Stopping services from previous release..."
   cd "$PROJECT_DIR/current"
-  docker compose down --remove-orphans 2>/dev/null || true
+  docker compose down --remove-orphans --timeout 30 2>/dev/null || true
 fi
 
 # Stop services from any OTHER release directory (handles failed deploys with no symlink)
@@ -179,36 +220,62 @@ for OLD_RELEASE in $(ls -1d "$PROJECT_DIR/releases"/*/ 2>/dev/null); do
   if [ "$OLD_RELEASE" = "$RELEASE_DIR" ]; then continue; fi
   if [ -f "$OLD_RELEASE/docker-compose.yml" ] || [ -f "$OLD_RELEASE/docker-compose.hostinger.prod.yml" ]; then
     echo "Stopping orphaned services from: $OLD_RELEASE"
-    cd "$OLD_RELEASE" && docker compose down --remove-orphans 2>/dev/null || true
+    cd "$OLD_RELEASE" && docker compose down --remove-orphans --timeout 30 2>/dev/null || true
   fi
 done
 
-# On first deploy, stop legacy services (manual /root/project installs)
-if [ "$IS_FIRST" = "true" ]; then
-  for LEGACY_DIR in /root/project /root/resto-bot; do
-    if [ -d "$LEGACY_DIR" ] 2>/dev/null; then
-      echo "Stopping legacy services from $LEGACY_DIR..."
-      cd "$LEGACY_DIR" 2>/dev/null && {
-        # Try explicit compose file first, then default
-        if [ -f "docker-compose.hostinger.prod.yml" ]; then
-          docker compose -f docker-compose.hostinger.prod.yml down --remove-orphans 2>/dev/null || true
-        fi
-        docker compose down --remove-orphans 2>/dev/null || true
-      } || echo "Cannot access $LEGACY_DIR (permission denied — may need manual cleanup)"
-    fi
-  done
-
-  # Also stop any containers with "project-" prefix (legacy naming)
-  LEGACY_CONTAINERS=$(docker ps -q --filter "name=project-" 2>/dev/null)
-  if [ -n "$LEGACY_CONTAINERS" ]; then
-    echo "Stopping legacy containers by name prefix..."
-    docker stop $LEGACY_CONTAINERS 2>/dev/null || true
-    docker rm $LEGACY_CONTAINERS 2>/dev/null || true
+# Stop legacy services (manual deploys at /root/project, etc.)
+# Always check for legacy containers, not just on first deploy,
+# because manual workaround deploys may exist outside /opt/resto
+for LEGACY_DIR in /root/project /root/resto-bot /home/deploy/project; do
+  if [ -d "$LEGACY_DIR" ] 2>/dev/null; then
+    echo "Stopping legacy services from $LEGACY_DIR..."
+    cd "$LEGACY_DIR" 2>/dev/null && {
+      if [ -f "docker-compose.hostinger.prod.yml" ]; then
+        docker compose -f docker-compose.hostinger.prod.yml down --remove-orphans --timeout 30 2>/dev/null || true
+      fi
+      docker compose down --remove-orphans --timeout 30 2>/dev/null || true
+    } || echo "Cannot access $LEGACY_DIR (permission denied — may need manual cleanup)"
   fi
+done
+
+# Stop ANY remaining containers that use ports we need (80, 443, 5678, 5432, 6379, 1337, 8080)
+# This catches containers from any project name, manual runs, etc.
+echo "Checking for conflicting containers on critical ports..."
+for port in 80 443 5678 5432 6379 1337 8080; do
+  CONFLICT=$(docker ps -q --filter "publish=$port" 2>/dev/null)
+  if [ -n "$CONFLICT" ]; then
+    echo "Stopping container(s) on port $port: $CONFLICT"
+    docker stop $CONFLICT 2>/dev/null || true
+    docker rm $CONFLICT 2>/dev/null || true
+  fi
+done
+
+# Also stop any containers with "project-" prefix (legacy naming convention)
+LEGACY_CONTAINERS=$(docker ps -q --filter "name=project-" 2>/dev/null)
+if [ -n "$LEGACY_CONTAINERS" ]; then
+  echo "Stopping legacy containers by name prefix..."
+  docker stop $LEGACY_CONTAINERS 2>/dev/null || true
+  docker rm $LEGACY_CONTAINERS 2>/dev/null || true
+fi
+
+# Stop any remaining staging containers (missed cleanup)
+STAGING_CONTAINERS=$(docker ps -q --filter "name=resto-staging" 2>/dev/null)
+if [ -n "$STAGING_CONTAINERS" ]; then
+  echo "Stopping leftover staging containers..."
+  docker stop $STAGING_CONTAINERS 2>/dev/null || true
+  docker rm $STAGING_CONTAINERS 2>/dev/null || true
 fi
 
 echo "Waiting for ports to free up..."
-sleep 3
+sleep 5
+
+# Verify critical ports are free
+for port in 80 443 5678 5432 6379; do
+  if docker ps -q --filter "publish=$port" 2>/dev/null | grep -q .; then
+    echo "::warning::Port $port is still occupied after cleanup"
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # Step 5b: Migrations (primary only)

@@ -42,12 +42,31 @@ if [ -z "$PG_CONTAINER" ]; then
 fi
 echo "Using postgres container: $PG_CONTAINER"
 
-# 1. Backup n8n database
+# 1. Backup n8n database (with retry for transient pg_dump errors)
+# pg_dump can fail with "query returned 0 rows instead of one: EXECUTE dumpFunc"
+# when n8n's background executions modify the catalog concurrently.
+# Retry up to 3 times with a short delay to let concurrent DDL complete.
 echo "=== Backup: n8n database ==="
-if docker exec -i "$PG_CONTAINER" pg_dump -U n8n -d n8n --no-owner --no-acl -Fc > "$BACKUP_DIR/${BACKUP_NAME}-n8n.dump"; then
-    echo "n8n DB backed up."
-else
-    echo "::error::Failed to backup n8n DB"
+N8N_BACKUP_OK=false
+for ATTEMPT in 1 2 3; do
+    echo "pg_dump attempt $ATTEMPT/3..."
+    if docker exec -i "$PG_CONTAINER" pg_dump -U n8n -d n8n --no-owner --no-acl --lock-wait-timeout=60000 -Fc > "$BACKUP_DIR/${BACKUP_NAME}-n8n.dump" 2>/tmp/pgdump_err.log; then
+        echo "n8n DB backed up on attempt $ATTEMPT."
+        N8N_BACKUP_OK=true
+        break
+    else
+        echo "::warning::pg_dump attempt $ATTEMPT failed: $(cat /tmp/pgdump_err.log 2>/dev/null)"
+        rm -f "$BACKUP_DIR/${BACKUP_NAME}-n8n.dump"
+        if [ "$ATTEMPT" -lt 3 ]; then
+            echo "Waiting 10s before retry..."
+            sleep 10
+        fi
+    fi
+done
+rm -f /tmp/pgdump_err.log
+
+if [ "$N8N_BACKUP_OK" != "true" ]; then
+    echo "::error::Failed to backup n8n DB after 3 attempts"
     exit 1
 fi
 
