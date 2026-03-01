@@ -107,7 +107,7 @@ jobs:
       matrix:
         image:
           - name: n8n
-            ref: docker.n8n.io/n8nio/n8n:1.80.0
+            ref: docker.n8n.io/n8nio/n8n:2.9.4
           - name: postgres
             ref: postgres:15-alpine
           - name: redis

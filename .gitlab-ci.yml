@@ -277,7 +277,7 @@ docker-build:
       # Provide required env vars for compose validation
       export DOMAIN_NAME=example.com CONSOLE_SUBDOMAIN=console API_SUBDOMAIN=api
       export SSL_EMAIL=test@example.com TRAEFIK_TRUSTED_IPS=127.0.0.1/32
-      export ADMIN_ALLOWED_IPS=127.0.0.1/32 N8N_VERSION=1.76.1 TZ=UTC
+      export ADMIN_ALLOWED_IPS=127.0.0.1/32 N8N_VERSION=2.9.4 TZ=UTC
       export WEBHOOK_SHARED_TOKEN=ci META_APP_SECRET=ci
       export WA_SEND_URL=http://localhost/wa WA_API_TOKEN=ci
       export IG_SEND_URL=http://localhost/ig IG_API_TOKEN=ci

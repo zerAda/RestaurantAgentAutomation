@@ -84,9 +84,9 @@ jobs:
           }
 
           # Measure each endpoint
-          measure_endpoint "healthz" "${HEALTH_URL:-https://${DOMAIN}/healthz}"
-          measure_endpoint "inbound_whatsapp" "https://${DOMAIN}/v1/inbound/whatsapp"
-          measure_endpoint "admin_ping" "https://${DOMAIN}/v1/admin/ping"
+          measure_endpoint "healthz" "${HEALTH_URL:-https://api.${DOMAIN}/healthz}"
+          measure_endpoint "inbound_whatsapp" "https://api.${DOMAIN}/v1/inbound/whatsapp"
+          measure_endpoint "admin_ping" "https://api.${DOMAIN}/v1/admin/ping"
 
           # Calculate percentiles
           calc_percentiles "healthz"

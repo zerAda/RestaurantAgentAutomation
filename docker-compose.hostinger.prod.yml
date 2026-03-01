@@ -649,6 +649,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./secrets/strapi_db_password:/run/secrets/strapi_db_password:ro
       - ./db/bootstrap.sql:/docker-entrypoint-initdb.d/00_bootstrap.sql:ro
       - ./db/init/01_apply_migrations.sh:/docker-entrypoint-initdb.d/01_apply_migrations.sh:ro
       - ./db/init/02_create_strapi_db.sh:/docker-entrypoint-initdb.d/02_create_strapi_db.sh:ro

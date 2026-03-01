@@ -50,7 +50,7 @@ services:
 
   n8n:
     # Dev-only compose. For production, use docker-compose.hostinger.prod.yml
-    image: n8nio/n8n:${N8N_VERSION:-1.80.0}
+    image: n8nio/n8n:${N8N_VERSION:-2.9.4}
     container_name: n8n
     depends_on:
       postgres:

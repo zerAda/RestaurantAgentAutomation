@@ -1,16 +1,30 @@
 name: Debug VPS Connectivity
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debug-vps
+  cancel-in-progress: true
+
 jobs:
   debug:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Traceroute and Ping to VPS
         run: |
           sudo apt-get update && sudo apt-get install -y traceroute
-          echo "=> Pinging VPS"
-          ping -c 4 72.60.190.192 || true
+          VPS_HOST="${{ vars.VPS_HOST }}"
+          if [ -z "$VPS_HOST" ]; then
+            echo "::error::Repository variable VPS_HOST is not set"
+            exit 1
+          fi
+          echo "=> Pinging VPS ($VPS_HOST)"
+          ping -c 4 "$VPS_HOST" || true
           echo "=> Tracerouting VPS"
-          traceroute 72.60.190.192 || true
+          traceroute "$VPS_HOST" || true
           echo "=> Netcat VPS port 22"
-          nc -zv 72.60.190.192 22 || true
+          nc -zv "$VPS_HOST" 22 || true

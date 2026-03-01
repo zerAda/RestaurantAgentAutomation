@@ -38,7 +38,7 @@ env:
   VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
   PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
   BACKUP_DIR: ${{ vars['BACKUP_DIR'] || '/opt/resto/backups' }}
-  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  HEALTH_URL: ${{ vars.HEALTH_URL || format('https://api.{0}/healthz', vars.DOMAIN) }}
   LOG_DIR: ${{ vars['LOG_DIR'] || '/var/log/resto-bot' }}
 
 permissions:

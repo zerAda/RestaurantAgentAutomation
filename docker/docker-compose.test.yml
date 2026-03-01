@@ -30,7 +30,7 @@ services:
       retries: 30
 
   n8n:
-    image: n8nio/n8n:${N8N_VERSION:-1.123.21}
+    image: n8nio/n8n:${N8N_VERSION:-2.9.4}
     depends_on:
       postgres:
         condition: service_healthy

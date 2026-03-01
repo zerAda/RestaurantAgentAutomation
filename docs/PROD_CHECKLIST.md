@@ -88,7 +88,7 @@ Production compose already reads from Docker secrets files:
 - [ ] All Section 1 variables above set to production values
 - [ ] `DOMAIN_NAME` set to actual domain
 - [ ] `SSL_EMAIL` set to valid email for Let's Encrypt
-- [ ] `N8N_VERSION=1.80.0` (matches CI/CD pipeline)
+- [ ] `N8N_VERSION=2.9.4` (matches CI/CD pipeline)
 - [ ] `ALLOWED_AUDIO_DOMAINS` is non-empty (required for STT)
 
 ### 2.4 Compose Validation
@@ -159,7 +159,7 @@ Ensure these versions match across all environments:
 
 | Component | Expected | Check Location |
 | --------- | -------- | -------------- |
-| n8n | 1.80.0 | `.env:N8N_VERSION`, `ci.yml:44`, `security-scan.yml:110` |
+| n8n | 2.9.4 | `.env:N8N_VERSION`, `ci.yml:44`, `security-scan.yml:110` |
 | PostgreSQL | 15-alpine | `docker-compose.hostinger.prod.yml`, `ci.yml` matrix |
 | Redis | 7-alpine | `docker-compose.hostinger.prod.yml` |
 | Traefik | v3.6.6 | `docker-compose.hostinger.prod.yml` |

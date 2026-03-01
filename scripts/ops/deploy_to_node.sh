@@ -97,19 +97,32 @@ mkdir -p "$LOG_DIR"
 # ---------------------------------------------------------------------------
 if [ "$IS_FIRST" = "true" ]; then
   echo ">>> Step 1.5: Initializing minimum secrets on first deploy..."
-  
+
   if [ ! -f "$PROJECT_DIR/shared/.env" ]; then
-    touch "$PROJECT_DIR/shared/.env"
+    if [ -f "$RELEASE_DIR/config/.env.example" ]; then
+      echo "Copying .env.example as starting .env..."
+      cp "$RELEASE_DIR/config/.env.example" "$PROJECT_DIR/shared/.env"
+    else
+      touch "$PROJECT_DIR/shared/.env"
+    fi
   fi
-  
+
   if [ ! -f "$PROJECT_DIR/shared/secrets/postgres_password" ]; then
     tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/postgres_password"
   fi
-  
+
   if [ ! -f "$PROJECT_DIR/shared/secrets/n8n_encryption_key" ]; then
     tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/n8n_encryption_key"
   fi
-  
+
+  if [ ! -f "$PROJECT_DIR/shared/secrets/strapi_db_password" ]; then
+    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/strapi_db_password"
+  fi
+
+  if [ ! -f "$PROJECT_DIR/shared/secrets/redis_password" ]; then
+    touch "$PROJECT_DIR/shared/secrets/redis_password"
+  fi
+
   if [ ! -f "$PROJECT_DIR/shared/secrets/traefik_usersfile" ]; then
     touch "$PROJECT_DIR/shared/secrets/traefik_usersfile"
   fi
@@ -147,6 +160,12 @@ elif [ -f "$RELEASE_DIR/docker-compose.hostinger.prod.yml" ]; then
   cp "$RELEASE_DIR/docker-compose.hostinger.prod.yml" "$RELEASE_DIR/docker-compose.yml"
   echo "Using legacy hostinger prod compose file."
 fi
+
+# Ensure Docker networks exist (always, even on re-deploy — prune can remove them)
+echo "Ensuring Docker networks exist..."
+for net in proxy internal; do
+  docker network create "$net" 2>/dev/null || true
+done
 
 # Create Docker volumes on first deploy
 if [ "$IS_FIRST" = "true" ]; then
@@ -190,14 +209,19 @@ echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 echo "GHCR login complete. Pulling images (this may take several minutes)..."
 
 # Pull WITHOUT --quiet so progress is visible through SSH
-# Use timeout to prevent infinite hangs on network issues
-timeout 600 docker compose pull 2>&1 || {
-  echo "::error::docker compose pull failed or timed out (10 min limit)"
-  echo "Retrying with individual image pulls..."
+# CMS image is ~500MB and VPS bandwidth may be limited (can take 15-20 min)
+# Use generous timeout to avoid killing a legitimate slow pull
+timeout 1500 docker compose pull 2>&1 || {
+  PULL_EXIT=$?
+  if [ "$PULL_EXIT" -eq 124 ]; then
+    echo "::error::docker compose pull timed out after 25 minutes"
+  else
+    echo "::warning::docker compose pull failed (exit $PULL_EXIT), retrying individual images..."
+  fi
   # Retry individual GHCR images (public images are usually cached)
   for img in "$GHCR_IMAGE_CMS" "$GHCR_IMAGE_ADMIN" "$GHCR_IMAGE_KIOSK"; do
     echo "Pulling $img ..."
-    timeout 300 docker pull "$img" 2>&1 || echo "::warning::Failed to pull $img"
+    timeout 1200 docker pull "$img" 2>&1 || echo "::warning::Failed to pull $img"
   done
 }
 echo "Image pull complete."

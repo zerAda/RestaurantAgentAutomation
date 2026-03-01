@@ -8,7 +8,7 @@
 | ----- | ------ |
 | `build-push-artifacts.yml` — all 8 actions SHA-pinned | PASS |
 | `cd-deploy.yml` — cosign-installer SHA-pinned | PASS |
-| `ci.yml` — N8N_VERSION matches .env (1.80.0) | PASS |
+| `ci.yml` — N8N_VERSION matches .env (2.9.4) | PASS |
 | `ci.yml` — matrix simplified (no dead PG16 exclude) | PASS |
 | `docker-compose.hostinger.prod.yml` — all services have security_opt | PASS |
 | `docker-compose.hostinger.prod.yml` — all frontend services have cap_drop | PASS |
