@@ -249,25 +249,37 @@ done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
 
-# Activate webhook workflows via PATCH (sets active=true in workflow_entity)
-echo "Activating webhook workflows via PATCH..."
+# Activate webhook workflows
+# n8n 2.x uses POST /rest/workflows/:id/activate (dedicated endpoint)
+# n8n 1.x used PATCH with {"active": true}
+echo "Activating webhook workflows..."
 for wf_id in $WEBHOOK_IDS; do
+  # Try n8n 2.x dedicated activate endpoint first
   RESP=$(curl -s -b "$N8N_JAR" \
-    -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
-    -H "Content-Type: application/json" \
-    -d '{"active": true}')
-  ACTIVE=$(echo "$RESP" | jq -r '.active // .data.active // "unknown"' 2>/dev/null)
+    -X POST "http://localhost:25678/rest/workflows/$wf_id/activate" \
+    -H "Content-Type: application/json")
+  ACTIVE=$(echo "$RESP" | jq -r '.data.active // .active // "unknown"' 2>/dev/null)
+  if [[ "$ACTIVE" != "true" ]]; then
+    # Fallback: n8n 1.x PATCH method
+    RESP=$(curl -s -b "$N8N_JAR" \
+      -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
+      -H "Content-Type: application/json" \
+      -d '{"active": true}')
+    ACTIVE=$(echo "$RESP" | jq -r '.data.active // .active // "unknown"' 2>/dev/null)
+  fi
   echo "  Activated $wf_id → active=$ACTIVE"
 done
 
+# Brief pause for async activation to persist
+sleep 2
+
 # Verify active workflow count in DB (blocking integrity check)
-# n8n 2.x: webhook_entity table removed; verify via workflow_entity active flag
 echo "Verifying active workflows in DB..."
 ACTIVE_WF_COUNT="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
   "psql -U n8n -d n8n -Atc \"SELECT count(*) FROM workflow_entity WHERE active = true;\"" | tr -d '\r\n')"
 echo "  Active workflows: ${ACTIVE_WF_COUNT:-0}"
 if [[ "${ACTIVE_WF_COUNT:-0}" -lt 1 ]]; then
-  fail "No active workflows found after PATCH activation"
+  fail "No active workflows found after activation"
 fi
 echo "✅ Active workflows: ${ACTIVE_WF_COUNT} in DB"
 
