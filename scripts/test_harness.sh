@@ -205,9 +205,9 @@ export CORE_WORKFLOW_ID="$core_id"
 export ADMIN_WA_CONSOLE_WORKFLOW_ID="$admin_wa_id"
 
 # Create webhook workflows as INACTIVE first, then activate via PATCH.
-# PATCH creates webhook_entity DB records. Then we restart n8n in queue mode
-# so that ActiveWorkflowManager.init() reads those records and registers
-# the Express routes. (In regular mode, init() silently skips registration.)
+# n8n 2.x: PATCH sets active=true in workflow_entity. On restart,
+# ActiveWorkflowManager.init() reads active workflows and registers
+# Express routes directly (webhook_entity table removed in n8n 2.x).
 echo "Creating core webhook workflows (inactive)..."
 CREATE_FAILED=0
 WEBHOOK_IDS=""
@@ -249,7 +249,7 @@ done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
 
-# Activate webhook workflows via PATCH (creates webhook_entity DB records)
+# Activate webhook workflows via PATCH (sets active=true in workflow_entity)
 echo "Activating webhook workflows via PATCH..."
 for wf_id in $WEBHOOK_IDS; do
   RESP=$(curl -s -b "$N8N_JAR" \
@@ -260,19 +260,20 @@ for wf_id in $WEBHOOK_IDS; do
   echo "  Activated $wf_id → active=$ACTIVE"
 done
 
-# Verify webhook_entity records were created in DB (blocking integrity check)
-echo "Verifying webhook_entity records in DB..."
-WH_DB_COUNT="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-  "psql -U n8n -d n8n -Atc \"SELECT count(*) FROM webhook_entity;\"" | tr -d '\r\n')"
-echo "  webhook_entity records: ${WH_DB_COUNT:-0}"
-if [[ "${WH_DB_COUNT:-0}" -lt 1 ]]; then
-  fail "No webhook_entity records found after PATCH activation"
+# Verify active workflow count in DB (blocking integrity check)
+# n8n 2.x: webhook_entity table removed; verify via workflow_entity active flag
+echo "Verifying active workflows in DB..."
+ACTIVE_WF_COUNT="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+  "psql -U n8n -d n8n -Atc \"SELECT count(*) FROM workflow_entity WHERE active = true;\"" | tr -d '\r\n')"
+echo "  Active workflows: ${ACTIVE_WF_COUNT:-0}"
+if [[ "${ACTIVE_WF_COUNT:-0}" -lt 1 ]]; then
+  fail "No active workflows found after PATCH activation"
 fi
-echo "✅ webhook_entity: ${WH_DB_COUNT} records in DB"
+echo "✅ Active workflows: ${ACTIVE_WF_COUNT} in DB"
 
-# Force-restart n8n so init() registers Express routes from webhook_entity.
+# Force-restart n8n so init() registers Express routes from active workflows.
 # docker compose up -d won't restart if config unchanged; stop+up forces it.
-# On restart, ActiveWorkflowManager.init() reads active workflows + webhook_entity
+# On restart, ActiveWorkflowManager.init() reads active workflows from DB
 # and registers Express routes — this is how the VPS works on every deploy.
 echo "[5b/8] Force restart n8n (init registers webhooks from DB)..."
 docker compose -f "$COMPOSE_FILE" stop n8n
@@ -296,31 +297,22 @@ WH_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:256
   -d '{"text":"check","from":"check","msgId":"check-direct-1"}')
 echo "  Direct webhook status: $WH_DIRECT"
 
-# If flat path fails, try full DB path (n8n 1.123+ uses workflowId/nodeName/path format)
+# If flat path fails, try test path (n8n 2.x uses /webhook-test/ for test mode)
 WEBHOOKS_LIVE=true
 if [[ "$WH_DIRECT" == "404" ]]; then
-  echo "  Flat path 404 — resolving actual webhook paths from DB..."
-  resolve_wh() {
-    docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-      "psql -U n8n -d n8n -Atc \"SELECT \\\"webhookPath\\\" FROM webhook_entity WHERE method='$1' AND \\\"webhookPath\\\" LIKE '%$2' LIMIT 1;\"" 2>/dev/null | tr -d '\r\n'
-  }
-  WH_WA=$(resolve_wh POST "v1/inbound/whatsapp")
-  echo "  DB webhook path: $WH_WA"
-
-  if [[ -n "$WH_WA" && "$WH_WA" != "v1/inbound/whatsapp" ]]; then
-    WH_DIRECT2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook/$WH_WA" \
-      -H "Content-Type: application/json" \
-      -d '{"text":"check","from":"check","msgId":"check-direct-2"}')
-    echo "  Direct webhook (full path): $WH_DIRECT2"
-    if [[ "$WH_DIRECT2" != "404" && "$WH_DIRECT2" != "000" ]]; then
-      WH_DIRECT="$WH_DIRECT2"
-    fi
+  echo "  Flat path 404 — trying /webhook-test/ path..."
+  WH_TEST=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:25678/webhook-test/v1/inbound/whatsapp" \
+    -H "Content-Type: application/json" \
+    -d '{"text":"check","from":"check","msgId":"check-test-1"}')
+  echo "  Test webhook status: $WH_TEST"
+  if [[ "$WH_TEST" != "404" && "$WH_TEST" != "000" ]]; then
+    WH_DIRECT="$WH_TEST"
   fi
 fi
 
 if [[ "$WH_DIRECT" == "404" || "$WH_DIRECT" == "000" ]]; then
   WEBHOOKS_LIVE=false
-  echo "::warning::n8n webhook Express routes not registered (DB records exist: ${WH_DB_COUNT}). This is a known n8n 1.123 REST API limitation — webhooks work on VPS via startup init()."
+  echo "::warning::n8n webhook Express routes not registered (active workflows: ${ACTIVE_WF_COUNT:-0}). Webhooks work on VPS via startup init()."
   echo "  Skipping live webhook smoke tests; running DB-only verification instead."
 fi
 
@@ -510,16 +502,17 @@ else
   [[ "${ACTIVE_COUNT:-0}" -ge 7 ]] || fail "Expected at least 7 active workflows, got ${ACTIVE_COUNT:-0}"
   echo "✅ active workflows: ${ACTIVE_COUNT}"
 
-  # Verify webhook_entity covers all expected paths
+  # Verify active workflows contain webhook nodes for all expected paths
+  # n8n 2.x: webhook_entity table removed; check workflow_entity nodes JSON instead
   for path in "v1/inbound/whatsapp" "v1/inbound/instagram" "v1/inbound/messenger" \
               "v1/admin/ping" "v1/customer/delivery/quote" "v1/admin/delivery/zones" "v1/admin/orders"; do
     wh_exists="$(docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
-      "psql -U n8n -d n8n -Atc \"SELECT count(*) FROM webhook_entity WHERE \\\"webhookPath\\\" LIKE '%$path';\"" | tr -d '\r\n')"
+      "psql -U n8n -d n8n -Atc \"SELECT count(*) FROM workflow_entity WHERE active = true AND nodes::text LIKE '%$path%';\"" | tr -d '\r\n')"
     if [[ "${wh_exists:-0}" -ge 1 ]]; then
-      echo "  ✅ webhook_entity: $path"
+      echo "  ✅ webhook path: $path"
     else
-      echo "  ❌ webhook_entity missing: $path"
-      fail "Missing webhook_entity for $path"
+      echo "  ❌ webhook path missing: $path"
+      fail "Missing active workflow for webhook path $path"
     fi
   done
 
