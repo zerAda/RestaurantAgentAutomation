@@ -9,7 +9,10 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 60000 && \
+    npm config set fetch-retry-maxtimeout 300000 && \
+    npm ci --legacy-peer-deps
 
 COPY . .
 
@@ -37,7 +40,10 @@ RUN apk add --no-cache vips-dev python3 make g++
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --legacy-peer-deps
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 60000 && \
+    npm config set fetch-retry-maxtimeout 300000 && \
+    npm ci --omit=dev --legacy-peer-deps
 
 # Remove build tools after npm ci (keep runtime-only packages)
 RUN apk del python3 make g++
