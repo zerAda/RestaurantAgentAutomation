@@ -249,29 +249,17 @@ done
 
 [[ "$CREATE_FAILED" -eq 0 ]] || echo "::warning::$CREATE_FAILED core webhook workflow(s) failed to create"
 
-# Activate webhook workflows
-# n8n 2.x uses POST /rest/workflows/:id/activate (dedicated endpoint)
-# n8n 1.x used PATCH with {"active": true}
-echo "Activating webhook workflows..."
+# Activate webhook workflows via direct DB update
+# n8n 2.x internal REST API changed auth/response format; DB update is reliable
+echo "Activating webhook workflows via DB..."
+WH_ID_LIST=""
 for wf_id in $WEBHOOK_IDS; do
-  # Try n8n 2.x dedicated activate endpoint first
-  RESP=$(curl -s -b "$N8N_JAR" \
-    -X POST "http://localhost:25678/rest/workflows/$wf_id/activate" \
-    -H "Content-Type: application/json")
-  ACTIVE=$(echo "$RESP" | jq -r '.data.active // .active // "unknown"' 2>/dev/null)
-  if [[ "$ACTIVE" != "true" ]]; then
-    # Fallback: n8n 1.x PATCH method
-    RESP=$(curl -s -b "$N8N_JAR" \
-      -X PATCH "http://localhost:25678/rest/workflows/$wf_id" \
-      -H "Content-Type: application/json" \
-      -d '{"active": true}')
-    ACTIVE=$(echo "$RESP" | jq -r '.data.active // .active // "unknown"' 2>/dev/null)
-  fi
-  echo "  Activated $wf_id → active=$ACTIVE"
+  WH_ID_LIST="${WH_ID_LIST}'${wf_id}',"
 done
+WH_ID_LIST="${WH_ID_LIST%,}"  # trim trailing comma
 
-# Brief pause for async activation to persist
-sleep 2
+docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+  "psql -U n8n -d n8n -Atc \"UPDATE workflow_entity SET active = true WHERE id IN ($WH_ID_LIST);\""
 
 # Verify active workflow count in DB (blocking integrity check)
 echo "Verifying active workflows in DB..."
