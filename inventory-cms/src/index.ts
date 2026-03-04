@@ -1,11 +1,78 @@
 import type { Core } from '@strapi/strapi';
+import { seedRestaurantMenu } from './bootstrap-seeds/restaurant-menu';
 
 const MAX_PUBLIC_PERMISSIONS = 0;
+const ADMIN_EMAIL = 'admin@ralphe.com';
+const ADMIN_PASS = 'DiamondGrade2026!';
 
 export default {
-  register(/* { strapi }: { strapi: Core.Strapi } */) {},
+  register(/* { strapi }: { strapi: Core.Strapi } */) { },
 
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
+    // ── Unified Authentication: Sync Admin & API User ──────────────
+    try {
+      strapi.log.info('Security: Synchronizing Admin and API credentials...');
+
+      // 1. Ensure Super Admin exists in Admin Panel
+      const adminRepo = strapi.query('admin::user');
+      let superAdmin = await adminRepo.findOne({ where: { email: ADMIN_EMAIL } });
+
+      if (!superAdmin) {
+        const adminRole = await strapi.query('admin::role').findOne({ where: { code: 'strapi-super-admin' } });
+        superAdmin = await adminRepo.create({
+          data: {
+            email: ADMIN_EMAIL,
+            password: ADMIN_PASS,
+            firstname: 'Super',
+            lastname: 'Admin',
+            roles: [adminRole.id],
+            isActive: true,
+            registrationToken: null,
+          }
+        });
+        strapi.log.info('Security: Created Super Admin user.');
+      }
+
+      // 2. Ensure same user exists in Users-Permissions (API) for the Dashboard
+      const upRepo = strapi.query('plugin::users-permissions.user');
+      const apiUser = await upRepo.findOne({ where: { email: ADMIN_EMAIL } });
+
+      if (!apiUser) {
+        const authenticatedRole = await strapi.query('plugin::users-permissions.role').findOne({
+          where: { type: 'authenticated' }
+        });
+
+        await upRepo.create({
+          data: {
+            username: ADMIN_EMAIL,
+            email: ADMIN_EMAIL,
+            password: ADMIN_PASS,
+            confirmed: true,
+            role: authenticatedRole.id,
+          }
+        });
+        strapi.log.info('Security: Created API user matching Admin credentials.');
+      } else {
+        // Update password to match if it has drifted
+        await upRepo.update({
+          where: { id: apiUser.id },
+          data: { password: ADMIN_PASS }
+        });
+      }
+    } catch (err: any) {
+      strapi.log.error(`Security: Failed to sync credentials: ${err.message}`);
+    }
+
+    // ── Professional Seeding ────────────────────────────────────────
+    try {
+      const productCount = await strapi.query('api::product.product').count({});
+      if (productCount === 0) {
+        await seedRestaurantMenu(strapi);
+      }
+    } catch (err: any) {
+      strapi.log.error(`Seeding: Failed to seed menu: ${err.message}`);
+    }
+
     // ── Security: Verify public role permissions ───────────────────
     try {
       const publicRole = await strapi
@@ -18,7 +85,7 @@ export default {
       if (publicRole?.permissions?.length > MAX_PUBLIC_PERMISSIONS) {
         strapi.log.warn(
           `SECURITY: Public role has ${publicRole.permissions.length} permissions (max ${MAX_PUBLIC_PERMISSIONS}). ` +
-            'Disable unnecessary public permissions in the Admin Panel.',
+          'Disable unnecessary public permissions in the Admin Panel.',
         );
       } else {
         strapi.log.info('Security: Public role permissions verified.');
@@ -39,24 +106,12 @@ export default {
         if ((advanced as Record<string, unknown>).allow_register === true) {
           strapi.log.warn(
             'SECURITY: Public user registration is enabled. ' +
-              'Consider disabling it in Settings > Users & Permissions > Advanced.',
+            'Consider disabling it in Settings > Users & Permissions > Advanced.',
           );
         }
       }
     } catch {
       strapi.log.warn('Security: Could not verify registration settings.');
-    }
-
-    // ── Security: Log admin user count ────────────────────────────
-    try {
-      const adminCount = await strapi.query('admin::user').count({});
-      if (adminCount === 0) {
-        strapi.log.warn('SECURITY: No admin users exist. Create one immediately via strapi admin:create-user.');
-      } else {
-        strapi.log.info(`Security: ${adminCount} admin user(s) configured.`);
-      }
-    } catch {
-      // Admin user query may not be available in all contexts
     }
   },
 };
