@@ -90,7 +90,7 @@ export function AutomationView({ lang }: { lang: Language }) {
         try {
             // Attempt to parse to ensure it's valid JSON
             const parsed = JSON.parse(payload);
-            const res = await strapi.post<{ success: boolean; data: any }>('/api/automation/trigger', {
+            await strapi.post<{ success: boolean; data: unknown }>('/api/automation/trigger', {
                 webhookUrl: selectedWf.webhookUrl,
                 payload: parsed
             });

@@ -51,17 +51,17 @@ export function AIChatBubble() {
 
         try {
             // Send to proxy via Strapi
-            const res = await strapi.post<any>('/api/proxy/n8n/webhook/admin/chat', {
+            const res = await strapi.post<{ data?: { output?: string; message?: string; text?: string } }>('/api/proxy/n8n/webhook/admin/chat', {
                 message: userMsg.content,
                 sessionId: 'admin-dashboard-session'
             });
 
-            const data = res?.data || {};
+            const responseData = (res?.data || {}) as { output?: string; message?: string; text?: string };
 
             const agentMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'agent',
-                content: data.output || data.message || data.text || 'I processed your request.',
+                content: responseData.output || responseData.message || responseData.text || 'I processed your request.',
                 timestamp: new Date(),
             };
 

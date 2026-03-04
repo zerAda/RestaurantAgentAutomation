@@ -1,7 +1,9 @@
 const hits = new Map<string, { count: number; firstHit: number }>();
 
-export default (config, { strapi }) => {
-    return async (ctx, next) => {
+import type { Core } from '@strapi/strapi';
+
+export default (_config: any, { strapi }: { strapi: Core.Strapi }) => {
+    return async (ctx: any, next: () => Promise<void>) => {
         // Only target local auth login
         if (ctx.request.path === '/api/auth/local' && ctx.request.method === 'POST') {
             const ip = ctx.request.ip;

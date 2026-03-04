@@ -3,7 +3,7 @@ export default {
      * Abandoned Carts Garbage Collector
      * Runs every 15 minutes to delete carts older than 60 minutes
      */
-    '*/15 * * * *': async ({ strapi }) => {
+    '*/15 * * * *': async ({ strapi }: { strapi: any }) => {
         try {
             const now = new Date();
             const cutoffTime = new Date(now.getTime() - 60 * 60 * 1000); // 60 minutes ago
@@ -19,7 +19,7 @@ export default {
             });
 
             if (cartsToDelete.length > 0) {
-                const ids = cartsToDelete.map(c => c.id);
+                const ids = cartsToDelete.map((c: any) => c.id);
 
                 await strapi.db.query('api::order.order').deleteMany({
                     where: {
