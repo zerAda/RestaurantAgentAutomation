@@ -65,4 +65,5 @@ export default ({ env }: { env: { array: (key: string, defaultValue: string[]) =
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
+  'global::auth-ratelimit',
 ];

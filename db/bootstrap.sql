@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS restaurants (
   tenant_id uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   name text NOT NULL,
   timezone text NOT NULL DEFAULT 'Africa/Algiers',
-  currency text NOT NULL DEFAULT 'EUR',
+  currency text NOT NULL DEFAULT 'DZD',
   phone text,
   email text,
   address jsonb DEFAULT '{}'::jsonb,

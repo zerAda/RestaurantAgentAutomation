@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getTranslation, type Language } from '../utils/i18n';
+import { strapi } from '../services/strapiClient';
 import { Play, X, Loader2, Activity, Settings2, Code2 } from 'lucide-react';
 
 interface Workflow {
@@ -15,11 +16,13 @@ interface Workflow {
     defaultPayload: string;
 }
 
+const N8N_WEBHOOK_BASE = import.meta.env.VITE_N8N_WEBHOOK_BASE || '';
+
 const WORKFLOWS: Workflow[] = [
     {
         id: 'w4',
         name: 'W4 - CORE Bot Agent',
-        webhookUrl: 'http://localhost:5678/webhook/resto-bot-main',
+        webhookUrl: `${N8N_WEBHOOK_BASE}/webhook/resto-bot-main`,
         status: 'active',
         lastRun: '2 mins ago',
         successRate: '99.8%',
@@ -34,7 +37,7 @@ const WORKFLOWS: Workflow[] = [
     {
         id: 'sync',
         name: 'W_INVENTORY_SYNC',
-        webhookUrl: 'http://localhost:5678/webhook/sync-inventory',
+        webhookUrl: `${N8N_WEBHOOK_BASE}/webhook/sync-inventory`,
         status: 'active',
         lastRun: '15 mins ago',
         successRate: '100%',
@@ -45,7 +48,7 @@ const WORKFLOWS: Workflow[] = [
     {
         id: 'ad_gen',
         name: 'W_OMNICHANNEL_CONTENT_GEN',
-        webhookUrl: 'http://localhost:5678/webhook/generate-content',
+        webhookUrl: `${N8N_WEBHOOK_BASE}/webhook/generate-content`,
         status: 'active',
         lastRun: '1 hour ago',
         successRate: '95.4%',
@@ -56,7 +59,7 @@ const WORKFLOWS: Workflow[] = [
     {
         id: 'kiosk',
         name: 'W_KIOSK_ORDER',
-        webhookUrl: 'http://localhost:5678/webhook/kiosk-order',
+        webhookUrl: `${N8N_WEBHOOK_BASE}/webhook/kiosk-order`,
         status: 'active',
         lastRun: '5 mins ago',
         successRate: '100%',
@@ -87,17 +90,12 @@ export function AutomationView({ lang }: { lang: Language }) {
         try {
             // Attempt to parse to ensure it's valid JSON
             const parsed = JSON.parse(payload);
-            const res = await fetch(selectedWf.webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(parsed)
+            const res = await strapi.post<{ success: boolean; data: any }>('/api/automation/trigger', {
+                webhookUrl: selectedWf.webhookUrl,
+                payload: parsed
             });
 
-            if (res.ok) {
-                setResult({ success: true, message: 'Workflow triggered successfully.' });
-            } else {
-                setResult({ success: false, message: `Error ${res.status}: ${res.statusText}` });
-            }
+            setResult({ success: true, message: 'Workflow triggered successfully.' });
         } catch (e: unknown) {
             setResult({ success: false, message: e instanceof Error ? e.message : 'Invalid JSON or Network Error' });
         } finally {

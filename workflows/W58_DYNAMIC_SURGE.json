@@ -1,0 +1,132 @@
+{
+    "name": "W58 - Dynamic Weather Surge Pricing",
+    "active": true,
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 1
+                        }
+                    ]
+                }
+            },
+            "id": "cron",
+            "name": "Schedule",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.open-meteo.com/v1/forecast?latitude=36.7525&longitude=3.042&current_weather=true",
+                "options": {}
+            },
+            "id": "weather",
+            "name": "Get Weather Algiers",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                200,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ $json.current_weather.weathercode }}",
+                            "operation": "largerEqual",
+                            "value2": 50
+                        }
+                    ]
+                }
+            },
+            "id": "check_rain",
+            "name": "Is Raining?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                400,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE delivery_zones SET price_cents = price_cents + 10000 WHERE active = true AND price_cents < 50000;"
+            },
+            "id": "activate_surge",
+            "name": "Activate Surge Pricing",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.3,
+            "position": [
+                620,
+                -100
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE delivery_zones SET price_cents = GREATEST(price_cents - 10000, 15000) WHERE active = true AND price_cents >= 25000;"
+            },
+            "id": "deactivate_surge",
+            "name": "Deactivate Surge Pricing",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.3,
+            "position": [
+                620,
+                100
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule": {
+            "main": [
+                [
+                    {
+                        "node": "Get Weather Algiers",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Weather Algiers": {
+            "main": [
+                [
+                    {
+                        "node": "Is Raining?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Raining?": {
+            "main": [
+                [
+                    {
+                        "node": "Activate Surge Pricing",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Deactivate Surge Pricing",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {}
+}

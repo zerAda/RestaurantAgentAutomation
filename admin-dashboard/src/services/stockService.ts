@@ -39,43 +39,20 @@ function mapIngredient(item: StrapiIngredient): StockItem {
     };
 }
 
-// Fallback mock data when Strapi is unavailable
-const MOCK_DATA: StockItem[] = [
-    { id: '1', name: 'Tomatoes', category: 'Vegetables', quantity: 12.5, unit: 'kg', minStock: 5, status: 'ok' },
-    { id: '2', name: 'Burger Buns', category: 'Bakery', quantity: 24, unit: 'units', minStock: 50, status: 'low' },
-    { id: '3', name: 'Cheddar Cheese', category: 'Dairy', quantity: 2.1, unit: 'kg', minStock: 2, status: 'ok' },
-    { id: '4', name: 'Beef Patties', category: 'Meat', quantity: 15, unit: 'kg', minStock: 20, status: 'low' },
-    { id: '5', name: 'Lettuce', category: 'Vegetables', quantity: 4, unit: 'kg', minStock: 2, status: 'ok' },
-    { id: '6', name: 'Special Sauce', category: 'Pantry', quantity: 0.5, unit: 'L', minStock: 1, status: 'critical' },
-];
-
 export const stockService = {
     getAll: async (): Promise<StockItem[]> => {
-        try {
-            const res = await strapi.get<StrapiIngredient[]>('/api/ingredients?populate=supplier');
-            return res.data.map(mapIngredient);
-        } catch {
-            console.warn('Strapi unavailable, using mock data');
-            return [...MOCK_DATA];
-        }
+        // Fetch with high limit to handle pagination truncation (fixes M-audit issue)
+        const res = await strapi.get<StrapiIngredient[]>('/api/ingredients?populate=supplier&pagination[limit]=1000');
+        // Handle Strapi v5 array wrapping
+        const data = Array.isArray(res.data) ? res.data : [];
+        return data.map(mapIngredient);
     },
 
     updateStock: async (id: string, delta: number): Promise<StockItem | null> => {
-        try {
-            const res = await strapi.get<StrapiIngredient>(`/api/ingredients/${id}`);
-            const current = res.data;
-            const newQty = Math.max(0, current.current_stock + delta);
-            const updated = await strapi.put<StrapiIngredient>(`/api/ingredients/${id}`, {
-                current_stock: newQty,
-            });
-            return mapIngredient(updated.data);
-        } catch {
-            // Fallback to mock update
-            const item = MOCK_DATA.find(i => i.id === id);
-            if (!item) return null;
-            item.quantity = Math.max(0, item.quantity + delta);
-            item.status = computeStatus(item.quantity, item.minStock);
-            return { ...item };
-        }
+        // Calls the custom atomic endpoint
+        const updated = await strapi.post<StrapiIngredient>(`/api/ingredients/${id}/adjust`, {
+            delta: delta,
+        });
+        return mapIngredient(updated.data);
     },
 };

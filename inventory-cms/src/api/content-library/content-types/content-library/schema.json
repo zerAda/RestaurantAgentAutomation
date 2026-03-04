@@ -69,8 +69,9 @@
             "default": {},
             "description": "Per-platform publish results: { instagram: { success, media_id }, facebook: {...}, ... }"
         },
-        "published_at": {
-            "type": "datetime"
+        "content_published_at": {
+            "type": "datetime",
+            "description": "When this content was published to social platforms (renamed from published_at to avoid Strapi 5 system column collision)"
         },
         "caption_variant_used": {
             "type": "enumeration",

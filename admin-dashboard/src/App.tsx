@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { strapi } from './services/strapiClient';
 import { StockView } from './components/StockView';
 import { QuickAdjust } from './components/QuickAdjust';
 import { KitchenView } from './components/KitchenView';
@@ -239,14 +240,60 @@ function TopItem({ name, sales, growth }: { name: string, sales: number, growth:
   );
 }
 
+interface StrapiDriver {
+  id: number;
+  name: string;
+  status: string;
+  vehicle_type?: string;
+  battery_pct?: number;
+}
+
 function FleetPlaceholder() {
+  const [drivers, setDrivers] = useState<StrapiDriver[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchDrivers = useCallback(async () => {
+    try {
+      const res = await strapi.find<StrapiDriver>('drivers', {
+        filters: { is_active: { $eq: true } },
+        pagination: { limit: 20 },
+      });
+      setDrivers(res.data as unknown as StrapiDriver[]);
+    } catch {
+      setDrivers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDrivers();
+    const t = setInterval(fetchDrivers, 30000);
+    return () => clearInterval(t);
+  }, [fetchDrivers]);
+
+  const activeCount = drivers.filter(d => d.status === 'ONLINE').length;
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <DriverCard name="Hassan R." status="On Delivery" order="#1024" battery="82%" icon="🛵" />
-        <DriverCard name="Amine K." status="Returning" order="None" battery="45%" icon="🚲" />
-        <DriverCard name="Mehdi S." status="At Restaurant" order="None" battery="98%" icon="🛵" />
-      </div>
+      {loading ? (
+        <div className="text-center py-10 text-zinc-400">Loading fleet…</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {drivers.length === 0 ? (
+            <div className="col-span-3 text-center py-10 text-zinc-400">No active drivers found.</div>
+          ) : drivers.slice(0, 6).map(d => (
+            <DriverCard
+              key={d.id}
+              name={d.name}
+              status={d.status === 'ONLINE' ? 'Online' : d.status === 'ON_DELIVERY' ? 'On Delivery' : 'Offline'}
+              order="—"
+              battery={d.battery_pct !== undefined ? `${d.battery_pct}%` : '—'}
+              icon={d.vehicle_type === 'bicycle' ? '🚲' : '🛵'}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="diamond-card p-10 rounded-3xl relative overflow-hidden h-[500px]">
         <div className="absolute inset-0 opacity-20 pointer-events-none">
@@ -264,10 +311,7 @@ function FleetPlaceholder() {
           <p className="text-zinc-500 text-sm mb-6">Real-time GPS tracking of active delivery partners.</p>
           <div className="flex gap-4">
             <div className="diamond-glass px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500" /> 12 Active Drivers
-            </div>
-            <div className="diamond-glass px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-amber-500" /> 4 Congested Areas
+              <div className="w-2 h-2 rounded-full bg-green-500" /> {activeCount} Active Drivers
             </div>
           </div>
         </div>

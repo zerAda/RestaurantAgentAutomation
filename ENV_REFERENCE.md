@@ -3,14 +3,31 @@
 Document env vars by service. Mark whether SECRET.
 
 ## Conventions
+
 - SECRET vars must NOT be logged.
 - Prefer secrets via files mounted into containers where possible.
 
 ## Gateway / Traefik
-- <VAR> (SECRET? yes/no): purpose, example, where used
 
-## n8n
-- <VAR> (SECRET? yes/no): purpose, example, where used
+- `DOMAIN` (SECRET? no): Base domain for routing (e.g. `ralphe.com`)
 
-## Database
-- <VAR> (SECRET? yes/no): purpose, example, where used
+## Strapi CMS
+
+- `STRAPI_API_TOKEN` (SECRET? yes): Master Token for n8n to call Strapi
+- `JWT_SECRET` (SECRET? yes): Used to sign Admin JWT tokens
+- `DATABASE_URL` (SECRET? yes): Postgres connection string for Strapi
+
+## n8n Automation
+
+- `WEBHOOK_URL` (SECRET? no): Base URL for webhooks (public facing)
+- `N8N_BASIC_AUTH` (SECRET? yes): HTTP Basic Auth for n8n incoming webhooks
+
+## External APIs (in n8n or Strapi)
+
+- `OPENAI_API_KEY` (SECRET? yes): Used for core AI reasoning (Chat, Orders)
+- `REPLICATE_API_TOKEN` (SECRET? yes): Used for Flux.1 image generation
+- `WHATSAPP_TOKEN` (SECRET? yes): Cloud API token for sending WhatsApp MSGs
+- `CHARGILY_API_KEY` (SECRET? yes): ePaiement CIB/Edahabia Algeria
+- `TWILIO_ACCOUNT_SID` & `TWILIO_AUTH_TOKEN` (SECRET? yes): Twilio Voice integrations
+- `VAPI_TOKEN` (SECRET? yes): Vapi.ai for Voice Agents
+- `SUPABASE_URL` & `SUPABASE_ANON_KEY` (SECRET? yes): Realtime Websocket KDS

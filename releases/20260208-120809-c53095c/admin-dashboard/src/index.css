@@ -1,8 +1,0 @@
-@import "tailwindcss";
-@source "../src/**/*.{js,ts,jsx,tsx}";
-@source "../index.html";
-
-/* Custom Utilities */
-.card {
-  @apply bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-700 p-6;
-}

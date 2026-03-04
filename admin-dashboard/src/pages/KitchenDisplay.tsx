@@ -1,18 +1,22 @@
 import { useState, useEffect } from "react";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Flame, CheckCircle } from "lucide-react";
+import { Clock, Flame, CheckCircle, Loader2 } from "lucide-react";
+import { useOrders } from "../services/orders";
 
-// Mock Data representing the "Symphony" logic
-// Items are sorted by "Start Cooking At" time, not Order Time.
-const MOCK_KITCHEN_QUEUE = [
-    { id: "k1", orderId: "101", item: "Burger Ralphé", status: "PENDING", startAt: "12:05", eta: "12:15", station: "GRILL" },
-    { id: "k2", orderId: "102", item: "Frites Maison", status: "PENDING", startAt: "12:10", eta: "12:15", station: "FRYER" }, // Starts later to be fresh
-    { id: "k3", orderId: "103", item: "Pizza 4F", status: "COOKING", startAt: "12:00", eta: "12:12", station: "OVEN" },
-];
+interface KitchenItem {
+    id: string;
+    orderId: string;
+    item: string;
+    status: string;
+    startAt: string;
+    eta: string;
+    station: string;
+}
 
 export default function KitchenDisplay() {
     const [currentTime, setCurrentTime] = useState(new Date());
+    const { data: orders, isLoading } = useOrders();
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -22,6 +26,38 @@ export default function KitchenDisplay() {
     const formatTime = (date: Date) => {
         return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     };
+
+    const processOrdersIntoQueue = (): KitchenItem[] => {
+        if (!orders) return [];
+
+        // Only take active orders
+        const activeOrders = orders.filter(o => !['DONE', 'CANCELLED'].includes(o.status));
+
+        const queue: KitchenItem[] = [];
+        activeOrders.forEach(order => {
+            order.items.forEach((itemText, index) => {
+                // Auto-assign station based on name heuristics
+                const lowerItem = itemText.toLowerCase();
+                let station = 'GRILL'; // Default
+                if (lowerItem.includes('pizza') || lowerItem.includes('four')) station = 'OVEN';
+                if (lowerItem.includes('frite') || lowerItem.includes('tenders')) station = 'FRYER';
+
+                queue.push({
+                    id: `${order.id}-${index}`,
+                    orderId: order.id.replace('#', ''),
+                    item: itemText,
+                    status: order.status === 'PREPARING' ? 'COOKING' : 'PENDING',
+                    startAt: formatTime(new Date(order.rawCreatedAt)),
+                    eta: order.time, // using the "X min" string as a rough ETA
+                    station
+                });
+            });
+        });
+
+        return queue;
+    };
+
+    const queue = processOrdersIntoQueue();
 
     return (
         <div className="p-6 bg-slate-950 min-h-screen text-white">
@@ -35,28 +71,24 @@ export default function KitchenDisplay() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* STATION: GRILL */}
-                <KitchenStation title="🔥 STATION GRILL" station="GRILL" items={MOCK_KITCHEN_QUEUE.filter(i => i.station === 'GRILL')} />
+            {isLoading ? (
+                <div className="flex justify-center items-center h-64">
+                    <Loader2 className="w-12 h-12 text-slate-500 animate-spin" />
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* STATION: GRILL */}
+                    <KitchenStation title="🔥 STATION GRILL" station="GRILL" items={queue.filter(i => i.station === 'GRILL')} />
 
-                {/* STATION: FRYER */}
-                <KitchenStation title="🍟 STATION FRYER" station="FRYER" items={MOCK_KITCHEN_QUEUE.filter(i => i.station === 'FRYER')} />
+                    {/* STATION: FRYER */}
+                    <KitchenStation title="🍟 STATION FRYER" station="FRYER" items={queue.filter(i => i.station === 'FRYER')} />
 
-                {/* STATION: OVEN */}
-                <KitchenStation title="🍕 STATION OVEN" station="OVEN" items={MOCK_KITCHEN_QUEUE.filter(i => i.station === 'OVEN')} />
-            </div>
+                    {/* STATION: OVEN */}
+                    <KitchenStation title="🍕 STATION OVEN" station="OVEN" items={queue.filter(i => i.station === 'OVEN')} />
+                </div>
+            )}
         </div>
     );
-}
-
-interface KitchenItem {
-    id: string;
-    orderId: string;
-    item: string;
-    status: string;
-    startAt: string;
-    eta: string;
-    station: string;
 }
 
 function KitchenStation({ title, station, items }: { title: string, station: string, items: KitchenItem[] }) {

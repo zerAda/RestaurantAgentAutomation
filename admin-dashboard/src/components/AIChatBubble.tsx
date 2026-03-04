@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Bot, User, Sparkles } from 'lucide-react';
+import { strapi } from '../services/strapiClient';
 
 interface ChatMessage {
     id: string;
@@ -49,26 +50,13 @@ export function AIChatBubble() {
         setIsLoading(true);
 
         try {
-            // Admin session token for auth against the n8n webhook (if configured)
-            const token = sessionStorage.getItem('admin_jwt') || '';
-
-            const res = await fetch(`${import.meta.env.VITE_N8N_URL || 'http://localhost:5678'}/webhook/admin/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    message: userMsg.content,
-                    sessionId: 'admin-dashboard-session'
-                }),
+            // Send to proxy via Strapi
+            const res = await strapi.post<any>('/api/proxy/n8n/webhook/admin/chat', {
+                message: userMsg.content,
+                sessionId: 'admin-dashboard-session'
             });
 
-            if (!res.ok) {
-                throw new Error('Agent unreachable');
-            }
-
-            const data = await res.json();
+            const data = res?.data || {};
 
             const agentMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),

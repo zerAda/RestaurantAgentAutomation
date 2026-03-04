@@ -63,6 +63,24 @@ if [ -f .env ]; then set -a; source .env; set +a; fi
 
 # Override external volumes so staging uses its own data (not production!)
 cat > docker-compose.staging-override.yml <<'OVERRIDE'
+networks:
+  internal:
+    name: resto_staging_internal
+
+services:
+  cms:
+    labels:
+      - "traefik.http.routers.cms.rule=Host(`staging-cms.${DOMAIN_NAME}`)"
+  admin:
+    labels:
+      - "traefik.http.routers.admin.rule=Host(`staging-admin.${DOMAIN_NAME}`)"
+  n8n:
+    labels:
+      - "traefik.http.routers.n8n.rule=Host(`staging-n8n.${DOMAIN_NAME}`)"
+  kiosk:
+    labels:
+      - "traefik.http.routers.kiosk.rule=Host(`staging-kiosk.${DOMAIN_NAME}`)"
+
 volumes:
   traefik_data:
     external: false

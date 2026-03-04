@@ -17,29 +17,21 @@
         },
         {
             "parameters": {
-                "conditions": {
-                    "string": [
-                        {
-                            "value1": "={{ $json.model }}",
-                            "operation": "equal",
-                            "value2": "menu-item"
-                        }
-                    ]
-                }
+                "language": "javascript",
+                "jsCode": "const model = $json.model;\nconst data = $json.data || {};\nconst payload = { data: {} };\n\nfor (const [key, value] of Object.entries(data)) {\n  if (['id', 'createdAt', 'updatedAt', 'publishedAt', 'createdBy', 'updatedBy', 'documentId'].includes(key)) continue;\n  payload.data[key] = value;\n}\n\nlet endpoint = '';\nif (model === 'system-config') {\n  endpoint = '/api/system-config';\n} else {\n  let plural = model + 's';\n  if (model === 'delivery-zone') plural = 'delivery-zones';\n  endpoint = `/api/${plural}/${data.documentId || data.id}`;\n}\n\nreturn [{ json: { ...($json), _syncPayload: payload, _endpoint: endpoint } }];"
             },
-            "id": "1",
-            "name": "Router",
-            "type": "n8n-nodes-base.switch",
-            "typeVersion": 1,
+            "name": "Format URL & Payload",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
             "position": [
-                300,
+                350,
                 200
             ]
         },
         {
             "parameters": {
                 "method": "PUT",
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/menu-items/{{ $json.data.id }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}{{ $json._endpoint }}",
                 "sendHeaders": true,
                 "headerParameters": {
                     "parameters": [
@@ -55,65 +47,14 @@
                 },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ data: { name: $json.data.name, price: $json.data.price, description: $json.data.description } }) }}"
+                "jsonBody": "={{ JSON.stringify($json._syncPayload) }}"
             },
-            "name": "Upsert Menu Item (Strapi)",
+            "name": "Upsert Strapi Model",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
-                750,
+                600,
                 200
-            ],
-            "continueOnFail": true
-        },
-        {
-            "parameters": {
-                "conditions": {
-                    "string": [
-                        {
-                            "value1": "={{ $json.model }}",
-                            "operation": "equal",
-                            "value2": "system-config"
-                        }
-                    ]
-                }
-            },
-            "id": "2",
-            "name": "Is System Config?",
-            "type": "n8n-nodes-base.if",
-            "typeVersion": 1,
-            "position": [
-                500,
-                500
-            ]
-        },
-        {
-            "parameters": {
-                "method": "PUT",
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/system-config",
-                "sendHeaders": true,
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
-                        },
-                        {
-                            "name": "Content-Type",
-                            "value": "application/json"
-                        }
-                    ]
-                },
-                "sendBody": true,
-                "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ data: { openai_key: $json.data.openai_key, replicate_token: $json.data.replicate_token, whatsapp_phone_number_id: $json.data.whatsapp_phone_number_id, whatsapp_business_account_id: $json.data.whatsapp_business_account_id, whatsapp_access_token: $json.data.whatsapp_access_token, whatsapp_verify_token: $json.data.whatsapp_verify_token, system_prompt_strategy: $json.data.system_prompt_strategy, system_prompt_image_gen: $json.data.system_prompt_image_gen, system_prompt_video_gen: $json.data.system_prompt_video_gen, maintenance_mode: $json.data.maintenance_mode, allowed_admin_ips: $json.data.allowed_admin_ips, global_contact_phone: $json.data.global_contact_phone } }) }}"
-            },
-            "name": "Upsert System Config (Strapi)",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 4,
-            "position": [
-                750,
-                500
             ],
             "continueOnFail": true
         }
@@ -123,36 +64,18 @@
             "main": [
                 [
                     {
-                        "node": "Router",
+                        "node": "Format URL & Payload",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Router": {
+        "Format URL & Payload": {
             "main": [
                 [
                     {
-                        "node": "Upsert Menu Item (Strapi)",
-                        "type": "main",
-                        "index": 0
-                    }
-                ],
-                [
-                    {
-                        "node": "Is System Config?",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        },
-        "Is System Config?": {
-            "main": [
-                [
-                    {
-                        "node": "Upsert System Config (Strapi)",
+                        "node": "Upsert Strapi Model",
                         "type": "main",
                         "index": 0
                     }

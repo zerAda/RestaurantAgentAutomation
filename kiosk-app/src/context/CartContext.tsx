@@ -1,5 +1,6 @@
-import { type ReactNode, useState, createContext, useContext, useCallback } from 'react';
+import { type ReactNode, useState, createContext, useContext, useCallback, useEffect } from 'react';
 import type { Product, ExtraOption, SizeOption } from '../services/menuService';
+import { strapi } from '../services/strapiClient';
 
 interface SelectedSauce {
     name: string;
@@ -26,6 +27,12 @@ interface OrderResult {
     error?: string;
 }
 
+interface StrapiSystemConfig {
+    kiosk_default_service_mode?: string;
+    kiosk_idle_timeout_sec?: number;
+    kiosk_enabled?: boolean;
+}
+
 interface CartContextType {
     items: CartItem[];
     addItem: (product: Product, extras: ExtraOption[], sauces: SelectedSauce[], size: SizeOption, quantity: number) => void;
@@ -41,11 +48,10 @@ interface CartContextType {
     submitOrder: () => Promise<OrderResult>;
     isSubmitting: boolean;
     lastOrderResult: OrderResult | null;
+    defaultServiceMode: string;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
-
-const N8N_URL = import.meta.env.VITE_N8N_URL || 'http://localhost:5678';
 
 export function CartProvider({ children }: { children: ReactNode }) {
     const [items, setItems] = useState<CartItem[]>([]);
@@ -53,6 +59,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const [orderType, setOrderType] = useState<'dine_in' | 'takeaway'>('dine_in');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [lastOrderResult, setLastOrderResult] = useState<OrderResult | null>(null);
+    const [defaultServiceMode, setDefaultServiceMode] = useState<string>('kiosk_sur_place');
+
+    // Fetch kiosk defaults from Strapi system-config (H-04)
+    useEffect(() => {
+        strapi.get<StrapiSystemConfig>('/api/system-config').then(res => {
+            const cfg = res.data;
+            if (cfg?.kiosk_default_service_mode) {
+                setDefaultServiceMode(cfg.kiosk_default_service_mode);
+            }
+        }).catch(() => {
+            // Use default if Strapi unavailable
+        });
+    }, []);
 
     const addItem = useCallback((product: Product, extras: ExtraOption[], sauces: SelectedSauce[], size: SizeOption, quantity: number) => {
         const extrasKey = extras.map(e => e.name).sort().join('|');
@@ -97,60 +116,56 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         setIsSubmitting(true);
         try {
-            const payload = {
-                items: items.map(item => ({
-                    product_id: item.product.id,
-                    name: item.product.name,
-                    quantity: item.quantity,
-                    size: item.size,
-                    extras: item.extras.map(e => ({ name: e.name, price: e.price })),
-                    sauces: item.sauces.map(s => ({ name: s.name, price: s.price, is_free: s.is_free })),
-                })),
-                table_number: tableNumber,
-                order_type: orderType,
-                kiosk_session_id: `kiosk_${Date.now()}`,
-                payment_method: 'cash',
-            };
+            const orderItems = items.map(item => ({
+                item_code: item.product.id,
+                label: item.product.name,
+                qty: item.quantity,
+                unit_price_cents: item.product.price,
+                line_total_cents: item.product.price * item.quantity,
+            }));
 
-            const res = await fetch(`${N8N_URL}/webhook/kiosk-order`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+            const serviceMode = orderType === 'dine_in' ? 'kiosk_sur_place' : 'kiosk_a_emporter';
+
+            const res = await strapi.post<{ id: number; documentId: string }>('/api/orders', {
+                channel: 'kiosk',
+                service_mode: serviceMode,
+                status: 'NEW',
+                total_cents: total,
+                table_number: tableNumber,
+                order_items: orderItems,
             });
 
-            const data = await res.json();
-
-            if (data.success) {
+            if (res?.data?.id) {
                 const result: OrderResult = {
                     success: true,
-                    order_id: data.order_id,
-                    is_merge: data.is_merge,
-                    total_amount: data.total_amount,
-                    estimated_ready_time: data.estimated_ready_time,
-                    message: data.message,
+                    order_id: res.data.id,
+                    total_amount: total,
                 };
                 setLastOrderResult(result);
                 setItems([]);
                 return result;
             } else {
-                const result: OrderResult = { success: false, error: data.message || 'Erreur de commande' };
+                const result: OrderResult = { success: false, error: 'Erreur de commande' };
                 setLastOrderResult(result);
                 return result;
             }
-        } catch {
-            const result: OrderResult = { success: false, error: 'Connexion impossible. Réessayez.' };
+        } catch (err) {
+            const result: OrderResult = {
+                success: false,
+                error: err instanceof Error ? err.message : 'Connexion impossible. Réessayez.',
+            };
             setLastOrderResult(result);
             return result;
         } finally {
             setIsSubmitting(false);
         }
-    }, [items, tableNumber, orderType]);
+    }, [items, tableNumber, orderType, total]);
 
     return (
         <CartContext.Provider value={{
             items, addItem, removeItem, updateQuantity, clearCart, total, cartCount,
             tableNumber, setTableNumber, orderType, setOrderType,
-            submitOrder, isSubmitting, lastOrderResult
+            submitOrder, isSubmitting, lastOrderResult, defaultServiceMode,
         }}>
             {children}
         </CartContext.Provider>

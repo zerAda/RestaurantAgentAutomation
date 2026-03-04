@@ -19,50 +19,38 @@ interface ProductVideo {
 }
 
 const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || 'https://cms.' + (import.meta.env.VITE_DOMAIN || 'localhost');
+const STRAPI_PLACEHOLDER = `${STRAPI_URL}/uploads/placeholder_menu_item.png`;
 
 const FALLBACK_FEED: ProductVideo[] = [
     {
-        id: "1",
-        url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=1899&auto=format&fit=crop",
+        id: "fallback-1",
+        url: STRAPI_PLACEHOLDER,
         type: 'image',
-        title: "Diamond Signature Burger",
-        price: 1850,
-        rawPrice: "1850 DA",
-        desc: "24-hour aged wagyu beef, truffle aioli, gold-leaf brioche."
-    },
-    {
-        id: "2",
-        url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?q=80&w=1899&auto=format&fit=crop",
-        type: 'image',
-        title: "Celestial Margherita",
-        price: 2200,
-        rawPrice: "2200 DA",
-        desc: "San Marzano tomatoes, buffalo mozzarella, fresh basil, extra virgin olive oil."
-    },
-    {
-        id: "3",
-        url: "https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=1899&auto=format&fit=crop",
-        type: 'image',
-        title: "Midnight Cheese Melt",
-        price: 1400,
-        rawPrice: "1400 DA",
-        desc: "Triple cream brie, caramelized onions, artisan sourdough."
+        title: "Menu en chargement…",
+        price: 0,
+        rawPrice: "—",
+        desc: "Connexion au menu en cours."
     }
 ];
 
 function mapStrapiToFeed(data: Record<string, unknown>[]): ProductVideo[] {
     return data.map((item: Record<string, unknown>) => {
-        const attrs = item.attributes || item;
-        const img = attrs.image?.data?.attributes?.url;
-        const imageUrl = img ? (img.startsWith('http') ? img : `${STRAPI_URL}${img}`) : FALLBACK_FEED[0].url;
+        const attrs = (item.attributes || item) as Record<string, unknown>;
+        // creative_assets is an array on the products schema
+        const assets = attrs.creative_assets as { url?: string }[] | undefined;
+        const assetUrl = assets?.[0]?.url;
+        const imageUrl = assetUrl
+            ? (assetUrl.startsWith('http') ? assetUrl : `${STRAPI_URL}${assetUrl}`)
+            : STRAPI_PLACEHOLDER;
+        const price = typeof attrs.price === 'number' ? attrs.price : 0;
         return {
             id: String(item.id),
             url: imageUrl,
             type: 'image' as const,
-            title: attrs.name || attrs.title || 'Untitled',
-            price: attrs.price_cents ? attrs.price_cents / 100 : (attrs.price || 0),
-            rawPrice: `${attrs.price_cents ? attrs.price_cents / 100 : (attrs.price || 0)} DA`,
-            desc: attrs.description || '',
+            title: String(attrs.marketing_name || attrs.name || 'Untitled'),
+            price,
+            rawPrice: `${price} DA`,
+            desc: String(attrs.description || ''),
         };
     });
 }
@@ -75,7 +63,7 @@ function useLiveFeed() {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch(`${STRAPI_URL}/api/menu-items?populate=*&pagination[pageSize]=10&sort=createdAt:desc`);
+                const res = await fetch(`${STRAPI_URL}/api/products?populate=creative_assets&filters[is_kiosk_visible][$eq]=true&pagination[pageSize]=10&sort=createdAt:desc`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const json = await res.json();
                 const items = json.data;

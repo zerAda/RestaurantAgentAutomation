@@ -227,6 +227,305 @@
             "type": "decimal",
             "default": 1.0,
             "description": "ROAS below this after 24h triggers auto-pause"
+        },
+        "darija_patterns": {
+            "type": "text",
+            "default": "wash, kifach, bghit, fin, mchaha, dkhalt, chnou",
+            "description": "Comma-separated keywords for Moroccan Arabic detection"
+        },
+        "sticky_ar_threshold_mins": {
+            "type": "integer",
+            "default": 60,
+            "description": "Minutes to keep session in Arabic after detection"
+        },
+        "handoff_keywords": {
+            "type": "text",
+            "default": "agent, human, help, support, assist, helpme, aide, human",
+            "description": "Keywords that trigger human support handoff"
+        },
+        "allowed_audio_domains": {
+            "type": "text",
+            "default": "https://cdn.fbsbx.com, https://lookaside.fbsbx.com",
+            "description": "Allowed domains for voice note media URLs"
+        },
+        "delivery_slots_enabled": {
+            "type": "boolean",
+            "default": true
+        },
+        "max_voice_note_duration_sec": {
+            "type": "integer",
+            "default": 60,
+            "description": "Maximum duration in seconds for processing voice notes"
+        },
+        "l10n_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable Arabic/Darija/FR multilingual detection"
+        },
+        "l10n_sticky_ar_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Keep Arabic session sticky after N Arabic-script messages"
+        },
+        "l10n_sticky_ar_threshold": {
+            "type": "integer",
+            "default": 2,
+            "description": "Number of Arabic-script messages before sticky AR activates"
+        },
+        "strict_ar_out": {
+            "type": "boolean",
+            "default": true,
+            "description": "Force Arabic output when Arabic script detected in input"
+        },
+        "support_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable human support handoff via keywords"
+        },
+        "faq_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable FAQ/RAG knowledge base queries"
+        },
+        "delivery_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable delivery mode for customers"
+        },
+        "delivery_address_max_attempts": {
+            "type": "integer",
+            "default": 3,
+            "description": "Max retries for address clarification before handoff"
+        },
+        "delivery_address_clarify": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable address clarification loop"
+        },
+        "messenger_page_id": {
+            "type": "string",
+            "description": "Facebook Messenger Page ID for sending DMs"
+        },
+        "messenger_api_token": {
+            "type": "string",
+            "private": true,
+            "description": "Messenger Page Access Token for Graph API"
+        },
+        "messenger_send_url": {
+            "type": "string",
+            "description": "Override Messenger send URL (auto-built from page_id if empty)"
+        },
+        "ig_page_id": {
+            "type": "string",
+            "description": "Instagram Professional Account ID for sending DMs"
+        },
+        "ig_api_token": {
+            "type": "string",
+            "private": true,
+            "description": "Instagram API token for Graph API"
+        },
+        "ig_send_url": {
+            "type": "string",
+            "description": "Override Instagram send URL (auto-built from ig_page_id if empty)"
+        },
+        "stt_api_url": {
+            "type": "string",
+            "description": "Speech-to-Text API endpoint (Whisper, Deepgram, etc.)"
+        },
+        "stt_max_duration_sec": {
+            "type": "integer",
+            "default": 120,
+            "description": "Maximum audio duration to send to STT API"
+        },
+        "llm_api_url": {
+            "type": "string",
+            "description": "LLM API endpoint (Ollama, OpenAI, etc.)"
+        },
+        "llm_fallback_model": {
+            "type": "string",
+            "default": "llama3",
+            "description": "Fallback LLM model if primary fails"
+        },
+        "llm_timeout_ms": {
+            "type": "integer",
+            "default": 120000,
+            "description": "LLM API timeout in milliseconds"
+        },
+        "outbox_max_attempts": {
+            "type": "integer",
+            "default": 3,
+            "description": "Max retry attempts for outbound message delivery"
+        },
+        "outbox_base_delay_sec": {
+            "type": "integer",
+            "default": 1,
+            "description": "Base delay for exponential backoff (seconds)"
+        },
+        "outbox_max_delay_sec": {
+            "type": "integer",
+            "default": 60,
+            "description": "Max delay cap for exponential backoff (seconds)"
+        },
+        "outbox_async_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Queue messages for async worker instead of sending inline"
+        },
+        "outbox_redis_ttl_sec": {
+            "type": "integer",
+            "default": 604800,
+            "description": "Redis TTL for outbox entries (7 days default)"
+        },
+        "supabase_url": {
+            "type": "string",
+            "description": "Supabase REST API URL for KDS and real-time"
+        },
+        "supabase_anon_key": {
+            "type": "string",
+            "private": true,
+            "description": "Supabase anonymous key for KDS ticket sync"
+        },
+        "menu_cache_ttl_sec": {
+            "type": "integer",
+            "default": 300,
+            "description": "Menu cache duration in seconds (5 min default)"
+        },
+        "menu_image_url": {
+            "type": "string",
+            "description": "URL to a visual menu image sent with SHOW_MENU"
+        },
+        "restaurant_lat": {
+            "type": "decimal",
+            "description": "Restaurant latitude for driver dispatch calculations"
+        },
+        "restaurant_lng": {
+            "type": "decimal",
+            "description": "Restaurant longitude for driver dispatch calculations"
+        },
+        "kiosk_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable in-store kiosk ordering mode"
+        },
+        "kiosk_default_service_mode": {
+            "type": "string",
+            "default": "sur_place",
+            "description": "Default service mode for kiosk orders (sur_place, a_emporter)"
+        },
+        "kiosk_idle_timeout_sec": {
+            "type": "integer",
+            "default": 120,
+            "description": "Seconds of inactivity before kiosk resets"
+        },
+        "cart_abandonment_delay_min": {
+            "type": "integer",
+            "default": 30,
+            "description": "Minutes before cart abandonment reminder is sent"
+        },
+        "vip_win_back_delay_days": {
+            "type": "integer",
+            "default": 14,
+            "description": "Days of inactivity before VIP win-back message"
+        },
+        "kitchen_load_threshold": {
+            "type": "integer",
+            "default": 15,
+            "description": "Number of active orders before adding extra ETA time"
+        },
+        "kitchen_load_extra_min": {
+            "type": "integer",
+            "default": 10,
+            "description": "Extra minutes added to ETA when kitchen is overloaded"
+        },
+        "delivery_fee_multiplier": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "Global multiplier applied to delivery fees"
+        },
+        "delivery_radius_km": {
+            "type": "decimal",
+            "default": 15,
+            "description": "Maximum delivery radius in kilometers"
+        },
+        "delivery_eta_base_min": {
+            "type": "integer",
+            "default": 20,
+            "description": "Base ETA in minutes before distance factor"
+        },
+        "delivery_eta_per_km_min": {
+            "type": "decimal",
+            "default": 3,
+            "description": "Minutes added per km of delivery distance"
+        },
+        "surge_multiplier_max": {
+            "type": "decimal",
+            "default": 2.0,
+            "description": "Maximum surge pricing multiplier for delivery"
+        },
+        "surge_rain_bonus": {
+            "type": "decimal",
+            "default": 0.3,
+            "description": "Extra surge multiplier added during rain/bad weather"
+        },
+        "chargily_public_key": {
+            "type": "string",
+            "description": "Chargily public API key for payment initiation"
+        },
+        "chargily_webhook_secret": {
+            "type": "string",
+            "private": true,
+            "description": "Chargily webhook signature secret for payment callbacks"
+        },
+        "twilio_account_sid": {
+            "type": "string",
+            "description": "Twilio Account SID for voice calls"
+        },
+        "twilio_auth_token": {
+            "type": "string",
+            "private": true,
+            "description": "Twilio Auth Token for voice calls"
+        },
+        "twilio_phone_number": {
+            "type": "string",
+            "description": "Twilio phone number for outbound calls"
+        },
+        "vapi_api_key": {
+            "type": "string",
+            "private": true,
+            "description": "VAPI API key for AI voice agent"
+        },
+        "cart_abandon_template": {
+            "type": "string",
+            "default": "cart_abandonment_reminder_fr",
+            "description": "WhatsApp template name for cart abandonment messages"
+        },
+        "vip_winback_template": {
+            "type": "string",
+            "default": "vip_win_back_fr",
+            "description": "WhatsApp template name for VIP win-back messages"
+        },
+        "review_url": {
+            "type": "string",
+            "description": "Google Review URL for the restaurant"
+        },
+        "printer_api_url": {
+            "type": "string",
+            "description": "Kitchen cloud printer API endpoint (e.g. Star CloudPRNT)"
+        },
+        "kds_supabase_table": {
+            "type": "string",
+            "default": "kds_tickets",
+            "description": "Supabase table name for Kitchen Display System sync"
+        },
+        "predictive_reorder_days": {
+            "type": "integer",
+            "default": 7,
+            "description": "Days of history to analyze for predictive stock reordering"
+        },
+        "redis_url": {
+            "type": "string",
+            "default": "redis://redis:6379",
+            "description": "Redis connection URL for outbox, DLQ, and caching"
         }
     }
 }

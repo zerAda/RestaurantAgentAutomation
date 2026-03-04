@@ -4,7 +4,7 @@
     "info": {
         "singularName": "driver",
         "pluralName": "drivers",
-        "displayName": "Driver",
+        "displayName": "🛵 Driver Fleet",
         "description": "Delivery drivers managed by the restaurant owner"
     },
     "options": {
@@ -26,6 +26,29 @@
             "unique": true,
             "regex": "^\\+?[0-9]{10,15}$"
         },
+        "vehicle_type": {
+            "type": "enumeration",
+            "enum": [
+                "motorcycle",
+                "bicycle",
+                "car",
+                "scooter",
+                "on_foot"
+            ],
+            "default": "motorcycle",
+            "description": "Type of delivery vehicle"
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "available",
+                "busy",
+                "offline",
+                "suspended"
+            ],
+            "default": "offline",
+            "description": "Current driver availability"
+        },
         "is_active": {
             "type": "boolean",
             "default": true
@@ -39,6 +62,24 @@
             ],
             "default": "INVITED"
         },
+        "current_lat": {
+            "type": "decimal",
+            "description": "Last known latitude"
+        },
+        "current_lng": {
+            "type": "decimal",
+            "description": "Last known longitude"
+        },
+        "max_concurrent_orders": {
+            "type": "integer",
+            "default": 2,
+            "description": "Maximum simultaneous deliveries"
+        },
+        "active_orders_count": {
+            "type": "integer",
+            "default": 0,
+            "description": "Current active deliveries"
+        },
         "assigned_orders": {
             "type": "relation",
             "relation": "oneToMany",
@@ -48,6 +89,21 @@
         "total_deliveries": {
             "type": "integer",
             "default": 0
+        },
+        "rating": {
+            "type": "decimal",
+            "default": 5.0,
+            "description": "Average customer rating (1-5)"
+        },
+        "otp_code": {
+            "type": "string",
+            "private": true,
+            "description": "Current OTP code for delivery verification"
+        },
+        "otp_attempts": {
+            "type": "integer",
+            "default": 0,
+            "description": "Failed OTP attempts"
         },
         "last_seen_at": {
             "type": "datetime"

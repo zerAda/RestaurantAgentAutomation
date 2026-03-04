@@ -34,14 +34,13 @@ export function MarketingView({ lang }: { lang: Language }) {
 
     const fetchAssets = async () => {
         try {
-            const { data } = await strapi.find('content-libraries', {
+            const res = await strapi.find<ContentAsset>('content-libraries', {
                 sort: ['createdAt:desc'],
-                pagination: { limit: 12 }
+                pagination: { limit: 12 },
             });
-            setAssets(data);
+            setAssets(res.data as unknown as ContentAsset[]);
         } catch (error) {
             console.error('Error fetching marketing assets:', error);
-            // Fallback to empty if Strapi is unreachable
             setAssets([]);
         } finally {
             setLoading(false);
@@ -52,10 +51,9 @@ export function MarketingView({ lang }: { lang: Language }) {
         if (!prompt) return;
         setIsGenerating(true);
         try {
-            await fetch('http://localhost:5678/webhook/generate-content', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, timestamp: new Date().toISOString() })
+            await strapi.post<{ status: string }>('/api/proxy/n8n/webhook/generate-content', {
+                prompt,
+                timestamp: new Date().toISOString()
             });
             setShowModal(false);
             setPrompt('');

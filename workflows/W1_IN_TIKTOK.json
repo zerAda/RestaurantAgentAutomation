@@ -35,6 +35,10 @@
             {
               "name": "campaign_code",
               "value": "={{ $json.query.campaign || $json.body.entry[0].changes[0].value.referral_param }}"
+            },
+            {
+              "name": "audioUrl",
+              "value": "={{ $json.body.entry[0].changes[0].value.message?.audio?.url || '' }}"
             }
           ]
         },

@@ -1,5 +1,108 @@
 # TEST_REPORT — RESTO BOT
 
+## v3.3.5 — VPS Deploy + n8n 2.x Migration + CMS Bootstrap (2026-03-01)
+
+### CI Pipeline (commit `1377ad5`) — GREEN
+
+| Job | Status | Notes |
+|-----|--------|-------|
+| Integrity Gate | PASS | |
+| Lint & Validate | PASS | |
+| Python Tests | PASS | |
+| Integration Tests | PASS | PG15/16 |
+| Frontend Lint | PASS | |
+| Docker Build | PASS | cms, kiosk, admin |
+| Security Scan | PASS | |
+| **Test Harness (Full Stack)** | **PASS** | n8n 2.x compatible |
+| CI Summary | PASS | All jobs green |
+
+### Test Harness n8n 2.x Compatibility
+
+| Check | Before (n8n 1.x) | After (n8n 2.x) | Status |
+|-------|-------------------|------------------|--------|
+| Workflow import | REST API POST | REST API POST | PASS (unchanged) |
+| Workflow activation | PATCH `/rest/workflows/:id` | SQL `UPDATE workflow_entity SET active = true` | PASS |
+| Active workflow verification | `SELECT count(*) FROM webhook_entity` | `SELECT count(*) FROM workflow_entity WHERE active = true` | PASS |
+| Webhook path verification | `SELECT webhookPath FROM webhook_entity` | `workflow_entity WHERE nodes::text LIKE '%path%'` | PASS |
+| Live webhook probe | HTTP POST to `/webhook/v1/...` | HTTP POST to `/webhook/v1/...` + `/webhook-test/` fallback | PASS |
+
+### CI Iteration Log (3 attempts to green)
+
+| Commit | Result | Failure | Root Cause |
+|--------|--------|---------|------------|
+| `1507e64` | FAIL | `webhook_entity does not exist` | n8n 2.x removed table; queries updated but activation still used old API |
+| `c39ba48` | FAIL | `active=unknown` after activation | n8n 2.x REST API activation response format changed |
+| `1377ad5` | **PASS** | - | Direct SQL activation bypasses API |
+
+### VPS Service Health (2026-03-01 22:23 UTC)
+
+| Service | Image | Status | Health |
+|---------|-------|--------|--------|
+| traefik | traefik:v3.6.6 | Up 10h | Running |
+| gateway | nginx:1.27-alpine | Up 10h | Healthy |
+| n8n-main | n8nio/n8n:2.9.4 | Up 10h | Healthy |
+| n8n-worker | n8nio/n8n:2.9.4 | Up 10h | Healthy |
+| postgres | postgres:15-alpine | Up 3h | Healthy |
+| redis | redis:7-alpine | Up 10h | Healthy |
+| **cms** | **current-cms** | **Up 11m** | **Healthy** |
+| admin-dashboard | current-admin-dashboard | Up 10h | Healthy |
+| kiosk-app | current-kiosk-app | Up 10h | Healthy |
+| db-migrate | postgres:15-alpine | Exited (0) | Expected |
+
+### External Endpoint Verification
+
+| Endpoint | Expected | Actual | Status |
+|----------|----------|--------|--------|
+| `https://api.srv1258231.hstgr.cloud/healthz` | 200 | 200 | PASS |
+| `https://kiosk.srv1258231.hstgr.cloud/` | 200 | 200 | PASS |
+| `https://cms.srv1258231.hstgr.cloud/_health` | 204 | 204 | PASS |
+| `https://admin.srv1258231.hstgr.cloud/` | 401 | 401 | PASS (BasicAuth) |
+
+### Strapi CMS Bootstrap
+
+| Check | Result |
+|-------|--------|
+| Database: `strapi` created | PASS |
+| Tables created | 81 tables |
+| `content_library` table (schema fix) | PASS — `content_published_at` field |
+| Health endpoint `/_health` | 204 |
+| Version | Strapi 5.37.1 (node v20.20.0) |
+| Admin panel accessible | PASS (needs first admin creation) |
+
+### Workflow Import
+
+| Check | Result |
+|-------|--------|
+| Workflow files on VPS | 63 |
+| Successfully imported | 63 |
+| Failed imports | 0 |
+| Import method | n8n Public API v1 (`POST /api/v1/workflows`) |
+
+### MCP Server Configuration
+
+| Server | URL | Token | Status |
+|--------|-----|-------|--------|
+| n8n-mcp | `https://console.srv1258231.hstgr.cloud` | API key (1yr expiry) | Configured |
+| strapi-mcp | `https://cms.srv1258231.hstgr.cloud` | Full-access API token | Configured |
+| ruflo | Local | - | Connected |
+
+### CMS Fixes Applied
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| CRLF in docker-entrypoint.sh | `exec /docker-entrypoint.sh: no such file or directory` | LF conversion via bash heredoc |
+| `chown -R` stuck on BuildKit | Build hung 50+ min | Overlay Dockerfile approach |
+| `published_at` duplicate column | `content_library` table creation fails | Renamed to `content_published_at` |
+
+### Known Issues
+
+- n8n workflows imported but not activated (activation requires business decision on which workflows to enable)
+- Strapi admin account created manually — no automated admin provisioning yet
+- n8n-mcp is a static node documentation tool, not a live API connector
+- System restart required on VPS (Ubuntu kernel update pending)
+
+---
+
 ## v3.3.4 — CI/CD Infrastructure Audit (2026-02-27)
 
 ### Static Analysis (this environment)
