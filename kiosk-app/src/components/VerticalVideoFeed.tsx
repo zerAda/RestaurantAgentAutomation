@@ -36,22 +36,39 @@ const FALLBACK_FEED: ProductVideo[] = [
 ];
 
 function mapStrapiToFeed(data: any[]): ProductVideo[] {
-    return data.map((item: any) => {
+    return data.map((item: any, idx: number) => {
         const attrs = item.attributes || item;
-        const assets = attrs.creative_assets;
-        const assetUrl = Array.isArray(assets) ? assets[0]?.url : assets?.url;
+        
+        // Handle Strapi v4 media payload structure
+        let assetUrl = null;
+        if (attrs.creative_assets?.data) {
+            const mediaData = attrs.creative_assets.data;
+            if (Array.isArray(mediaData) && mediaData.length > 0) {
+                assetUrl = mediaData[0].attributes?.url || mediaData[0].url;
+            } else if (mediaData.attributes?.url || mediaData.url) {
+                assetUrl = mediaData.attributes?.url || mediaData.url;
+            }
+        }
+
         const imageUrl = assetUrl
             ? (assetUrl.startsWith('http') ? assetUrl : `${STRAPI_URL}${assetUrl}`)
             : STRAPI_PLACEHOLDER;
-        const price = typeof attrs.price === 'number' ? attrs.price : 0;
+            
+        // Use base_price or price
+        const price = typeof attrs.base_price === 'number' ? attrs.base_price : (typeof attrs.price === 'number' ? attrs.price : 0);
+        
+        // Defend against missing titles
+        const safeTitle = attrs.name || attrs.marketing_name || `Missing Name ${idx}`;
+        const safeDesc = attrs.description?.substring(0, 150) || "Explore our signature recipe.";
+
         return {
             id: String(item.id),
             url: imageUrl,
             type: 'image' as const,
-            title: String(attrs.marketing_name || attrs.name || 'Untitled Item'),
+            title: String(safeTitle),
             price,
             rawPrice: `${price} DA`,
-            desc: String(attrs.description || ''),
+            desc: String(safeDesc),
         };
     });
 }
