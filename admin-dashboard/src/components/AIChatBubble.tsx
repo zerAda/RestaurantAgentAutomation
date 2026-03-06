@@ -298,7 +298,8 @@ export function AIChatBubble() {
 
                 {/* Footer Controls */}
                 <div className="p-6 border-t border-white/5 bg-white/[0.01]">
-                    {messages.length <= 1 && (
+                    {/* TODO: Phase 14 - Fetch Quick Actions dynamically from Strapi 'Inception Prompts' collection */}
+                    {messages.length === 1 && messages[0].id === 'welcome' && (
                         <div className="grid grid-cols-2 gap-2 mb-6">
                             {QUICK_ACTIONS.map((qa, i) => (
                                 <button
@@ -337,11 +338,11 @@ export function AIChatBubble() {
                     </div>
                     <div className="flex items-center justify-center gap-4 mt-4">
                         <div className="flex items-center gap-2">
-                            <Activity size={10} className="text-zinc-700" />
-                            <span className="text-[9px] font-black text-zinc-700 uppercase tracking-widest">Neural Link v4.2</span>
+                            <Activity size={10} className="text-brand-primary" />
+                            <span className="text-[9px] font-black text-brand-primary uppercase tracking-widest">Neural Link v4.2</span>
                         </div>
                         <div className="w-1 h-1 rounded-full bg-zinc-800" />
-                        <span className="text-[9px] font-black text-zinc-700 uppercase tracking-widest">Rate Limited</span>
+                        <span className="text-[9px] font-black text-success uppercase tracking-widest border border-success/20 px-2 py-0.5 rounded-full bg-success/10">System Optimal</span>
                     </div>
                 </div>
             </div>
