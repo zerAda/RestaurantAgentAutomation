@@ -71,13 +71,13 @@ services:
   cms:
     labels:
       - "traefik.http.routers.cms.rule=Host(`staging-cms.${DOMAIN_NAME}`)"
-  admin:
+  admin-dashboard:
     labels:
-      - "traefik.http.routers.admin.rule=Host(`staging-admin.${DOMAIN_NAME}`)"
-  n8n:
+      - "traefik.http.routers.admin-dash.rule=Host(`staging-admin.${DOMAIN_NAME}`)"
+  n8n-main:
     labels:
-      - "traefik.http.routers.n8n.rule=Host(`staging-n8n.${DOMAIN_NAME}`)"
-  kiosk:
+      - "traefik.http.routers.resto-console.rule=Host(`staging-n8n.${DOMAIN_NAME}`)"
+  kiosk-app:
     labels:
       - "traefik.http.routers.kiosk.rule=Host(`staging-kiosk.${DOMAIN_NAME}`)"
 
