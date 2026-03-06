@@ -1,0 +1,1142 @@
+﻿Deploy to Staging (vps-primary)	Set up job	´╗┐2026-03-06T10:28:09.4122570Z Current runner version: '2.332.0'
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:09.4132816Z Runner name: 'vps-primary'
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:09.4133650Z Runner group name: 'Default'
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:09.4134667Z Machine name: 'srv1258231'
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:09.4137886Z ##[group]GITHUB_TOKEN Permissions
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:09.7139733Z Contents: read
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:10.1094504Z Deployments: write
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:10.1095290Z Metadata: read
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:10.1095853Z ##[endgroup]
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:10.1120804Z Secret source: Actions
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:10.1122248Z Prepare workflow directory
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:16.0124324Z Prepare all required actions
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:16.9105246Z Getting action download info
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:20.5069051Z Download action repository 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683' (SHA:11bd71901bbe5b1630ceea73d27597364c9af683)
+Deploy to Staging (vps-primary)	Set up job	2026-03-06T10:28:34.2122341Z Complete job name: Deploy to Staging (vps-primary)
+Deploy to Staging (vps-primary)	Checkout code	´╗┐2026-03-06T10:28:41.0045224Z ##[group]Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0057197Z with:
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0058167Z   ref: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0059194Z   repository: zerAda/RestaurantAgentAutomation
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0060668Z   token: ***
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0061434Z   ssh-strict: true
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0062206Z   ssh-user: git
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0062981Z   persist-credentials: true
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0063808Z   clean: true
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0064592Z   sparse-checkout-cone-mode: true
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0065457Z   fetch-depth: 1
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0066391Z   fetch-tags: false
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0067169Z   show-progress: true
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0067936Z   lfs: false
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0068833Z   submodules: false
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0069610Z   set-safe-directory: true
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0070965Z env:
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0071725Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0072498Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0129844Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0131560Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:41.0132574Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:48.6134112Z Syncing repository: zerAda/RestaurantAgentAutomation
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:48.7087690Z ##[group]Getting Git version info
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:48.7089691Z Working directory is '/home/github-runner/actions-runner/_work/RestaurantAgentAutomation/RestaurantAgentAutomation'
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:48.7092267Z [command]/usr/bin/git version
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.1049742Z git version 2.43.0
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.3090664Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.4040895Z Temporarily overriding HOME='/home/github-runner/actions-runner/_work/_temp/43a24dfd-29d3-41c8-a0e5-fc101db16b15' before making global git config changes
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.4044391Z Adding repository directory to the temporary git global config as a safe directory
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.4047143Z [command]/usr/bin/git config --global --add safe.directory /home/github-runner/actions-runner/_work/RestaurantAgentAutomation/RestaurantAgentAutomation
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.4131821Z [command]/usr/bin/git config --local --get remote.origin.url
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:49.8079888Z https://github.com/zerAda/RestaurantAgentAutomation
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:50.3061551Z ##[group]Removing previously created refs, to avoid conflicts
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:50.4043223Z [command]/usr/bin/git rev-parse --symbolic-full-name --verify --quiet HEAD
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:51.3034389Z HEAD
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:52.3071321Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:52.3109580Z [command]/usr/bin/git submodule status
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:56.1083972Z ##[group]Cleaning the repository
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:56.1089569Z [command]/usr/bin/git clean -ffdx
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:58.1034146Z [command]/usr/bin/git reset --hard HEAD
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:58.5040761Z HEAD is now at 477527c chore: add production inventory for VPS deployment
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:58.5099150Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:58.9035318Z ##[group]Disabling automatic garbage collection
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:28:58.9053879Z [command]/usr/bin/git config --local gc.auto 0
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:00.1040526Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:00.1042351Z ##[group]Setting up auth
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:00.1044532Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:00.2123437Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:02.3128865Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:02.5090979Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:06.7031721Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:07.0112063Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:07.0123585Z ##[group]Fetching the repository
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:07.4029165Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.0052645Z From https://github.com/zerAda/RestaurantAgentAutomation
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.1082546Z  * branch            477527cc191fbaa3adc561e086f268b980ec4dbb -> FETCH_HEAD
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.1090135Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.1092074Z ##[group]Determining the checkout info
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.1117912Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.1119269Z [command]/usr/bin/git sparse-checkout disable
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:13.3037020Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:14.1048453Z ##[group]Checking out the ref
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:14.1050896Z [command]/usr/bin/git checkout --progress --force 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:15.3097889Z HEAD is now at 477527c chore: add production inventory for VPS deployment
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:15.6068915Z ##[endgroup]
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:15.6108467Z [command]/usr/bin/git log -1 --format=%H
+Deploy to Staging (vps-primary)	Checkout code	2026-03-06T10:29:16.3089374Z 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Setup SSH	´╗┐2026-03-06T10:29:18.1081171Z Prepare all required actions
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:18.1083768Z Getting action download info
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:18.3048614Z Download action repository 'shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4' (SHA:d4fffb50872869abe2d9a9098a6d9c5aa7d16be4)
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:24.9087976Z ##[group]Run ./.github/actions/setup-ssh
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:24.9089191Z with:
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0087716Z   ssh-key: ***
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0088754Z   vps-host: 72.60.190.192
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0089700Z env:
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0090413Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0091121Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0091965Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0092736Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.0093919Z ##[endgroup]
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9075271Z ##[group]Run shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9077537Z with:
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9085055Z   key: ***
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9087088Z   known_hosts: unnecessary
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9088337Z   if_key_exists: replace
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9089228Z   name: id_rsa
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9089971Z env:
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9090757Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9091715Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9092492Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9093487Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:25.9094702Z ##[endgroup]
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:31.2049754Z Ô£àSSH directory "/home/github-runner/.ssh" has been created successfully.
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:31.3034295Z Ô£àFollowing files have been created in "/home/github-runner/.ssh" successfully; known_hosts, id_rsa
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.3147575Z ##[group]Run mkdir -p ~/.ssh
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.3148820Z [36;1mmkdir -p ~/.ssh[0m
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.3150045Z [36;1mssh-keyscan -H 72.60.190.192 >> ~/.ssh/known_hosts 2>/dev/null || true[0m
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6038983Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6041548Z env:
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6042375Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6043285Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6044129Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6045186Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Setup SSH	2026-03-06T10:29:33.6046718Z ##[endgroup]
+Deploy to Staging (vps-primary)	Create staging directory	´╗┐2026-03-06T10:29:49.7033018Z ##[group]Run STAGING_DIR="/opt/resto/staging/20260306-102539-477527c"
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7034217Z [36;1mSTAGING_DIR="/opt/resto/staging/20260306-102539-477527c"[0m
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7035211Z [36;1mssh -o StrictHostKeyChecking=no deploy@72.60.190.192 \[0m
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7043685Z [36;1m  "mkdir -p $STAGING_DIR"[0m
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7072198Z shell: /usr/bin/bash -e {0}
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7072766Z env:
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7073158Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7073595Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7074031Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7074606Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Create staging directory	2026-03-06T10:29:49.7075304Z ##[endgroup]
+Deploy to Staging (vps-primary)	Sync code to staging	´╗┐2026-03-06T10:30:06.8039148Z ##[group]Run STAGING_DIR="/opt/resto/staging/20260306-102539-477527c"
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8041127Z [36;1mSTAGING_DIR="/opt/resto/staging/20260306-102539-477527c"[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8041648Z [36;1m[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8041989Z [36;1mrsync -avz --delete \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8042400Z [36;1m  --exclude='.git' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8042697Z [36;1m  --exclude='.env' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8042983Z [36;1m  --exclude='secrets/' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8043299Z [36;1m  --exclude='node_modules' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8043622Z [36;1m  --exclude='__pycache__' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8043951Z [36;1m  --exclude='.pytest_cache' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8044281Z [36;1m  --exclude='*.pyc' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8044678Z [36;1m  --exclude='.DS_Store' \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8045062Z [36;1m  -e "ssh -o StrictHostKeyChecking=no" \[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:06.8045447Z [36;1m  ./ deploy@72.60.190.192:$STAGING_DIR/[0m
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1094725Z shell: /usr/bin/bash -e {0}
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1095378Z env:
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1095635Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1096892Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1097204Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1097545Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:07.1097923Z ##[endgroup]
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:23.7083047Z sending incremental file list
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8027502Z ./
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8034581Z .ci_yaml_check.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8035463Z .env.example
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8036639Z .gitattributes
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8037287Z .gitignore
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8037732Z .gitlab-ci.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8038166Z .gitleaks.toml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8038662Z BACKLOG_EPIC5_L10N.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8039183Z BACKLOG_JIRA.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8039656Z CHANGELOG.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8040177Z CLAUDE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8040660Z CLAUDE_OPERATING_CONTRACT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8050963Z ENV_REFERENCE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8051544Z Makefile
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8052004Z PATCHLOG.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8052500Z PIPELINE_GUIDE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8052976Z RAPPORT_TESTS_RESTO_BOT_v3.2.3.pdf
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8053489Z README.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8053895Z README_PACK.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8055643Z ROLLBACK.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8056466Z RUNBOOK.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8057057Z TEST_REPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8057530Z TEST_REPORT.raw.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8057948Z VERSION
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:24.8058349Z admin_build_log.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:25.4131629Z admin_build_v2_log.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:25.8067384Z admin_lint_log.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:25.8068286Z backup.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:25.8068987Z check_integrity.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0023842Z ci_jobs.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0025284Z ci_jobs_v2.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0030980Z ci_jobs_v3.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0060469Z cms_build_log.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0139946Z docker-compose.base.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0142117Z docker-compose.dev.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0143341Z docker-compose.ghcr.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.0147957Z docker-compose.hostinger.prod.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2062564Z docker-compose.prod.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2077882Z final_runs.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2078506Z fix_drift.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2079975Z runs.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2080578Z runs_utf8.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2082319Z .claude/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2082696Z .claude/SKILLS_INDEX.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2085406Z .claude/settings.local.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2086220Z .claude/skills/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2089257Z .claude/skills/01_repo_intelligence/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2089967Z .claude/skills/01_repo_intelligence/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2107681Z .claude/skills/02_architecture_and_security/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:26.2108377Z .claude/skills/02_architecture_and_security/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.2098719Z .claude/skills/03_ingress_hardening/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5072719Z .claude/skills/03_ingress_hardening/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5073316Z .claude/skills/04_n8n_queue_sre/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5073683Z .claude/skills/04_n8n_queue_sre/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5074090Z .claude/skills/05_db_safety_protocol/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5075261Z .claude/skills/05_db_safety_protocol/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5075662Z .claude/skills/06_secrets_data_protection/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5116907Z .claude/skills/06_secrets_data_protection/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5119003Z .claude/skills/07_ci_cd_pipeline/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5119454Z .claude/skills/07_ci_cd_pipeline/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5119712Z .claude/skills/08_observability/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5119943Z .claude/skills/08_observability/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5120260Z .claude/skills/09_release_and_rollback/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5120529Z .claude/skills/09_release_and_rollback/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5120779Z .claude/skills/10_testing_qa/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5121022Z .claude/skills/10_testing_qa/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5121422Z .claude/skills/11_workflow_governance/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5121717Z .claude/skills/11_workflow_governance/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5121976Z .claude/skills/12_supply_chain_security/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5122279Z .claude/skills/12_supply_chain_security/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:27.5122525Z .claude/skills/13_vps_operations/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0040069Z .claude/skills/13_vps_operations/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0040718Z .claude/skills/14_performance_capacity_planning/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0041167Z .claude/skills/14_performance_capacity_planning/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0041505Z .claude/skills/15_data_privacy_compliance/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0041964Z .claude/skills/15_data_privacy_compliance/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0042375Z .claude/skills/16_change_management_governance/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0042754Z .claude/skills/16_change_management_governance/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0043157Z .claude/skills/17_multi_tenant_futureproofing/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0043616Z .claude/skills/17_multi_tenant_futureproofing/SKILL.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0044003Z .github/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0044218Z .github/CODEOWNERS
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0044468Z .github/dependabot.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0044806Z .github/pull_request_template.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0045175Z .github/ISSUE_TEMPLATE/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0045459Z .github/ISSUE_TEMPLATE/bug_report.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0045836Z .github/ISSUE_TEMPLATE/feature_request.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0048571Z .github/actions/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0048845Z .github/actions/docker-build-scan/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0049229Z .github/actions/docker-build-scan/action.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0049593Z .github/actions/health-check/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0049927Z .github/actions/health-check/action.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0050371Z .github/actions/notify/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0050698Z .github/actions/notify/action.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0051069Z .github/actions/setup-ssh/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0051322Z .github/actions/setup-ssh/action.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0051538Z .github/workflows/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0051740Z .github/workflows/build-push-artifacts.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0051987Z .github/workflows/cd-deploy.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0052208Z .github/workflows/ci.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0052998Z .github/workflows/debug-vps.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0053216Z .github/workflows/env-sync.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0053429Z .github/workflows/health-monitor.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0053926Z .github/workflows/migration-validate.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0054356Z .github/workflows/perf-baseline.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0054702Z .github/workflows/release.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0055006Z .github/workflows/rollback.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.0129417Z .github/workflows/scheduled-backup.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5117314Z .github/workflows/security-scan.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5118475Z .github/workflows/workflow-validate.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5118912Z admin-dashboard/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5119118Z admin-dashboard/.env.example
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5119343Z admin-dashboard/.gitignore
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5119548Z admin-dashboard/Dockerfile
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5119748Z admin-dashboard/README.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5119956Z admin-dashboard/eslint.config.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5120444Z admin-dashboard/index.html
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5120726Z admin-dashboard/package-lock.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5122935Z admin-dashboard/package.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5123258Z admin-dashboard/postcss.config.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5123584Z admin-dashboard/tailwind.config.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5123937Z admin-dashboard/tsconfig.app.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5124211Z admin-dashboard/tsconfig.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5124430Z admin-dashboard/tsconfig.node.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5124650Z admin-dashboard/vite.config.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5124859Z admin-dashboard/public/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5125067Z admin-dashboard/public/vite.svg
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5125289Z admin-dashboard/src/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5125485Z admin-dashboard/src/App.css
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5125698Z admin-dashboard/src/App.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5126147Z admin-dashboard/src/index.css
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5126494Z admin-dashboard/src/main.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5126799Z admin-dashboard/src/assets/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5127069Z admin-dashboard/src/assets/react.svg
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5127425Z admin-dashboard/src/components/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5127704Z admin-dashboard/src/components/AIChatBubble.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5128038Z admin-dashboard/src/components/AiObservatoryView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5128518Z admin-dashboard/src/components/AnalyticsView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5129002Z admin-dashboard/src/components/AnimatedNumber.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5129505Z admin-dashboard/src/components/ApiErrorListener.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.5129961Z admin-dashboard/src/components/AppSwitcher.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7098770Z admin-dashboard/src/components/AutomationView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7099369Z admin-dashboard/src/components/BrandView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7099875Z admin-dashboard/src/components/CustomerView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7100376Z admin-dashboard/src/components/ErrorBoundary.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7100745Z admin-dashboard/src/components/GodModeMap.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7101021Z admin-dashboard/src/components/KitchenView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7101414Z admin-dashboard/src/components/LoginView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7101910Z admin-dashboard/src/components/MarketingView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7102265Z admin-dashboard/src/components/NotificationCenter.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7102699Z admin-dashboard/src/components/PageTransition.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7103107Z admin-dashboard/src/components/Providers.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7103471Z admin-dashboard/src/components/QuickAdjust.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7103749Z admin-dashboard/src/components/SkeletonLoader.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7104026Z admin-dashboard/src/components/StockView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7104293Z admin-dashboard/src/components/SupportView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:28.7105245Z admin-dashboard/src/components/ToastProvider.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.1025781Z admin-dashboard/src/components/layout/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.1028173Z admin-dashboard/src/components/layout/DashboardLayout.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.1028528Z admin-dashboard/src/components/ui/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.2097598Z admin-dashboard/src/components/ui/badge-variants.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3028243Z admin-dashboard/src/components/ui/badge.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3032781Z admin-dashboard/src/components/ui/card.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3037055Z admin-dashboard/src/lib/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3040799Z admin-dashboard/src/lib/queryClient.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3043942Z admin-dashboard/src/lib/utils.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3047702Z admin-dashboard/src/pages/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3050866Z admin-dashboard/src/pages/ControlPlaneView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3059253Z admin-dashboard/src/pages/DashboardHome.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3065163Z admin-dashboard/src/pages/GodMode.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3069379Z admin-dashboard/src/pages/KitchenDisplay.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3073571Z admin-dashboard/src/pages/OrdersKanban.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.3078382Z admin-dashboard/src/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.6048771Z admin-dashboard/src/services/authService.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.6050839Z admin-dashboard/src/services/orders.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.6051610Z admin-dashboard/src/services/stockService.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.7082314Z admin-dashboard/src/services/strapiClient.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:29.7090425Z admin-dashboard/src/utils/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2065188Z admin-dashboard/src/utils/i18n.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2065682Z config/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2066198Z config/.env.example
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2066482Z db/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2066717Z db/bootstrap.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2067038Z db/schema.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2067343Z db/seed_delivery_demo.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2067638Z db/seed_poc_demo.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2067903Z db/init/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2068162Z db/init/01_apply_migrations.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2068480Z db/init/02_create_strapi_db.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2068790Z db/migrations/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2069049Z db/migrations/.gitkeep
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2069386Z db/migrations/006_separate_strapi_privileges.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2069797Z db/migrations/010_add_channels_fix_currency.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2070394Z db/migrations/2026-01-22_p1_arch_002_contract_slo_event_types.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2070942Z db/migrations/2026-01-22_p1_db_indexes_retention.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2071407Z db/migrations/2026-01-22_p1_event_types_constraints.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2071870Z db/migrations/2026-01-22_p1_opssecqa_scopes_admin_audit.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2072311Z db/migrations/2026-01-22_p2_epic3_tracking.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2072704Z db/migrations/2026-01-23_p0_sec02_meta_replay.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2073107Z db/migrations/2026-01-23_p2_epic5_l10n.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2073483Z db/migrations/2026-01-23_p2_epic6_support.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2073822Z docker/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2074062Z docker/docker-compose.test.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2074384Z docker/docker-compose.yml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.2135740Z docs/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3029436Z docs/ALERTING.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3033587Z docs/ANTIFRAUD.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3033909Z docs/API_CONVENTIONS.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3034234Z docs/ARCHITECTURE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3034537Z docs/AUDIT_REPORT_AND_ROADMAP.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3034858Z docs/BACKUP_RESTORE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3054250Z docs/CD_DEPLOY_DIAMOND_GRADE_FIXES.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3117785Z docs/CD_DEPLOY_FINAL_VALIDATION.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3118266Z docs/CHANGELOG.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3118519Z docs/CICD_RUNBOOK.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3118787Z docs/CLAUDE_CODE_HANDOFF_PROMPT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3119094Z docs/CONSISTENCY_REPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.3119374Z docs/DAILY_REPORT_EPIC5_DAY1.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4024071Z docs/DB_RETENTION.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4029721Z docs/DECISIONS_L10N.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4033319Z docs/DELIVERY.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4056813Z docs/DEVOPS.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4057471Z docs/DORA_DASHBOARD.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4077106Z docs/ENDPOINT_MAP.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4078172Z docs/EPIC5_ACCEPTANCE_CRITERIA.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4106641Z docs/EVENT_TYPES.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4107315Z docs/FAILURE_MODES.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4107845Z docs/INCIDENT_RESPONSE_PLAYBOOK.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4108324Z docs/INTERFACES_EPIC5.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4115378Z docs/L10N.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.4120649Z docs/L10N_ADMIN_WA_COMMANDS.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.5025210Z docs/L10N_ARCHITECTURE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6061420Z docs/L10N_COPY_REVIEW.csv
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6099865Z docs/L10N_GLOSSARY.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6100379Z docs/L10N_STYLE_GUIDE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6100727Z docs/LAST_VERIFICATION_REPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6101036Z docs/MAP.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6101271Z docs/OPS_ROUTINES.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6101660Z docs/ORCHESTRATION_EPIC5.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6101967Z docs/PAYMENTS.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.6102228Z docs/PHASE_3_4_DEEP_SECURITY_REPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.9060638Z docs/PREMIUM_HARDENING_PLAN.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.9062474Z docs/PROD_CHECKLIST.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:30.9062847Z docs/REDIS_SETUP.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.1093042Z docs/RELEASE_PLAN_EPIC5.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.1100158Z docs/ROLLBACK_EPIC2_DELIVERY.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.2135380Z docs/ROLLBACK_EPIC3_TRACKING.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6091399Z docs/ROLLBACK_EPIC5_L10N.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6108000Z docs/ROLLBACK_EPIC6_SUPPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6124630Z docs/RUNBOOK.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6125391Z docs/RUNBOOKS.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6125905Z docs/RUNBOOK_HOSTINGER.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6126844Z docs/RUNBOOK_PRODUCTION.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6127373Z docs/SECURITY_VALIDATION_REPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6127876Z docs/SLO.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6128297Z docs/SUPPORT.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6128755Z docs/TEMPLATE_CATALOG.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6129247Z docs/TICKET_STRAPI_VPS.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.6129716Z docs/TRACKING.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8064947Z docs/UX_TEST_PLAN_L10N.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8065766Z docs/WORKFLOW_SETUP.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8066170Z docs/ci-cd.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8066354Z docs/interfaces/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8066568Z docs/interfaces/AGENT_01_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8066812Z docs/interfaces/AGENT_02_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8067050Z docs/interfaces/AGENT_03_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8067273Z docs/interfaces/AGENT_04_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8067538Z docs/interfaces/AGENT_05_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8067787Z docs/interfaces/AGENT_06_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8068017Z docs/interfaces/AGENT_07_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8068247Z docs/interfaces/AGENT_08_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8068477Z docs/interfaces/AGENT_09_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8068926Z docs/interfaces/AGENT_10_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8069471Z docs/interfaces/AGENT_11_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8069735Z docs/interfaces/AGENT_12_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8069969Z docs/interfaces/AGENT_13_INTERFACE.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8070400Z infra/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8070662Z infra/inventory.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8070921Z infra/gateway/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8071166Z infra/gateway/nginx.conf
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8071468Z infra/gateway/nginx.test.conf
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8071728Z infra/gateway/proxy_params
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8071939Z infra/nginx/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8072124Z infra/nginx/spa-default.conf
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8072340Z inventory-cms/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8072532Z inventory-cms/.dockerignore
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8072742Z inventory-cms/.env.example
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8072945Z inventory-cms/.gitignore
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8073142Z inventory-cms/Dockerfile
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8073348Z inventory-cms/README.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8073557Z inventory-cms/docker-entrypoint.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8073923Z inventory-cms/favicon.png
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8074253Z inventory-cms/generate_schemas.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8074586Z inventory-cms/package-lock.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8098404Z inventory-cms/package.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8098780Z inventory-cms/tsconfig.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8099066Z inventory-cms/config/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8099335Z inventory-cms/config/admin.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8099616Z inventory-cms/config/api.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8099907Z inventory-cms/config/database.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8100344Z inventory-cms/config/middlewares.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8100673Z inventory-cms/config/plugins.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8101584Z inventory-cms/config/server.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8101902Z inventory-cms/database/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8102217Z inventory-cms/database/migrations/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8102585Z inventory-cms/database/migrations/.gitkeep
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8103020Z inventory-cms/public/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8103247Z inventory-cms/public/robots.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8103483Z inventory-cms/public/uploads/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8103708Z inventory-cms/public/uploads/.gitkeep
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8103936Z inventory-cms/scripts/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8104136Z inventory-cms/scripts/init-token.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8104359Z inventory-cms/src/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8104541Z inventory-cms/src/index.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8104751Z inventory-cms/src/admin/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8104989Z inventory-cms/src/admin/app.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8105303Z inventory-cms/src/admin/custom.css
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8105645Z inventory-cms/src/admin/tsconfig.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8106283Z inventory-cms/src/admin/vite.config.example.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.8106668Z inventory-cms/src/api/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9104731Z inventory-cms/src/api/.gitkeep
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9105114Z inventory-cms/src/api/ad-campaign/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9105536Z inventory-cms/src/api/ad-campaign/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9106158Z inventory-cms/src/api/ad-campaign/content-types/ad-campaign/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9106758Z inventory-cms/src/api/ad-campaign/content-types/ad-campaign/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9107303Z inventory-cms/src/api/admin-audit-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9107739Z inventory-cms/src/api/admin-audit-log/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9108285Z inventory-cms/src/api/admin-audit-log/content-types/admin-audit-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9108956Z inventory-cms/src/api/admin-audit-log/content-types/admin-audit-log/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9109557Z inventory-cms/src/api/admin-audit-log/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9110193Z inventory-cms/src/api/admin-audit-log/controllers/admin-audit-log.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9110730Z inventory-cms/src/api/admin-audit-log/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9111351Z inventory-cms/src/api/admin-audit-log/routes/admin-audit-log.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9111874Z inventory-cms/src/api/admin-audit-log/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9112388Z inventory-cms/src/api/admin-audit-log/services/admin-audit-log.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9112882Z inventory-cms/src/api/agent-session/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9113297Z inventory-cms/src/api/agent-session/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9113811Z inventory-cms/src/api/agent-session/content-types/agent-session/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9114437Z inventory-cms/src/api/agent-session/content-types/agent-session/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9115003Z inventory-cms/src/api/agent-session/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:31.9115510Z inventory-cms/src/api/agent-session/controllers/agent-session.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0064395Z inventory-cms/src/api/agent-session/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0065387Z inventory-cms/src/api/agent-session/routes/agent-session.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0069926Z inventory-cms/src/api/agent-session/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0070597Z inventory-cms/src/api/agent-session/services/agent-session.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0071095Z inventory-cms/src/api/ai-learning/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0071473Z inventory-cms/src/api/ai-learning/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0072158Z inventory-cms/src/api/ai-learning/content-types/ai-learning/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0072884Z inventory-cms/src/api/ai-learning/content-types/ai-learning/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0073427Z inventory-cms/src/api/cart/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0073792Z inventory-cms/src/api/cart/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0074230Z inventory-cms/src/api/cart/content-types/cart/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0074736Z inventory-cms/src/api/cart/content-types/cart/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0075279Z inventory-cms/src/api/cart/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0075697Z inventory-cms/src/api/cart/controllers/cart.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0099723Z inventory-cms/src/api/cart/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0100352Z inventory-cms/src/api/cart/routes/cart.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0101343Z inventory-cms/src/api/cart/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0101765Z inventory-cms/src/api/cart/services/cart.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0102182Z inventory-cms/src/api/content-library/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0102635Z inventory-cms/src/api/content-library/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0103215Z inventory-cms/src/api/content-library/content-types/content-library/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0103928Z inventory-cms/src/api/content-library/content-types/content-library/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0104540Z inventory-cms/src/api/control-plane/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0104963Z inventory-cms/src/api/control-plane/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0105511Z inventory-cms/src/api/control-plane/controllers/control-plane.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0106177Z inventory-cms/src/api/control-plane/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0106676Z inventory-cms/src/api/control-plane/routes/control-plane.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0107184Z inventory-cms/src/api/conversation-state/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0107657Z inventory-cms/src/api/conversation-state/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0108499Z inventory-cms/src/api/conversation-state/content-types/conversation-state/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0109287Z inventory-cms/src/api/conversation-state/content-types/conversation-state/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0109980Z inventory-cms/src/api/conversation-state/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0110699Z inventory-cms/src/api/conversation-state/controllers/conversation-state.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0111409Z inventory-cms/src/api/conversation-state/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0111976Z inventory-cms/src/api/conversation-state/routes/conversation-state.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0112549Z inventory-cms/src/api/conversation-state/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0113142Z inventory-cms/src/api/conversation-state/services/conversation-state.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0113690Z inventory-cms/src/api/creative-asset/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0114136Z inventory-cms/src/api/creative-asset/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0114695Z inventory-cms/src/api/creative-asset/content-types/creative-asset/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.0115397Z inventory-cms/src/api/creative-asset/content-types/creative-asset/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1068707Z inventory-cms/src/api/customer-reward/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1069331Z inventory-cms/src/api/customer-reward/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1069798Z inventory-cms/src/api/customer-reward/content-types/customer-reward/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1070579Z inventory-cms/src/api/customer-reward/content-types/customer-reward/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1071139Z inventory-cms/src/api/customer-reward/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1071654Z inventory-cms/src/api/customer-reward/controllers/customer-reward.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1073441Z inventory-cms/src/api/customer-reward/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1073838Z inventory-cms/src/api/customer-reward/routes/customer-reward.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1074347Z inventory-cms/src/api/customer-reward/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1074826Z inventory-cms/src/api/customer-reward/services/customer-reward.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1075147Z inventory-cms/src/api/customer/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1075451Z inventory-cms/src/api/customer/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1075745Z inventory-cms/src/api/customer/content-types/customer/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1084833Z inventory-cms/src/api/customer/content-types/customer/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1085580Z inventory-cms/src/api/delivery-assignment/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1086276Z inventory-cms/src/api/delivery-assignment/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1086738Z inventory-cms/src/api/delivery-assignment/content-types/delivery-assignment/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1087459Z inventory-cms/src/api/delivery-assignment/content-types/delivery-assignment/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1088037Z inventory-cms/src/api/delivery-config/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1088429Z inventory-cms/src/api/delivery-config/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1088770Z inventory-cms/src/api/delivery-config/content-types/delivery-config/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1089257Z inventory-cms/src/api/delivery-config/content-types/delivery-config/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1090334Z inventory-cms/src/api/delivery-zone/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1090625Z inventory-cms/src/api/delivery-zone/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1090946Z inventory-cms/src/api/delivery-zone/content-types/delivery-zone/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1091332Z inventory-cms/src/api/delivery-zone/content-types/delivery-zone/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1091682Z inventory-cms/src/api/delivery-zone/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1092000Z inventory-cms/src/api/delivery-zone/controllers/delivery-zone.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1092300Z inventory-cms/src/api/delivery-zone/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1092651Z inventory-cms/src/api/delivery-zone/routes/delivery-zone.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1093078Z inventory-cms/src/api/delivery-zone/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1093541Z inventory-cms/src/api/delivery-zone/services/delivery-zone.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1093998Z inventory-cms/src/api/dispatch-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1094393Z inventory-cms/src/api/dispatch-log/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1094726Z inventory-cms/src/api/dispatch-log/content-types/dispatch-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1095343Z inventory-cms/src/api/dispatch-log/content-types/dispatch-log/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.1095674Z inventory-cms/src/api/driver-order-ignore/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2059285Z inventory-cms/src/api/driver-order-ignore/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2060375Z inventory-cms/src/api/driver-order-ignore/content-types/driver-order-ignore/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2061068Z inventory-cms/src/api/driver-order-ignore/content-types/driver-order-ignore/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2061619Z inventory-cms/src/api/driver-reward/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2062008Z inventory-cms/src/api/driver-reward/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2062499Z inventory-cms/src/api/driver-reward/content-types/driver-reward/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2063052Z inventory-cms/src/api/driver-reward/content-types/driver-reward/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2063543Z inventory-cms/src/api/driver-reward/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2064004Z inventory-cms/src/api/driver-reward/controllers/driver-reward.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2064526Z inventory-cms/src/api/driver-reward/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2064948Z inventory-cms/src/api/driver-reward/routes/driver-reward.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2065384Z inventory-cms/src/api/driver-reward/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2065808Z inventory-cms/src/api/driver-reward/services/driver-reward.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2066457Z inventory-cms/src/api/driver/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2066788Z inventory-cms/src/api/driver/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2067194Z inventory-cms/src/api/driver/content-types/driver/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2067661Z inventory-cms/src/api/driver/content-types/driver/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2068061Z inventory-cms/src/api/feedback/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2068383Z inventory-cms/src/api/feedback/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2068791Z inventory-cms/src/api/feedback/content-types/feedback/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2069290Z inventory-cms/src/api/feedback/content-types/feedback/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2069740Z inventory-cms/src/api/fortune-spin/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2070249Z inventory-cms/src/api/fortune-spin/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2070715Z inventory-cms/src/api/fortune-spin/content-types/fortune-spin/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2071257Z inventory-cms/src/api/fortune-spin/content-types/fortune-spin/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2071742Z inventory-cms/src/api/fortune-spin/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2072279Z inventory-cms/src/api/fortune-spin/controllers/fortune-spin.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2072728Z inventory-cms/src/api/fortune-spin/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2073133Z inventory-cms/src/api/fortune-spin/routes/fortune-spin.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2073551Z inventory-cms/src/api/fortune-spin/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2073966Z inventory-cms/src/api/fortune-spin/services/fortune-spin.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2074389Z inventory-cms/src/api/funnel-event/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2074771Z inventory-cms/src/api/funnel-event/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.2075247Z inventory-cms/src/api/funnel-event/content-types/funnel-event/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3048532Z inventory-cms/src/api/funnel-event/content-types/funnel-event/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3049268Z inventory-cms/src/api/inbound-message/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3049677Z inventory-cms/src/api/inbound-message/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3050411Z inventory-cms/src/api/inbound-message/content-types/inbound-message/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3051082Z inventory-cms/src/api/inbound-message/content-types/inbound-message/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3051903Z inventory-cms/src/api/inbound-message/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3052424Z inventory-cms/src/api/inbound-message/controllers/inbound-message.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3052920Z inventory-cms/src/api/inbound-message/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3053372Z inventory-cms/src/api/inbound-message/routes/inbound-message.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3053842Z inventory-cms/src/api/inbound-message/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3054332Z inventory-cms/src/api/inbound-message/services/inbound-message.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3054816Z inventory-cms/src/api/ingredient/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3055228Z inventory-cms/src/api/ingredient/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3056624Z inventory-cms/src/api/ingredient/content-types/ingredient/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3057183Z inventory-cms/src/api/ingredient/content-types/ingredient/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3057705Z inventory-cms/src/api/ingredient/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3058209Z inventory-cms/src/api/ingredient/controllers/adjust.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3058640Z inventory-cms/src/api/ingredient/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3059038Z inventory-cms/src/api/ingredient/routes/adjust.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3059430Z inventory-cms/src/api/llm-usage-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3059834Z inventory-cms/src/api/llm-usage-log/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3060501Z inventory-cms/src/api/llm-usage-log/content-types/llm-usage-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3061129Z inventory-cms/src/api/llm-usage-log/content-types/llm-usage-log/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3061678Z inventory-cms/src/api/llm-usage-log/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3062187Z inventory-cms/src/api/llm-usage-log/controllers/llm-usage-log.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3062703Z inventory-cms/src/api/llm-usage-log/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3063127Z inventory-cms/src/api/llm-usage-log/routes/llm-usage-log.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3063582Z inventory-cms/src/api/llm-usage-log/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3064036Z inventory-cms/src/api/llm-usage-log/services/llm-usage-log.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3064489Z inventory-cms/src/api/loyalty-tier/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3064892Z inventory-cms/src/api/loyalty-tier/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3065393Z inventory-cms/src/api/loyalty-tier/content-types/loyalty-tier/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3101402Z inventory-cms/src/api/loyalty-tier/content-types/loyalty-tier/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3102293Z inventory-cms/src/api/marketing-campaign/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3102613Z inventory-cms/src/api/marketing-campaign/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3103031Z inventory-cms/src/api/marketing-campaign/content-types/marketing-campaign/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3103477Z inventory-cms/src/api/marketing-campaign/content-types/marketing-campaign/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3103898Z inventory-cms/src/api/marketing-trigger-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3104196Z inventory-cms/src/api/marketing-trigger-log/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3104582Z inventory-cms/src/api/marketing-trigger-log/content-types/marketing-trigger-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3105278Z inventory-cms/src/api/marketing-trigger-log/content-types/marketing-trigger-log/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3105848Z inventory-cms/src/api/metric/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3106423Z inventory-cms/src/api/metric/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3106853Z inventory-cms/src/api/metric/controllers/metric.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3107257Z inventory-cms/src/api/metric/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3107601Z inventory-cms/src/api/metric/routes/metric.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3107932Z inventory-cms/src/api/order/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3108172Z inventory-cms/src/api/order/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3108459Z inventory-cms/src/api/order/content-types/order/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3109298Z inventory-cms/src/api/order/content-types/order/lifecycles.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3109844Z inventory-cms/src/api/order/content-types/order/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3110368Z inventory-cms/src/api/payment/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3110737Z inventory-cms/src/api/payment/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3111164Z inventory-cms/src/api/payment/content-types/payment/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3111502Z inventory-cms/src/api/payment/content-types/payment/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3111821Z inventory-cms/src/api/proactive-alert-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3112218Z inventory-cms/src/api/proactive-alert-log/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3112734Z inventory-cms/src/api/proactive-alert-log/content-types/proactive-alert-log/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3113366Z inventory-cms/src/api/proactive-alert-log/content-types/proactive-alert-log/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3113969Z inventory-cms/src/api/proactive-alert-log/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3114561Z inventory-cms/src/api/proactive-alert-log/controllers/proactive-alert-log.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3115227Z inventory-cms/src/api/proactive-alert-log/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3115569Z inventory-cms/src/api/proactive-alert-log/routes/proactive-alert-log.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.3116053Z inventory-cms/src/api/proactive-alert-log/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6030822Z inventory-cms/src/api/proactive-alert-log/services/proactive-alert-log.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6031812Z inventory-cms/src/api/product/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6032263Z inventory-cms/src/api/product/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6032726Z inventory-cms/src/api/product/content-types/product/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6033277Z inventory-cms/src/api/product/content-types/product/lifecycles.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6033866Z inventory-cms/src/api/product/content-types/product/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6034362Z inventory-cms/src/api/quarantine/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6036257Z inventory-cms/src/api/quarantine/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6036776Z inventory-cms/src/api/quarantine/content-types/quarantine/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6037422Z inventory-cms/src/api/quarantine/content-types/quarantine/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6037952Z inventory-cms/src/api/quarantine/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6038443Z inventory-cms/src/api/quarantine/controllers/quarantine.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6038919Z inventory-cms/src/api/quarantine/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6039353Z inventory-cms/src/api/quarantine/routes/quarantine.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6039798Z inventory-cms/src/api/quarantine/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6040329Z inventory-cms/src/api/quarantine/services/quarantine.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6040970Z inventory-cms/src/api/realtime/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6041343Z inventory-cms/src/api/realtime/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6042523Z inventory-cms/src/api/realtime/controllers/realtime.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6042966Z inventory-cms/src/api/realtime/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6043377Z inventory-cms/src/api/realtime/routes/realtime.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6043795Z inventory-cms/src/api/realtime/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6044226Z inventory-cms/src/api/realtime/services/realtime.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6044677Z inventory-cms/src/api/restaurant-brand/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6045115Z inventory-cms/src/api/restaurant-brand/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6045684Z inventory-cms/src/api/restaurant-brand/content-types/restaurant-brand/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6092797Z inventory-cms/src/api/restaurant-brand/content-types/restaurant-brand/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6093514Z inventory-cms/src/api/reward-campaign/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6093983Z inventory-cms/src/api/reward-campaign/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6094577Z inventory-cms/src/api/reward-campaign/content-types/reward-campaign/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6095253Z inventory-cms/src/api/reward-campaign/content-types/reward-campaign/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6095850Z inventory-cms/src/api/reward-campaign/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6096683Z inventory-cms/src/api/reward-campaign/controllers/reward-campaign.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6097227Z inventory-cms/src/api/reward-campaign/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6098437Z inventory-cms/src/api/reward-campaign/routes/reward-campaign.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6098953Z inventory-cms/src/api/reward-campaign/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6099463Z inventory-cms/src/api/reward-campaign/services/reward-campaign.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:32.6099958Z inventory-cms/src/api/scheduled-post/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2051507Z inventory-cms/src/api/scheduled-post/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2052239Z inventory-cms/src/api/scheduled-post/content-types/scheduled-post/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2052914Z inventory-cms/src/api/scheduled-post/content-types/scheduled-post/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2053466Z inventory-cms/src/api/supplier/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2053852Z inventory-cms/src/api/supplier/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2054319Z inventory-cms/src/api/supplier/content-types/supplier/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2054860Z inventory-cms/src/api/supplier/content-types/supplier/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2055358Z inventory-cms/src/api/system-config/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2055797Z inventory-cms/src/api/system-config/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2057344Z inventory-cms/src/api/system-config/content-types/system-config/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2057987Z inventory-cms/src/api/system-config/content-types/system-config/layouts.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2058671Z inventory-cms/src/api/system-config/content-types/system-config/lifecycles.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2059359Z inventory-cms/src/api/system-config/content-types/system-config/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2059944Z inventory-cms/src/api/system-config/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2060562Z inventory-cms/src/api/system-config/controllers/agent-chat.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2061324Z inventory-cms/src/api/system-config/controllers/automation.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2061822Z inventory-cms/src/api/system-config/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2062284Z inventory-cms/src/api/system-config/routes/agent-chat.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2062789Z inventory-cms/src/api/system-config/routes/automation.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2063241Z inventory-cms/src/api/voice-interaction/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2063684Z inventory-cms/src/api/voice-interaction/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2064279Z inventory-cms/src/api/voice-interaction/content-types/voice-interaction/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2064988Z inventory-cms/src/api/voice-interaction/content-types/voice-interaction/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.2065619Z inventory-cms/src/api/voice-interaction/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6089727Z inventory-cms/src/api/voice-interaction/controllers/voice-interaction.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6090588Z inventory-cms/src/api/voice-interaction/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6090945Z inventory-cms/src/api/voice-interaction/routes/voice-interaction.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6091301Z inventory-cms/src/api/voice-interaction/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6091651Z inventory-cms/src/api/voice-interaction/services/voice-interaction.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6091971Z inventory-cms/src/api/workflow-error/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6092239Z inventory-cms/src/api/workflow-error/content-types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6092819Z inventory-cms/src/api/workflow-error/content-types/workflow-error/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6093497Z inventory-cms/src/api/workflow-error/content-types/workflow-error/schema.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6094073Z inventory-cms/src/api/workflow-error/controllers/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6100621Z inventory-cms/src/api/workflow-error/controllers/workflow-error.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6101079Z inventory-cms/src/api/workflow-error/routes/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6102659Z inventory-cms/src/api/workflow-error/routes/workflow-error.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6102975Z inventory-cms/src/api/workflow-error/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6103290Z inventory-cms/src/api/workflow-error/services/workflow-error.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6103588Z inventory-cms/src/bootstrap-seeds/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6103846Z inventory-cms/src/bootstrap-seeds/restaurant-menu.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6127564Z inventory-cms/src/extensions/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6128084Z inventory-cms/src/extensions/.gitkeep
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6128402Z inventory-cms/src/middlewares/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6129252Z inventory-cms/src/middlewares/admin-cookie-auth.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6129650Z inventory-cms/src/middlewares/auth-ratelimit.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6130048Z inventory-cms/src/middlewares/prometheus-tracker.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6130575Z inventory-cms/src/plugins/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6130902Z inventory-cms/src/plugins/json-form/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6131278Z inventory-cms/src/plugins/json-form/package.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6131711Z inventory-cms/src/plugins/json-form/admin/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6132128Z inventory-cms/src/plugins/json-form/admin/src/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6132556Z inventory-cms/src/plugins/json-form/admin/src/index.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6133046Z inventory-cms/src/plugins/json-form/admin/src/pluginId.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6133514Z inventory-cms/src/plugins/json-form/admin/src/components/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6134033Z inventory-cms/src/plugins/json-form/admin/src/components/JsonFormInput.jsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6134554Z inventory-cms/src/plugins/json-form/server/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6135235Z inventory-cms/src/plugins/json-form/server/index.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6135606Z inventory-cms/types/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.6135807Z inventory-cms/types/generated/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7037912Z inventory-cms/types/generated/components.d.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7038350Z inventory-cms/types/generated/contentTypes.d.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7038649Z kiosk-app/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7038844Z kiosk-app/.env.example
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7039041Z kiosk-app/.gitignore
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7039232Z kiosk-app/Dockerfile
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7039417Z kiosk-app/README.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7039610Z kiosk-app/build_error.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7039820Z kiosk-app/eslint.config.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7040024Z kiosk-app/index.html
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7040319Z kiosk-app/package-lock.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7040534Z kiosk-app/package.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7040734Z kiosk-app/postcss.config.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7040949Z kiosk-app/tailwind.config.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7041160Z kiosk-app/tsconfig.app.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7041418Z kiosk-app/tsconfig.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7041616Z kiosk-app/tsconfig.node.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7041822Z kiosk-app/vite.config.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7042012Z kiosk-app/public/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7042202Z kiosk-app/public/vite.svg
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7042395Z kiosk-app/src/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7042575Z kiosk-app/src/App.css
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7042757Z kiosk-app/src/App.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7042937Z kiosk-app/src/index.css
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7043122Z kiosk-app/src/main.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7043300Z kiosk-app/src/assets/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7043482Z kiosk-app/src/assets/react.svg
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7158187Z kiosk-app/src/components/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.7159047Z kiosk-app/src/components/AppSwitcher.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9032765Z kiosk-app/src/components/Cart.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9035185Z kiosk-app/src/components/CustomizerModal.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9037057Z kiosk-app/src/components/ErrorBoundary.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9039065Z kiosk-app/src/components/LanguageSelector.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9115850Z kiosk-app/src/components/MenuGrid.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9116505Z kiosk-app/src/components/VerticalVideoFeed.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9116888Z kiosk-app/src/context/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9117206Z kiosk-app/src/context/CartContext.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9117921Z kiosk-app/src/lib/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9118197Z kiosk-app/src/lib/utils.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9118507Z kiosk-app/src/pages/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9118781Z kiosk-app/src/pages/CheckoutView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9119112Z kiosk-app/src/pages/FortuneWheelView.tsx
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9119425Z kiosk-app/src/services/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9119721Z kiosk-app/src/services/configService.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:33.9120057Z kiosk-app/src/services/menuService.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3023315Z kiosk-app/src/services/strapiClient.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3023879Z kiosk-app/src/utils/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3024240Z kiosk-app/src/utils/SoundManager.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3024527Z kiosk-app/src/utils/i18n.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3025853Z kiosk-app/src/utils/tracking.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3049794Z mock-api/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3050256Z mock-api/Dockerfile
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3050654Z mock-api/server.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3050925Z patches/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3051177Z patches/unified.patch
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3051459Z reports/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.3051702Z reports/audit.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.5076460Z reports/audit_20260131.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.5097237Z reports/backlog.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.6060981Z reports/changelog.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.6066435Z reports/tests_100.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.7103485Z schemas/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.7141243Z schemas/README.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:34.7146993Z schemas/inbound/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2037332Z schemas/inbound/v1.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2057748Z schemas/inbound/v2.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2066217Z scripts/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2066714Z scripts/apply_p0_patches.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2067140Z scripts/backup_media.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2067495Z scripts/backup_postgres.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2067868Z scripts/backup_redis.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2068563Z scripts/chaos-monkey.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2068891Z scripts/ci_test_runner.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2069239Z scripts/db_explain.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.2075646Z scripts/db_migrate.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.7082748Z scripts/db_migrate_all.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.7088704Z scripts/deep-health-check.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.7089354Z scripts/dora_metrics.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.7125017Z scripts/env_sync_check.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.7125739Z scripts/fix_cd_matrix.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:35.7129550Z scripts/generate_table_qr.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3110271Z scripts/generate_workflow_ids.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3111250Z scripts/integrity_gate.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3111584Z scripts/n8n-worker-entrypoint.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3111829Z scripts/patch_adapters.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3112043Z scripts/patch_p106_logging.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3112307Z scripts/patch_w14_chatops.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3112894Z scripts/patch_w14_p202.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3113209Z scripts/patch_w14_p204.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3113535Z scripts/patch_w14_p2dz01.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3113817Z scripts/patch_w14_p2dz02.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3114104Z scripts/patch_w41_dialect.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3114422Z scripts/patch_w41_llm_fallback.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3114670Z scripts/patch_w42_cloudprint.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3114887Z scripts/patch_w42_pro_os.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3115088Z scripts/patch_w4_p2dz02.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3115286Z scripts/patch_workflows.py
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3115495Z scripts/preflight-prod.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3115697Z scripts/preflight.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3115890Z scripts/refactor_w4.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3116331Z scripts/requirements-ci.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3116546Z scripts/restore_postgres.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3116755Z scripts/setup-github-runner.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3117034Z scripts/setup-github-secrets.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3117253Z scripts/setup-volumes.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3117448Z scripts/smoke.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3117623Z scripts/smoke_meta.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3117824Z scripts/smoke_security.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3118036Z scripts/smoke_security_gateway.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3118254Z scripts/test-redis.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3137458Z scripts/test_battery.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3137868Z scripts/test_darja_intents.py
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3138142Z scripts/test_dedupe.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3138445Z scripts/test_e2e.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.3138711Z scripts/test_harness.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.5111575Z scripts/test_l10n_script_detection.py
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.5112520Z scripts/test_media_fetch.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:36.8038505Z scripts/test_outbound.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1097408Z scripts/test_p106_logging.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1099038Z scripts/test_p201_l10n.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1099519Z scripts/test_p202_admin.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1100160Z scripts/test_p204_metrics.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1100580Z scripts/test_p2dz01_cod.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1100966Z scripts/test_p2dz02_location.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1101370Z scripts/test_security_hardening.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.1132447Z scripts/test_signature_verify.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.2067821Z scripts/test_template_render.py
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.2072723Z scripts/update_w4_c6.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4027517Z scripts/validate_cicd.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4028097Z scripts/validate_contracts.py
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4028575Z scripts/validate_go_no_go.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4048638Z scripts/validate_order.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4049642Z scripts/ops/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4050939Z scripts/ops/backup.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4051351Z scripts/ops/check_drift.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4051673Z scripts/ops/deploy_staging_to_node.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4057508Z scripts/ops/deploy_to_node.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4063768Z scripts/ops/install_runner.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4082857Z scripts/ops/provision_vps.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4083185Z scripts/ops/rollback.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4083403Z scripts/smoke/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4083585Z scripts/smoke/run.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.4093771Z scripts/smoke/test_driver_phase6.sh
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.6029937Z scripts/smoke/payloads/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.6118828Z scripts/smoke/payloads/ig_image.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.6148621Z scripts/smoke/payloads/ig_postback.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.6149384Z scripts/smoke/payloads/ig_story_mention.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:37.6149888Z scripts/smoke/payloads/ig_text.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1028267Z scripts/smoke/payloads/msg_image.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1028886Z scripts/smoke/payloads/msg_postback.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1029252Z scripts/smoke/payloads/msg_quick_reply.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1029514Z scripts/smoke/payloads/msg_text.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1047706Z scripts/smoke/payloads/wa_button_reply.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1048477Z scripts/smoke/payloads/wa_image.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1049129Z scripts/smoke/payloads/wa_list_reply.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1076851Z scripts/smoke/payloads/wa_text.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1097808Z shared/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1099070Z shared/globals.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.1099324Z shared/n8n_backup.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:38.4057201Z shared/n8n_essential.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6057919Z src/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6067446Z src/index.ts
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6070683Z templates/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6090768Z templates/delivery/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6091318Z templates/delivery/clarify_ar.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6091817Z templates/delivery/clarify_darja.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6093174Z templates/delivery/clarify_fr.txt
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6094331Z templates/whatsapp/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6094821Z templates/whatsapp/WA_ORDER_STATUS_templates.ar.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6095433Z templates/whatsapp/WA_ORDER_STATUS_templates.fr.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6096118Z test-results/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6096684Z test-results/results.xml
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6097588Z tests/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6097967Z tests/arabic_script_cases.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.6098405Z tests/darja_phrases.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8041235Z tests/k6-load-test.js
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8042285Z tests/template_render_cases.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8042780Z tests/tests.md
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8043292Z tests/contracts/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8043735Z tests/contracts/invalid_missing_msg_id.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8044231Z tests/contracts/invalid_wrong_types.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8044913Z tests/contracts/media_fetch_dlq.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8061845Z tests/contracts/media_fetch_request.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8093396Z tests/contracts/valid_v1.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8093903Z tests/contracts/valid_v2.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8094244Z tests/fixtures/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8094583Z tests/fixtures/00_seed_api_clients.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8094945Z tests/fixtures/10_seed_orders_outbox.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8095307Z tests/fixtures/20_seed_delivery_demo.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8095668Z tests/fixtures/40_seed_support_faq.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8096244Z tests/fixtures/45_seed_l10n_demo.sql
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8096756Z workflows/
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8097064Z workflows/W0_META_VERIFY_UNIFIED.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8097537Z workflows/W0_REDIS_HELPER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8097898Z workflows/W10_CUSTOMER_DELIVERY_QUOTE.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8098980Z workflows/W11_ADMIN_DELIVERY_ZONES.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8099479Z workflows/W12_ADMIN_ORDERS.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8099916Z workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8124740Z workflows/W15_OUTBOX_WORKER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:39.8135086Z workflows/W16_HEALTHZ.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.2028139Z workflows/W17_HEALTH_MONITOR.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.5083707Z workflows/W18_MEDIA_FETCH_WORKER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.5089126Z workflows/W1_IN_TIKTOK.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.5089523Z workflows/W1_IN_WA.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6040326Z workflows/W20_ASSET_ENHANCER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6059561Z workflows/W21_CAMPAIGN_BLASTER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6084538Z workflows/W25_GAMIFICATION_WHEEL.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6090208Z workflows/W2_IN_IG.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6093809Z workflows/W30_VOICE_CALL_INIT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6102174Z workflows/W31_VOICE_ORDER_CONFIRM.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.6107474Z workflows/W3_IN_MSG.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7023655Z workflows/W4.1_ROUTER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7034123Z workflows/W4.2_CART_MANAGER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7048429Z workflows/W4.3_FAQ_AGENT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7059444Z workflows/W4_CORE.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7081868Z workflows/W4_CORE_ALGERIAN_STUB.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7090159Z workflows/W4_CORE_MENU_GROUNDED.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7097673Z workflows/W50_CART_ABANDONMENT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7110714Z workflows/W51_VIP_WIN_BACK.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7115235Z workflows/W53_DYNAMIC_KITCHEN_LOAD.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.7127638Z workflows/W55_PREDICTIVE_86ING.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9038412Z workflows/W56_STRAPI_DIALECT_SYNC.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9039018Z workflows/W58_DYNAMIC_SURGE.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9039352Z workflows/W5_OUT_TIKTOK.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9043558Z workflows/W5_OUT_WA.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9077555Z workflows/W60_KITCHEN_CLOUD_PRINT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9095117Z workflows/W61_REVIEW_CATCHER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9098131Z workflows/W6_OUT_IG.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9106202Z workflows/W7_OUT_MSG.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9111830Z workflows/W8_DLQ_HANDLER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9119803Z workflows/W8_DLQ_REPLAY.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:40.9135135Z workflows/W8_OPS.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.6029565Z workflows/W9_ADMIN_PING.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.6044538Z workflows/W_ADMIN_AGENT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.6046738Z workflows/W_ADMIN_LIVE_MONITOR.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.6056534Z workflows/W_ADMIN_PROACTIVE_AGENT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.6061092Z workflows/W_AD_MANAGER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.6081593Z workflows/W_AI_FUNNEL_LEARNER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.8028444Z workflows/W_AI_STRATEGY_ADVISOR.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9057783Z workflows/W_BOT_FUNNEL_HOOK.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9058685Z workflows/W_CMS_SYNC.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9059119Z workflows/W_CONTENT_SCHEDULER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9060583Z workflows/W_DRIVER_ACTIONS.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9061123Z workflows/W_DRIVER_AVAILABLE_LIST.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9061507Z workflows/W_DRIVER_BOT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9061982Z workflows/W_DRIVER_DISPATCH.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9062346Z workflows/W_DRIVER_GAMIFICATION.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9062709Z workflows/W_DRIVER_HISTORY.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9063057Z workflows/W_DRIVER_ONBOARDING.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:41.9141361Z workflows/W_DRIVER_OTP_VERIFY.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.0023052Z workflows/W_DRIVER_ROUTER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.2043231Z workflows/W_HIVE_MIND_DISPATCH.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.2047891Z workflows/W_INVENTORY_SYNC.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.2068330Z workflows/W_KIOSK_ORDER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.5027544Z workflows/W_L10N_DETECT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.5092681Z workflows/W_LLM_INTENT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.5118020Z workflows/W_LOW_STOCK_ALERT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.5121742Z workflows/W_MARKETING_AUTOPILOT.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.5124908Z workflows/W_MENU_VALIDATOR.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.9057144Z workflows/W_OMNICHANNEL_CONTENT_GEN.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.9109185Z workflows/W_PAYMENT_CALLBACK.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:42.9110659Z workflows/W_PAYMENT_CHARGILY.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.0041516Z workflows/W_QR_TABLE_DETECTOR.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.0057663Z workflows/W_STT_PIPELINE.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.1029016Z workflows/W_THE_USUAL.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.1048144Z workflows/W_TIKTOK_PUBLISHER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.1048507Z workflows/W_TRACKING_FUNNEL.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.1058580Z workflows/W_UPSELL_ENGINE.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.1065492Z workflows/W_WEATHER_TRIGGER.json
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.7057429Z 
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.7059472Z sent 1,131,485 bytes  received 12,803 bytes  32,233.46 bytes/sec
+Deploy to Staging (vps-primary)	Sync code to staging	2026-03-06T10:30:43.7060233Z total size is 5,925,969  speedup is 5.18
+Deploy to Staging (vps-primary)	Prepare and start staging services	´╗┐2026-03-06T10:30:44.1081069Z ##[group]Run STAGING_DIR="/opt/resto/staging/20260306-102539-477527c"
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1081843Z [36;1mSTAGING_DIR="/opt/resto/staging/20260306-102539-477527c"[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1082281Z [36;1mPROJECT_DIR="/opt/resto"[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1082996Z [36;1mSSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1083692Z [36;1m[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1084021Z [36;1m# Use the newly extracted staging deploy script[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1084446Z [36;1mssh $SSH_OPTS deploy@72.60.190.192 \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1085163Z [36;1m  "export GH_TOKEN='***'; \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1085617Z [36;1m   chmod +x $STAGING_DIR/scripts/ops/deploy_staging_to_node.sh; \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1086391Z [36;1m   bash $STAGING_DIR/scripts/ops/deploy_staging_to_node.sh \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1086858Z [36;1m     --staging-dir '$STAGING_DIR' \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1087231Z [36;1m     --project-dir '$PROJECT_DIR' \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1087815Z [36;1m     --deploy-sha '477527cc191fbaa3adc561e086f268b980ec4dbb' \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1088264Z [36;1m     --github-owner 'zerAda' \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1088601Z [36;1m     --github-actor 'zerAda' \[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1089082Z [36;1m     --github-token '***'"[0m
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1119172Z shell: /usr/bin/bash -e {0}
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1119544Z env:
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1119785Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1120047Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1120417Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1120735Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:30:44.1121101Z ##[endgroup]
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:00.6041383Z Login Succeeded
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:00.6043256Z 
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:00.6043827Z WARNING! Your credentials are stored unencrypted in '/home/deploy/.docker/config.json'.
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:00.6049067Z Configure a credential helper to remove this warning. See
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:00.6049563Z https://docs.docker.com/go/credential-store/
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:00.6049894Z 
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:09.0058910Z service "kiosk" has neither an image nor a build context specified: invalid compose project
+Deploy to Staging (vps-primary)	Prepare and start staging services	2026-03-06T10:31:09.2104973Z ##[error]Process completed with exit code 1.
+Deploy to Staging (vps-primary)	Stop staging services	´╗┐2026-03-06T10:31:09.7102057Z ##[group]Run STAGING_DIR="/opt/resto/staging/20260306-102539-477527c"
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7102858Z [36;1mSTAGING_DIR="/opt/resto/staging/20260306-102539-477527c"[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7103272Z [36;1m[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7103798Z [36;1mssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 deploy@72.60.190.192 << ENDSSH[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7104392Z [36;1m  if [ -d "$STAGING_DIR" ]; then[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7104635Z [36;1m    cd "$STAGING_DIR"[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7104906Z [36;1m    if [ -f docker-compose.staging-override.yml ]; then[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7105501Z [36;1m      docker compose --project-name resto-staging -f docker-compose.yml -f docker-compose.staging-override.yml down -v --remove-orphans 2>/dev/null || true[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7106238Z [36;1m    else[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7106563Z [36;1m      docker compose --project-name resto-staging down --remove-orphans 2>/dev/null || true[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7106915Z [36;1m    fi[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7107171Z [36;1m    echo "Staging services stopped"[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7107768Z [36;1m  fi[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.7107941Z [36;1mENDSSH[0m
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8088950Z shell: /usr/bin/bash -e {0}
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8089709Z env:
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8090002Z   KEEP_RELEASES: 5
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8090712Z   MAX_RETRIES: 15
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8090990Z   RETRY_INTERVAL: 10
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8091756Z   DEPLOY_SHA: 477527cc191fbaa3adc561e086f268b980ec4dbb
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:09.8092394Z ##[endgroup]
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:10.6071217Z Pseudo-terminal will not be allocated because stdin is not a terminal.
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0092394Z Welcome to Ubuntu 24.04.3 LTS (GNU/Linux 6.8.0-90-generic x86_64)
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0093714Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0093881Z  * Documentation:  https://help.ubuntu.com
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0094259Z  * Management:     https://landscape.canonical.com
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0094662Z  * Support:        https://ubuntu.com/pro
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0094902Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0095132Z  System information as of Sun Mar  1 12:16:04 UTC 2026
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0095408Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0095582Z   System load:  1.71               Processes:             127
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0096337Z   Usage of /:   19.7% of 95.82GB   Users logged in:       1
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.0096820Z   Memory usage: 23%                IPv4 address for eth0: 72.60.190.192
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3039120Z   Swap usage:   0%                 IPv6 address for eth0: 2a02:4780:28:4174::1
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3039587Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3039855Z  * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3040572Z    just raised the bar for easy, resilient and secure K8s cluster deployment.
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3040921Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3041126Z    https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3041437Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3041639Z Expanded Security Maintenance for Applications is not enabled.
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3041954Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3042081Z 31 updates can be applied immediately.
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3042536Z To see these additional updates run: apt list --upgradable
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3042835Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3043020Z 2 additional security updates can be applied with ESM Apps.
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3043527Z Learn more about enabling ESM Apps service at https://ubuntu.com/esm
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3043859Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3043864Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3044072Z 1 updates could not be installed automatically. For more details,
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3044561Z see /var/log/unattended-upgrades/unattended-upgrades.log
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3044829Z 
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:18.3044951Z *** System restart required ***
+Deploy to Staging (vps-primary)	Stop staging services	2026-03-06T10:31:20.2074641Z Staging services stopped
+Deploy to Staging (vps-primary)	Post Setup SSH	´╗┐2026-03-06T10:31:20.8032059Z Post job cleanup.
+Deploy to Staging (vps-primary)	Post Setup SSH	2026-03-06T10:31:20.8126734Z Post job cleanup.
+Deploy to Staging (vps-primary)	Post Setup SSH	2026-03-06T10:31:25.8024210Z Ô£àSSH directory "/home/github-runner/.ssh" has been removed successfully.
+Deploy to Staging (vps-primary)	Post Checkout code	´╗┐2026-03-06T10:31:27.8031153Z Post job cleanup.
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:35.8072005Z [command]/usr/bin/git version
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:36.2060700Z git version 2.43.0
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:37.0067598Z Temporarily overriding HOME='/home/github-runner/actions-runner/_work/_temp/3408e5a2-b358-4ae9-bcb9-cb11cc6c62f4' before making global git config changes
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:37.0069629Z Adding repository directory to the temporary git global config as a safe directory
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:37.1023953Z [command]/usr/bin/git config --global --add safe.directory /home/github-runner/actions-runner/_work/RestaurantAgentAutomation/RestaurantAgentAutomation
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:38.0032172Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:38.2062287Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:41.7039974Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:41.9053648Z http.https://github.com/.extraheader
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:42.0042614Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+Deploy to Staging (vps-primary)	Post Checkout code	2026-03-06T10:31:42.3081870Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Deploy to Staging (vps-primary)	Complete job	´╗┐2026-03-06T10:31:44.9063771Z Evaluate and set job outputs
+Deploy to Staging (vps-primary)	Complete job	2026-03-06T10:31:44.9072899Z Cleaning up orphan processes
