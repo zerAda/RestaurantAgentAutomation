@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Send, Bot, User, Sparkles, BarChart3, Lightbulb, Package, Rocket, Settings, CheckCircle, AlertTriangle, ChevronRight, Maximize2, Minimize2, Users, Star, Truck, AlertOctagon, Trash2, ThumbsUp, ThumbsDown, MessageSquare, BrainCircuit, Activity } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, BarChart3, Lightbulb, Package, Rocket, CheckCircle, AlertTriangle, ChevronRight, Maximize2, Minimize2, Users, AlertOctagon, Trash2, ThumbsUp, ThumbsDown, BrainCircuit, Activity } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 /* ─────────────── Types ─────────────── */
@@ -52,7 +52,7 @@ function loadHistory(): ChatMessage[] {
 }
 function saveHistory(messages: ChatMessage[]) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); }
-    catch { }
+    catch { /* ignore */ }
 }
 
 export function AIChatBubble() {
@@ -61,7 +61,6 @@ export function AIChatBubble() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [pendingConfirm, setPendingConfirm] = useState<{ message: string; payload: unknown } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const initialized = useRef(false);
@@ -110,7 +109,6 @@ export function AIChatBubble() {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsLoading(true);
-        setPendingConfirm(null);
 
         try {
             const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
@@ -132,6 +130,7 @@ export function AIChatBubble() {
             if (!rawRes.ok) throw new Error(`Strapi ${rawRes.status}`);
             const resJson = await rawRes.json();
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const data = (resJson?.data || resJson || {}) as any;
 
             const agentMsg: ChatMessage = {
@@ -146,8 +145,7 @@ export function AIChatBubble() {
             };
 
             setMessages(prev => [...prev, agentMsg]);
-            if (data.needsConfirmation && data.confirmAction) setPendingConfirm(data.confirmAction);
-        } catch (error: any) {
+        } catch {
             setMessages(prev => [...prev, {
                 id: (Date.now() + 1).toString(),
                 role: 'agent',
@@ -182,7 +180,7 @@ export function AIChatBubble() {
                 headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
                 body: JSON.stringify({ data: { message: 'feedback', sessionId: 'admin-dashboard-session', feedbackScore: score } }),
             });
-        } catch { }
+        } catch { /* ignore */ }
     }, []);
 
     const renderActions = (actions: AgentAction[]) => (
