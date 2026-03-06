@@ -413,7 +413,7 @@ export default {
                 return ctx.badRequest(`Erreur agent (${response.status}). Vérifiez que n8n est en ligne.`);
             }
 
-            const data = await response.json().catch(() => ({ output: 'Requête traitée.' }));
+            const data = await response.json() as any;
             const reply = data.output || data.message || data.text || data.response || 'Requête traitée.';
 
             /* 6. Save session memory */
@@ -426,8 +426,8 @@ export default {
                 };
                 if (existing.length > 0) {
                     await strapi.db.query('api::agent-session.agent-session').update({
-                        where: { id: existing[0].id },
-                        data: { ...sessionData, messages_count: (existing[0].messages_count || 0) + 1 },
+                        where: { id: (existing[0] as any).id },
+                        data: { ...sessionData, messages_count: ((existing[0] as any).messages_count || 0) + 1 },
                     });
                 } else {
                     await strapi.db.query('api::agent-session.agent-session').create({

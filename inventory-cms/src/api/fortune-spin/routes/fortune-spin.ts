@@ -1,3 +1,3 @@
 import { factories } from '@strapi/strapi';
 
-export default factories.createCoreRouter('api::fortune-spin.fortune-spin');
+export default factories.createCoreRouter('api::fortune-spin.fortune-spin' as any);

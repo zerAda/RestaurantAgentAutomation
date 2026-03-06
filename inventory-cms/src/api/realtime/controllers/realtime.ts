@@ -54,7 +54,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         // OR we can multiplex. Multiplexing is better for memory. 
         // Let's use Node's EventEmitter for multiplexing from a single Redis sub.
 
-        const onOrderMessage = (data: any) => {
+        const onOrderMessage = async (data: any) => {
             sendEvent('order_update', data);
         };
 

@@ -1,4 +1,4 @@
-export default ({ env }: { env: { array: (key: string, defaultValue: string[]) => string[] } }) => [
+export default ({ env }: { env: any }) => [
   'strapi::logger',
   'strapi::errors',
   {

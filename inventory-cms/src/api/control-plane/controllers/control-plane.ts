@@ -1,7 +1,7 @@
 import * as os from 'os';
 
 export default {
-    status: async (ctx) => {
+    status: async (ctx: any) => {
         try {
             // Memory stats
             const totalMem = os.totalmem();
@@ -53,7 +53,7 @@ export default {
                 }
             });
         } catch (error) {
-            ctx.throw(500, 'Control Plane Error: ' + error.message);
+            ctx.throw(500, 'Control Plane Error: ' + (error as any).message);
         }
     }
 };

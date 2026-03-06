@@ -1,3 +1,5 @@
+import type { Core } from '@strapi/strapi';
+
 let requestCounters: Record<string, number> = {};
 let latencyBuckets: Record<string, number[]> = {};
 
@@ -29,8 +31,8 @@ export const getMetricsData = () => {
     return output;
 };
 
-export default (config, { strapi }) => {
-    return async (ctx, next) => {
+export default (config: any, { strapi }: { strapi: Core.Strapi }) => {
+    return async (ctx: any, next: () => Promise<void>) => {
         if (ctx.request.path === '/api/metrics') {
             return await next();
         }
