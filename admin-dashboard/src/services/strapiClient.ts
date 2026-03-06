@@ -26,12 +26,21 @@ export function setStrapiToken(token: string) {
   _token = token;
 }
 
-function getToken(): string | null {
+export function getToken(): string | null {
   if (_token) return _token;
-  return sessionStorage.getItem('admin_jwt');
+  return sessionStorage.getItem('admin_jwt') || localStorage.getItem('admin_jwt');
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// Global event dispatcher for network errors
+const emitNetworkError = (message: string) => {
+  window.dispatchEvent(new CustomEvent('strapi-network-error', { detail: { message } }));
+};
+
+export interface RequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -41,24 +50,42 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Default timeout 10s, but configurable (e.g. 60s for agent chat)
+  const timeoutMs = options.timeoutMs || 10000;
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), 10000);
+  const id = setTimeout(() => controller.abort(), timeoutMs);
   const signal = (options.signal as AbortSignal | undefined) ?? controller.signal;
 
   try {
     const res = await fetch(`${STRAPI_URL}${path}`, { ...options, headers, signal });
     clearTimeout(id);
+
     if (res.status === 401) {
       sessionStorage.removeItem('admin_jwt');
+      localStorage.removeItem('admin_jwt');
       sessionStorage.removeItem('admin_user');
+      localStorage.removeItem('admin_user');
       window.location.href = '/';
     }
+
     if (!res.ok) {
+      if (res.status >= 500) {
+        emitNetworkError(`Le serveur a retourné une erreur ${res.status}`);
+      }
       throw new Error(`Strapi ${res.status}: ${res.statusText}`);
     }
     return res.json();
   } catch (error) {
     clearTimeout(id);
+
+    // Check if it's a network error (CORS or offline) or timeout
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        emitNetworkError('La requête a expiré (Timeout).');
+      } else if (error.message.includes('Failed to fetch')) {
+        emitNetworkError('Erreur réseau. Impossible de contacter le serveur.');
+      }
+    }
     throw error;
   }
 }

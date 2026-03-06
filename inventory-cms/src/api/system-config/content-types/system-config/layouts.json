@@ -185,6 +185,49 @@
                     "auto_ad_budget_multiplier",
                     "ad_roas_pause_threshold"
                 ]
+            },
+            {
+                "name": "🤖 n8n Super Agent & Workflows",
+                "fields": [
+                    "enable_proactive_alerts",
+                    "proactive_alert_interval_hours",
+                    "proactive_alert_revenue_drop_pct",
+                    "enable_funnel_learner",
+                    "funnel_learner_cron",
+                    "funnel_learner_min_events",
+                    "enable_content_scheduler",
+                    "content_scheduler_cron",
+                    "content_scheduler_interval_hours",
+                    "enable_low_stock_alerts",
+                    "low_stock_alert_cron",
+                    "enable_the_usual",
+                    "the_usual_min_repeats",
+                    "upsell_min_orders",
+                    "upsell_cooldown_days",
+                    "inventory_sync_interval_min",
+                    "dlq_retry_interval_hours",
+                    "review_delay_min",
+                    "review_window_min"
+                ]
+            },
+            {
+                "name": "🎯 Gamification & Fleet Dispatch",
+                "fields": [
+                    "enable_driver_gamification",
+                    "driver_xp_per_delivery",
+                    "driver_xp_speed_bonus",
+                    "driver_level_divisor",
+                    "gamification_points_per_delivery",
+                    "enable_hive_mind_dispatch",
+                    "hive_mind_stacking_bonus",
+                    "hive_mind_overload_penalty",
+                    "hive_mind_max_active_jobs",
+                    "hive_mind_max_distance_km",
+                    "hive_mind_priority_weight",
+                    "driver_bot_system_prompt",
+                    "fortune_wheel_enabled",
+                    "fortune_wheel_prizes_json"
+                ]
             }
         ]
     }

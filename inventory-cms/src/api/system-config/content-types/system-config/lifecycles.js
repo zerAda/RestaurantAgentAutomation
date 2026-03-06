@@ -84,9 +84,27 @@ module.exports = {
     },
 
     async afterUpdate(event) {
-        const { result } = event;
+        const { result, params } = event;
+        const ctx = strapi.requestContext.get();
+        const adminUser = ctx?.state?.user;
 
-        // Trigger n8n CMS sync webhook if configured
+        // 1. Audit Logging
+        try {
+            await strapi.db.query('api::admin-audit-log.admin-audit-log').create({
+                data: {
+                    action: 'UPDATE',
+                    model: 'system-config',
+                    model_id: result.id,
+                    admin_user_id: adminUser?.id || null,
+                    admin_email: adminUser?.email || 'system',
+                    payload_json: params.data || {}
+                }
+            });
+        } catch (e) {
+            strapi.log.warn(`[system-config] Failed to write audit log: ${e.message}`);
+        }
+
+        // 2. Trigger n8n CMS sync webhook if configured
         const webhookUrl = result.n8n_webhook_base_url;
         if (webhookUrl) {
             try {

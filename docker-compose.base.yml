@@ -1,0 +1,467 @@
+networks:
+  internal:
+    name: internal
+    external: true
+  proxy:
+    name: proxy
+    external: true
+
+volumes:
+  cms_uploads:
+    external: true
+  n8n_data:
+    external: true
+  ollama_data:
+    external: true
+  postgres_data:
+    external: true
+  redis_data:
+    external: true
+  traefik_data:
+    external: true
+
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - max_connections=200
+      - -c
+      - log_statement=ddl
+      - -c
+      - log_min_duration_statement=1000
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_USER: n8n
+      TZ: ${TZ:-Europe/Paris}
+    healthcheck:
+      interval: 10s
+      retries: 10
+      start_period: 30s
+      test:
+        - CMD-SHELL
+        - pg_isready -U n8n -d n8n || exit 1
+      timeout: 5s
+    image: postgres:15-alpine
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./secrets/strapi_db_password:/run/secrets/strapi_db_password:ro
+      - ./db/bootstrap.sql:/docker-entrypoint-initdb.d/00_bootstrap.sql:ro
+      - ./db/init/01_apply_migrations.sh:/docker-entrypoint-initdb.d/01_apply_migrations.sh:ro
+      - ./db/init/02_create_strapi_db.sh:/docker-entrypoint-initdb.d/02_create_strapi_db.sh:ro
+      - ./db/migrations:/docker-entrypoint-initdb.d/migrations:ro
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      - DB_USER=n8n
+      - DB_PASSWORD_FILE=/run/secrets/postgres_password
+      - DB_HOST=postgres
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=500
+      - DEFAULT_POOL_SIZE=50
+      - AUTH_TYPE=any
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+    volumes:
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      interval: 10s
+      retries: 10
+      start_period: 10s
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      timeout: 3s
+    image: redis:7-alpine
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - redis_data:/data
+
+  db-migrate:
+    command:
+      - "set -e\n# Read password from file\nexport PGPASSWORD=$$(cat /run/secrets/postgres_password)\n\
+        \necho \"=== DB Migration Service (P0-01) ===\"\necho \"Waiting for postgres...\"\n\n\
+        # Wait for pgbouncer\n        TRIES=0\n        until pg_isready -h pgbouncer -U n8n -d n8n; do\n          sleep 1\n          TRIES=$$((TRIES + 1))\n          if [ \"$$TRIES\" -ge 60 ]; then\n            echo \"::error::PgBouncer did not become ready in time for migrations.\"\n            exit 1\n          fi\n        done\n\necho \"PgBouncer ready. Creating schema_migrations table...\"\n\n\
+        # Create tracking table\npsql -h pgbouncer -v ON_ERROR_STOP=1 <<'EOSQL'\nCREATE TABLE IF\
+        \ NOT EXISTS schema_migrations (\n  id          serial PRIMARY KEY,\n  filename\
+        \    text NOT NULL UNIQUE,\n  applied_at  timestamptz NOT NULL DEFAULT now(),\n\
+        \  checksum    text NULL\n);\nEOSQL\n\necho \"Checking for pending migrations...\"\
+        \n\n# Get applied migrations\nAPPLIED=$$(psql -h pgbouncer -t -A -c \"SELECT filename FROM\
+        \ schema_migrations ORDER BY filename\")\n\nPENDING=0\nAPPLIED_COUNT=0\n\n#\
+        \ Apply each migration if not already applied\nfor migration in $$(ls -1 /migrations/*.sql\
+        \ 2>/dev/null | sort); do\n  filename=$$(basename \"$$migration\")\n\n  if echo\
+        \ \"$$APPLIED\" | grep -qx \"$$filename\"; then\n    APPLIED_COUNT=$$((APPLIED_COUNT\
+        \ + 1))\n    continue\n  fi\n\n  echo \"Applying: $$filename\"\n  psql -h pgbouncer -v ON_ERROR_STOP=1\
+        \ < \"$$migration\"\n\n  # Record migration\n  psql -h pgbouncer -v ON_ERROR_STOP=1 -c \"\
+        INSERT INTO schema_migrations (filename) VALUES ('$$filename')\"\n\n  echo \"\
+        \  -> Applied: $$filename\"\n  PENDING=$$((PENDING + 1))\ndone\n\necho \"\"\n\
+        echo \"=== Migration Summary ===\"\necho \"Already applied: $$APPLIED_COUNT\"\
+        \necho \"Newly applied:   $$PENDING\"\necho \"=== DB Migration Complete ===\"\
+        \n"
+    depends_on:
+      pgbouncer:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+    environment:
+      PGDATABASE: n8n
+      PGHOST: pgbouncer
+      PGPORT: 5432
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      PGUSER: n8n
+    image: postgres:15-alpine
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal
+    restart: "no"
+    volumes:
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./db/migrations:/migrations:ro
+
+  admin-dashboard:
+    build:
+      args:
+        VITE_DOMAIN: ${DOMAIN_NAME}
+        VITE_STRAPI_URL: https://cms.${DOMAIN_NAME}
+      context: .
+      dockerfile: admin-dashboard/Dockerfile
+    expose:
+      - "80"
+    healthcheck:
+      interval: 30s
+      retries: 3
+      start_period: 15s
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:80/ || exit 1
+      timeout: 5s
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 5m
+    cap_drop:
+      - ALL
+    networks:
+      - proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  cms:
+    build:
+      context: ./inventory-cms
+    cap_drop:
+      - ALL
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
+    environment:
+      - HOST=0.0.0.0
+      - PORT=1337
+      - DATABASE_CLIENT=postgres
+      - DATABASE_HOST=pgbouncer
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=${STRAPI_DATABASE_NAME:-strapi}
+      - DATABASE_USERNAME=${POSTGRES_USER:-n8n}
+      - DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - DATABASE_SSL=false
+      - ADMIN_JWT_SECRET=${STRAPI_ADMIN_JWT_SECRET:?STRAPI_ADMIN_JWT_SECRET must be set}
+      - JWT_SECRET=${STRAPI_JWT_SECRET:?STRAPI_JWT_SECRET must be set}
+      - API_TOKEN_SALT=${STRAPI_API_TOKEN_SALT:?STRAPI_API_TOKEN_SALT must be set}
+      - TRANSFER_TOKEN_SALT=${STRAPI_TRANSFER_TOKEN_SALT:?STRAPI_TRANSFER_TOKEN_SALT must be set}
+      - ENCRYPTION_KEY=${STRAPI_ENCRYPTION_KEY:?STRAPI_ENCRYPTION_KEY must be set}
+      - APP_KEYS=${STRAPI_APP_KEYS:?STRAPI_APP_KEYS must be set}
+      - CORS_ORIGINS=https://admin.${DOMAIN_NAME},https://kiosk.${DOMAIN_NAME},https://cms.${DOMAIN_NAME}
+    expose:
+      - "1337"
+    healthcheck:
+      interval: 30s
+      retries: 5
+      start_period: 60s
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:1337/_health || exit 1
+      timeout: 10s
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - proxy
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - cms_uploads:/app/public/uploads
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+
+  n8n-main:
+    cap_drop:
+      - ALL
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Paris}
+      - N8N_HOST=${CONSOLE_SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=pgbouncer
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD_FILE=/run/secrets/postgres_password
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
+      - EXECUTIONS_DATA_PRUNE=true
+    expose:
+      - "5678"
+    healthcheck:
+      interval: 30s
+      retries: 5
+      start_period: 60s
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:5678/healthz || exit 1
+      timeout: 10s
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION}
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - proxy
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./secrets/n8n_encryption_key:/run/secrets/n8n_encryption_key:ro
+      - ./schemas:/opt/resto/schemas:ro
+
+  n8n-worker:
+    cap_drop:
+      - ALL
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - /opt/scripts/n8n-worker-entrypoint.sh
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Paris}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=pgbouncer
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD_FILE=/run/secrets/postgres_password
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+    healthcheck:
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      test:
+        - CMD-SHELL
+        - pgrep -f 'n8n worker' || exit 1
+      timeout: 10s
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION}
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ./secrets/n8n_encryption_key:/run/secrets/n8n_encryption_key:ro
+      - ./schemas:/opt/resto/schemas:ro
+      - ./scripts/n8n-worker-entrypoint.sh:/opt/scripts/n8n-worker-entrypoint.sh:ro
+
+  kiosk-app:
+    build:
+      args:
+        VITE_DOMAIN: ${DOMAIN_NAME}
+        VITE_STRAPI_URL: https://cms.${DOMAIN_NAME}
+      context: .
+      dockerfile: kiosk-app/Dockerfile
+    expose:
+      - "80"
+    healthcheck:
+      interval: 30s
+      retries: 3
+      start_period: 15s
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:80/ || exit 1
+      timeout: 5s
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 5m
+    cap_drop:
+      - ALL
+    networks:
+      - proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  gateway:
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    depends_on:
+      - n8n-main
+    expose:
+      - "8080"
+    healthcheck:
+      interval: 15s
+      retries: 3
+      start_period: 10s
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/healthz || exit 1
+      timeout: 5s
+    image: nginx:1.27-alpine
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - proxy
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /run
+    volumes:
+      - ./infra/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infra/gateway/proxy_params:/etc/nginx/proxy_params:ro
+
+  mock-api:
+    build:
+      context: ./mock-api
+    expose:
+      - "8080"
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal
+
+  ollama:
+    image: ollama/ollama:0.6.2
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal
+    volumes:
+      - ollama_data:/root/.ollama
+
+  whisper:
+    expose:
+      - "9000"
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
+    networks:
+      - internal

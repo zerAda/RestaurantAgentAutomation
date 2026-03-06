@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getTranslation, type Language } from '../utils/i18n';
 import { strapi } from '../services/strapiClient';
-import { Play, X, Loader2, Activity, Settings2, Code2 } from 'lucide-react';
+import { Play, X, Loader2, Activity, Settings2, Code2, Zap, Cpu, HardDrive, CheckCircle2, AlertCircle } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface Workflow {
     id: string;
@@ -88,7 +89,6 @@ export function AutomationView({ lang }: { lang: Language }) {
         setResult(null);
 
         try {
-            // Attempt to parse to ensure it's valid JSON
             const parsed = JSON.parse(payload);
             await strapi.post<{ success: boolean; data: unknown }>('/api/automation/trigger', {
                 webhookUrl: selectedWf.webhookUrl,
@@ -105,135 +105,165 @@ export function AutomationView({ lang }: { lang: Language }) {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h3 className="text-2xl font-black">{t('automation') || 'Automation Engine'}</h3>
-                    <p className="text-zinc-500 text-sm">Monitor n8n cluster health and trigger custom workflows with dynamic payloads.</p>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {WORKFLOWS.map((wf) => (
-                    <motion.div
-                        key={wf.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="diamond-card p-6 rounded-3xl flex flex-col justify-between gap-6"
-                    >
-                        <div className="flex items-start gap-4">
-                            <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-2xl ${wf.type === 'core' ? 'bg-indigo-500/10 text-indigo-500' :
-                                wf.type === 'sync' ? 'bg-green-500/10 text-green-500' :
-                                    wf.type === 'marketing' ? 'bg-pink-500/10 text-pink-500' :
-                                        'bg-purple-500/10 text-purple-500'
-                                }`}>
-                                {wf.type === 'core' ? '🤖' : wf.type === 'sync' ? '🔄' : wf.type === 'marketing' ? '🎨' : '🧠'}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <h4 className="font-bold truncate">{wf.name}</h4>
-                                    <span className="shrink-0 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-                                </div>
-                                <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2">{wf.description}</p>
-                                <div className="mt-3 flex gap-4 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                                    <span>Last: {wf.lastRun}</span>
-                                    <span>SR: {wf.successRate}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <button className="flex-1 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center gap-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-xs font-bold text-zinc-600 dark:text-zinc-300">
-                                <Activity size={14} /> Health
-                            </button>
-                            <button
-                                onClick={() => openTriggerModal(wf)}
-                                className="flex-1 h-10 px-4 rounded-xl bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                <Settings2 size={14} /> Trigger...
-                            </button>
-                        </div>
-                    </motion.div>
-                ))}
-            </div>
-
-            <div className="diamond-card p-8 rounded-3xl bg-zinc-900 border-none text-white overflow-hidden relative">
-                <div className="absolute top-0 right-0 p-8 opacity-10">
-                    <span className="text-9xl">⚙️</span>
-                </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-8 quantum-card relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-primary/10 rounded-full blur-3xl -mr-32 -mt-32" />
                 <div className="relative z-10">
-                    <h4 className="text-2xl font-black mb-2">n8n Instance Status (Diamond Cluster)</h4>
-                    <p className="opacity-60 text-sm mb-6 max-w-md">Your automation engine is hyper-responsive. 14 live workflows processed 4,820 operations today.</p>
-                    <div className="flex gap-4 mb-4">
-                        <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-md text-xs font-bold border border-white/10 uppercase tracking-widest flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> CPU: 12%
+                    <h4 className="text-2xl font-black text-white tracking-tighter mb-2 italic">n8n Cluster Status</h4>
+                    <p className="text-zinc-500 text-sm font-medium max-w-lg italic">Hyper-responsive automation engine. 14 live workflows processed 4,820 operations today.</p>
+                </div>
+                <div className="flex gap-4 relative z-10">
+                    <div className="quantum-glass px-5 py-3 rounded-2xl flex items-center gap-3">
+                        <Cpu size={18} className="text-brand-primary" />
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest leading-none">CPU LOAD</span>
+                            <span className="text-lg font-black text-white tracking-tighter">12%</span>
                         </div>
-                        <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-md text-xs font-bold border border-white/10 uppercase tracking-widest flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> RAM: 1.4GB / 4GB
+                    </div>
+                    <div className="quantum-glass px-5 py-3 rounded-2xl flex items-center gap-3">
+                        <HardDrive size={18} className="text-success" />
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest leading-none">MEMORY usage</span>
+                            <span className="text-lg font-black text-white tracking-tighter">1.4<span className="text-xs opacity-50">GB</span></span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Dynamic Trigger Modal */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {WORKFLOWS.map((wf) => (
+                    <div key={wf.id} className="quantum-card p-6 group transition-all duration-500 hover:scale-[1.02] flex flex-col justify-between h-full bg-gradient-to-br from-white/[0.03] to-transparent">
+                        <div>
+                            <div className="flex items-start justify-between mb-6">
+                                <div className={cn(
+                                    "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg",
+                                    wf.type === 'core' ? 'bg-indigo-500/20 text-indigo-400' :
+                                        wf.type === 'sync' ? 'bg-success/20 text-success' :
+                                            wf.type === 'marketing' ? 'bg-brand-primary/20 text-brand-primary' :
+                                                'bg-purple-500/20 text-purple-400'
+                                )}>
+                                    {wf.type === 'core' ? <Zap size={22} /> :
+                                        wf.type === 'sync' ? <Activity size={22} /> :
+                                            wf.type === 'marketing' ? <Palette size={22} /> :
+                                                <Code2 size={22} />}
+                                </div>
+                                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5 shadow-inner">
+                                    <span className="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_var(--color-success)]" />
+                                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">{wf.status}</span>
+                                </div>
+                            </div>
+
+                            <h4 className="text-xl font-black text-white tracking-tighter mb-2">{wf.name}</h4>
+                            <p className="text-sm text-zinc-500 font-medium leading-relaxed mb-6 line-clamp-2 italic">{wf.description}</p>
+
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                                <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest block mb-1">SUCCESS RATE</span>
+                                    <span className="text-sm font-black text-white">{wf.successRate}</span>
+                                </div>
+                                <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest block mb-1">LATENCY</span>
+                                    <span className="text-sm font-black text-white">{wf.lastRun}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/10 text-[11px] font-black text-zinc-400 uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all flex items-center justify-center gap-3">
+                                <Activity size={14} /> telemetry
+                            </button>
+                            <button
+                                onClick={() => openTriggerModal(wf)}
+                                className="flex-1 h-12 rounded-2xl bg-indigo-500 text-white text-[11px] font-black uppercase tracking-widest shadow-[0_4px_20px_rgba(99,102,241,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
+                            >
+                                <Play size={14} className="group-hover:translate-x-0.5 transition-transform" /> Trigger
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             <AnimatePresence>
                 {selectedWf && (
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                    >
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-12 overflow-hidden">
                         <motion.div
-                            initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-                            className="bg-zinc-950 border border-zinc-800 w-full max-w-2xl rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+                            onClick={() => setSelectedWf(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 40 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 40 }}
+                            className="w-full max-w-3xl quantum-card relative z-10 flex flex-col max-h-full overflow-hidden"
                         >
-                            <button onClick={() => setSelectedWf(null)} className="absolute top-6 right-6 text-zinc-500 hover:text-white">
-                                <X size={20} />
-                            </button>
+                            <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner">
+                                        <Zap size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-black text-white tracking-tighter leading-none">{selectedWf.name}</h3>
+                                        <p className="text-xs font-black text-zinc-500 uppercase tracking-widest mt-1 italic">Cluster Node Activation</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedWf(null)}
+                                    className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/10 transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
 
-                            <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                                <Play className="text-indigo-500" size={20} />
-                                Trigger: {selectedWf.name}
-                            </h3>
-                            <p className="text-sm text-zinc-400 mb-6">Edit the JSON payload below before firing the webhook.</p>
-
-                            <div className="flex-1 overflow-auto min-h-0 space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                        <Code2 size={14} /> Payload (JSON)
-                                    </label>
-                                    <textarea
-                                        value={payload}
-                                        onChange={e => setPayload(e.target.value)}
-                                        className="w-full h-64 font-mono text-xs bg-black border border-zinc-800 rounded-xl p-4 text-emerald-400 focus:outline-none focus:border-indigo-500 transition-all resize-none"
-                                        spellCheck={false}
-                                    />
+                            <div className="p-8 space-y-8 overflow-y-auto">
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2 italic">
+                                            <Code2 size={12} /> Execution Payload (JSON)
+                                        </label>
+                                        <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest">Read-Write Mode</span>
+                                    </div>
+                                    <div className="relative group">
+                                        <div className="absolute inset-0 bg-brand-primary/5 rounded-2xl blur-xl group-focus-within:bg-brand-primary/10 transition-all" />
+                                        <textarea
+                                            value={payload}
+                                            onChange={e => setPayload(e.target.value)}
+                                            className="w-full h-80 font-mono text-[13px] bg-black/50 border border-white/10 rounded-2xl p-6 text-emerald-400 focus:outline-none focus:border-brand-primary transition-all resize-none relative z-10 shadow-inner"
+                                            spellCheck={false}
+                                        />
+                                    </div>
                                 </div>
 
                                 {result && (
-                                    <div className={`p-4 rounded-xl text-sm font-bold ${result.success ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-                                        {result.message}
+                                    <div className={cn(
+                                        "p-5 rounded-2xl border flex items-center gap-4 animate-in zoom-in-95 duration-300 shadow-lg",
+                                        result.success
+                                            ? 'bg-success/5 border-success/20 text-success'
+                                            : 'bg-error/5 border-error/20 text-error'
+                                    )}>
+                                        {result.success ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+                                        <span className="text-[11px] font-black uppercase tracking-widest">{result.message}</span>
                                     </div>
                                 )}
                             </div>
 
-                            <div className="mt-6 pt-6 border-t border-zinc-900 grid grid-cols-2 gap-4">
+                            <div className="p-8 border-t border-white/5 flex gap-4">
                                 <button
                                     onClick={() => setSelectedWf(null)}
-                                    className="h-12 rounded-xl bg-zinc-900 text-white font-bold hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/5 text-[11px] font-black text-zinc-500 uppercase tracking-widest hover:text-white transition-all"
                                 >
-                                    Cancel
+                                    Cancel Request
                                 </button>
                                 <button
                                     onClick={handleTrigger}
                                     disabled={isTriggering}
-                                    className="h-12 rounded-xl bg-indigo-500 text-white font-bold flex items-center justify-center gap-2 hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+                                    className="flex-[2] h-14 rounded-2xl bg-brand-primary text-black text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-[0_10px_30px_rgba(255,51,102,0.3)]"
                                 >
-                                    {isTriggering ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}
-                                    {isTriggering ? 'Executing...' : 'Fire Webhook'}
+                                    {isTriggering ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} />}
+                                    {isTriggering ? 'Transmitting...' : 'Fire Webhook'}
                                 </button>
                             </div>
                         </motion.div>
-                    </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
         </div>

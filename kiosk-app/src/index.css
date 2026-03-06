@@ -1,33 +1,57 @@
 @import "tailwindcss";
 
 @theme {
-  --color-kiosk-gold: oklch(0.84 0.18 77);
-  --color-kiosk-accent: oklch(0.65 0.24 282);
-  --color-kiosk-surface: oklch(0.15 0 0);
+  --color-brand-primary: oklch(0.65 0.24 350);
+  /* #FF3366 */
+  --color-brand-accent: oklch(0.75 0.15 250);
+  --color-success: oklch(0.72 0.16 154);
+  --color-warning: oklch(0.84 0.18 77);
+  --color-error: oklch(0.62 0.22 28);
 }
 
 @layer base {
   body {
-    @apply bg-zinc-950 text-white antialiased overflow-hidden select-none;
+    @apply bg-zinc-950 text-zinc-100 antialiased overflow-hidden select-none touch-none;
     font-family: 'Outfit', 'Inter', system-ui, sans-serif;
   }
 }
 
 @layer components {
-  .kiosk-card {
-    @apply bg-zinc-900/60 backdrop-blur-xl border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl;
+
+  /* Quantum Glass System (Kiosk Optimized) */
+  .quantum-glass {
+    @apply bg-white/[0.03] backdrop-blur-[40px] border border-white/10 shadow-[0_20px_50px_rgba(0, 0, 0, 0.5)];
   }
 
-  .btn-primary {
-    @apply px-8 py-4 rounded-full bg-white text-black font-black text-xl tracking-tight shadow-[0_8px_30px_rgb(255,255,255,0.2)] active:scale-95 transition-all hover:bg-zinc-100 flex items-center justify-center gap-2;
+  .quantum-card {
+    @apply bg-white/[0.02] backdrop-blur-3xl border border-white/5 rounded-[2.5rem] overflow-hidden transition-all duration-500 hover:bg-white/[0.04] hover:border-white/10 shadow-2xl;
   }
 
-  .btn-gold {
-    @apply px-8 py-4 rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-black text-xl tracking-tight shadow-[0_8px_30px_rgb(250,204,21,0.3)] active:scale-95 transition-all hover:from-yellow-300 hover:to-amber-400 flex items-center justify-center gap-2;
+  /* Kiosk Exclusive - Cinematic Backgrounds */
+  .cinematic-mesh {
+    background: radial-gradient(circle at 0% 0%, var(--color-brand-primary) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, #4F46E5 0%, transparent 50%),
+      #000;
+    opacity: 0.15;
+    filter: blur(140px);
   }
 
-  .diamond-glass {
-    @apply bg-white/5 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)];
+  /* Interaction Elements */
+  .btn-quantum {
+    @apply px-10 py-5 rounded-[2rem] bg-white text-black font-black text-xl tracking-tight shadow-[0_20px_40px_rgba(255, 255, 255, 0.1)] active:scale-90 transition-all hover:bg-zinc-100 flex items-center justify-center gap-4 uppercase italic;
+  }
+
+  .btn-quantum-outline {
+    @apply px-10 py-5 rounded-[2rem] bg-white/5 border-2 border-white/10 text-white font-black text-xl tracking-tight backdrop-blur-xl active:scale-90 transition-all hover:bg-white/10 flex items-center justify-center gap-4 uppercase italic;
+  }
+
+  /* Scrims & Overlays */
+  .scrim-bottom {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 50%, transparent 100%);
+  }
+
+  .scrim-top {
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
   }
 }
 
@@ -35,8 +59,41 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 4s ease-in-out infinite;
+  }
+
+  @keyframes pulse-subtle {
+
+    0%,
+    100% {
+      opacity: 0.8;
+    }
+
+    50% {
+      opacity: 1;
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { strapi } from "./strapiClient";
+import { useEffect } from "react";
+import { strapi, getToken } from "./strapiClient";
 
 export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERING' | 'DONE' | 'CANCELLED';
 
@@ -51,6 +52,34 @@ function mapOrder(item: StrapiOrder): Order {
 }
 
 export const useOrders = () => {
+    const queryClient = useQueryClient();
+
+    useEffect(() => {
+        const token = getToken();
+        if (!token) return;
+
+        const url = `${import.meta.env.VITE_STRAPI_URL}/api/realtime/orders/stream?token=${encodeURIComponent(token)}`;
+        const eventSource = new EventSource(url);
+
+        eventSource.addEventListener('order_update', (e) => {
+            console.log('[SSE] Order updated:', e.data);
+            queryClient.invalidateQueries({ queryKey: ["orders"] });
+        });
+
+        eventSource.addEventListener('ping', () => {
+            // keep-alive ping received
+        });
+
+        eventSource.onerror = (err) => {
+            console.error('[SSE] EventSource Error:', err);
+            // Browser will automatically attempt to reconnect, but log it
+        };
+
+        return () => {
+            eventSource.close();
+        };
+    }, [queryClient]);
+
     return useQuery({
         queryKey: ["orders"],
         queryFn: async (): Promise<Order[]> => {
@@ -62,7 +91,7 @@ export const useOrders = () => {
             const items = Array.isArray(res.data) ? res.data : [];
             return items.map(mapOrder);
         },
-        refetchInterval: 15000,
+        // Polling removed in favor of Server-Sent Events!
     });
 };
 

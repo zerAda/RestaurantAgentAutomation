@@ -6,13 +6,17 @@ import CheckoutView from "./pages/CheckoutView";
 import { CartProvider, useCart } from "./context/CartContext";
 import { configService } from "./services/configService";
 
+/**
+ * IdleTimer Component
+ * Resets the kiosk to the welcome screen after inactivity.
+ */
 function IdleTimer() {
   const navigate = useNavigate();
   const { clearCart } = useCart();
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    let timeoutSec = 120; // fallback
+    let timeoutId: any;
+    let timeoutSec = 120; // Default fallback
 
     configService.getConfig().then(config => {
       if (config) timeoutSec = config.kiosk_idle_timeout_sec;
@@ -27,17 +31,13 @@ function IdleTimer() {
       }, timeoutSec * 1000);
     };
 
-    window.addEventListener('mousemove', resetTimer);
-    window.addEventListener('keydown', resetTimer);
-    window.addEventListener('touchstart', resetTimer);
-    window.addEventListener('click', resetTimer);
+    // Global reset events
+    const events = ['mousemove', 'keydown', 'touchstart', 'click'];
+    events.forEach(e => window.addEventListener(e, resetTimer));
 
     return () => {
       clearTimeout(timeoutId);
-      window.removeEventListener('mousemove', resetTimer);
-      window.removeEventListener('keydown', resetTimer);
-      window.removeEventListener('touchstart', resetTimer);
-      window.removeEventListener('click', resetTimer);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
     };
   }, [navigate, clearCart]);
 
@@ -49,12 +49,23 @@ function App() {
     <CartProvider>
       <BrowserRouter>
         <IdleTimer />
-        <div className="w-full h-screen bg-black">
-          <Routes>
-            <Route path="/" element={<VerticalVideoFeed />} />
-            <Route path="/checkout" element={<CheckoutView />} />
-            <Route path="/wheel" element={<FortuneWheelView />} />
-          </Routes>
+        <div className="relative min-h-screen bg-black overflow-hidden selection:bg-brand-primary/30">
+
+          {/* Quantum Cinematic Backdrop */}
+          <div className="fixed inset-0 pointer-events-none z-0">
+            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-brand-primary/10 rounded-full blur-[160px] animate-pulse-subtle" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-indigo-500/10 rounded-full blur-[160px] animate-pulse-subtle delay-1000" />
+            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.15] contrast-150 brightness-150 pointer-events-none" />
+          </div>
+
+          <div className="relative z-10 w-full h-full">
+            <Routes>
+              <Route path="/" element={<VerticalVideoFeed />} />
+              <Route path="/checkout" element={<CheckoutView />} />
+              <Route path="/wheel" element={<FortuneWheelView />} />
+            </Routes>
+          </div>
+
         </div>
       </BrowserRouter>
     </CartProvider>

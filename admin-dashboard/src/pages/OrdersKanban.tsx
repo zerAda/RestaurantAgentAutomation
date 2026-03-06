@@ -1,6 +1,5 @@
-import { cn } from "@/lib/utils";
 import { Clock, CheckCircle, Truck, MoreHorizontal } from "lucide-react";
-import { useOrders, useUpdateOrderStatus, type OrderStatus } from "@/services/orders";
+import { useOrders, useUpdateOrderStatus, type OrderStatus, type Order } from "@/services/orders";
 
 const COLUMNS: { id: OrderStatus; label: string; icon: React.ElementType; color: string }[] = [
     { id: 'NEW', label: 'Nouvelles', icon: Clock, color: 'bg-blue-50 text-blue-700' },
@@ -13,85 +12,87 @@ export default function OrdersKanban() {
     const { data: orders = [] } = useOrders();
     const updateStatus = useUpdateOrderStatus();
 
-    const moveOrder = (orderId: string, newStatus: OrderStatus) => {
-        updateStatus.mutate({ id: orderId, status: newStatus });
+    const moveOrder = (documentId: string, newStatus: OrderStatus) => {
+        updateStatus.mutate({ documentId, status: newStatus });
     };
 
     return (
-        <div className="h-full flex flex-col">
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Suivi des Commandes</h2>
+        <div className="h-full flex flex-col max-w-[1400px] mx-auto">
+            <div className="flex items-center justify-between mb-8">
+                <div>
+                    <h2 className="text-2xl font-semibold text-white tracking-tight">Suivi des Commandes</h2>
+                    <p className="text-neutral-500 text-sm mt-1">Glissez et déposez les tickets pour changer leur statut.</p>
+                </div>
                 <div className="flex gap-2">
-                    <button className="px-4 py-2 bg-white border border-gray-200 text-sm font-medium rounded-lg hover:bg-gray-50 transition">
+                    <button className="px-4 py-2 bg-black border border-neutral-800 text-white text-sm font-medium rounded-lg hover:border-neutral-700 transition-all">
                         Filtres
                     </button>
-                    <button className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition">
+                    <button className="px-4 py-2 bg-white text-black text-sm font-semibold rounded-lg hover:bg-neutral-200 transition-colors">
                         + Nouvelle Commande
                     </button>
                 </div>
             </div>
 
             <div className="flex-1 overflow-x-auto">
-                <div className="flex gap-6 min-w-max h-full pb-4">
+                <div className="flex gap-4 min-w-max h-full pb-4">
                     {COLUMNS.map((col) => (
-                        <div key={col.id} className="w-80 flex flex-col bg-gray-50 rounded-xl border border-gray-200 h-full max-h-[calc(100vh-12rem)]">
+                        <div key={col.id} className="w-[320px] flex flex-col bg-[#0a0a0a] rounded-xl border border-neutral-800 h-full max-h-[calc(100vh-14rem)]">
                             {/* Column Header */}
-                            <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white rounded-t-xl sticky top-0 z-10">
+                            <div className="p-4 border-b border-neutral-900 flex items-center justify-between bg-black rounded-t-xl sticky top-0 z-10">
                                 <div className="flex items-center gap-2">
-                                    <div className={cn("p-1.5 rounded-md", col.color)}>
-                                        <col.icon className="h-4 w-4" />
+                                    <div className="flex items-center gap-2">
+                                        {col.id === 'NEW' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                                        {col.id === 'PREPARING' && <div className="w-2 h-2 rounded-full bg-orange-500" />}
+                                        {col.id === 'READY' && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                        {col.id === 'DELIVERING' && <div className="w-2 h-2 rounded-full bg-purple-500" />}
+                                        <h3 className="font-medium text-sm text-neutral-300 tracking-wide">{col.label}</h3>
                                     </div>
-                                    <h3 className="font-semibold text-gray-700">{col.label}</h3>
-                                    <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full font-medium">
-                                        {orders.filter(o => o.status === col.id).length}
+                                    <span className="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[10px] px-2 py-0.5 rounded-full font-semibold">
+                                        {orders.filter((o: Order) => o.status === col.id).length}
                                     </span>
                                 </div>
-                                <MoreHorizontal className="h-5 w-5 text-gray-400 cursor-pointer hover:text-gray-600" />
+                                <MoreHorizontal className="h-4 w-4 text-neutral-600 cursor-pointer hover:text-neutral-400 transition-colors" />
                             </div>
 
                             {/* Column Content */}
                             <div className="p-3 space-y-3 overflow-y-auto flex-1 custom-scrollbar">
-                                {orders.filter(o => o.status === col.id).map(order => (
-                                    <div key={order.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow group">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="font-bold text-gray-900">{order.id}</span>
-                                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-sm">{order.time}</span>
+                                {orders.filter((o: Order) => o.status === col.id).map((order: Order) => (
+                                    <div key={order.documentId} className="bg-black p-4 rounded-lg border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-900/50 transition-all group flex flex-col cursor-grab active:cursor-grabbing">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <span className="font-semibold text-white tracking-tight">{order.id}</span>
+                                            <span className="text-[10px] text-neutral-400 font-medium bg-neutral-900 border border-neutral-800 px-2 py-1 rounded-md">{order.time}</span>
                                         </div>
-                                        <p className="text-sm font-medium text-gray-800 mb-1">{order.customer}</p>
-                                        <p className="text-xs text-gray-500 mb-3 truncate">{order.items.join(", ")}</p>
+                                        <p className="text-sm font-medium text-neutral-300 mb-1">{order.customer}</p>
+                                        <p className="text-xs text-neutral-500 mb-4 truncate leading-relaxed">{order.items.join(", ")}</p>
 
-                                        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                                            <span className="text-sm font-bold text-slate-700">{order.total}</span>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {/* Quick Actions based on status */}
+                                        <div className="flex items-center justify-between pt-3 border-t border-neutral-900 mt-auto">
+                                            <span className="text-sm font-semibold text-white">{order.total}</span>
+                                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {/* Quick Actions */}
                                                 {order.status === 'NEW' && (
-                                                    <button
-                                                        onClick={() => moveOrder(order.id, 'PREPARING')}
-                                                        className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100" title="Accepter"
-                                                    >
-                                                        <CheckCircle className="h-4 w-4" />
+                                                    <button onClick={() => moveOrder(order.documentId, 'PREPARING')} className="px-3 py-1 bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-medium rounded hover:text-white hover:border-neutral-600 transition-colors">
+                                                        Préparer
                                                     </button>
                                                 )}
                                                 {order.status === 'PREPARING' && (
-                                                    <button
-                                                        onClick={() => moveOrder(order.id, 'READY')}
-                                                        className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100" title="Prêt"
-                                                    >
-                                                        <CheckCircle className="h-4 w-4" />
+                                                    <button onClick={() => moveOrder(order.documentId, 'READY')} className="px-3 py-1 bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-medium rounded hover:text-white hover:border-neutral-600 transition-colors">
+                                                        Terminé
                                                     </button>
                                                 )}
                                                 {order.status === 'READY' && (
-                                                    <button
-                                                        onClick={() => moveOrder(order.id, 'DELIVERING')}
-                                                        className="p-1.5 bg-purple-50 text-purple-600 rounded hover:bg-purple-100" title="Expédier"
-                                                    >
-                                                        <Truck className="h-4 w-4" />
+                                                    <button onClick={() => moveOrder(order.documentId, 'DELIVERING')} className="px-3 py-1 bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-medium rounded hover:text-white hover:border-neutral-600 transition-colors">
+                                                        Livrer
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
                                     </div>
                                 ))}
+                                {orders.filter((o: Order) => o.status === col.id).length === 0 && (
+                                    <div className="h-24 border border-dashed border-neutral-800 rounded-lg flex items-center justify-center">
+                                        <p className="text-xs text-neutral-600">Aucune commande</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}

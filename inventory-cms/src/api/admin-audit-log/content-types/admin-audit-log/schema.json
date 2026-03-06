@@ -1,0 +1,36 @@
+{
+    "kind": "collectionType",
+    "collectionName": "admin_audit_logs",
+    "info": {
+        "singularName": "admin-audit-log",
+        "pluralName": "admin-audit-logs",
+        "displayName": "Admin Audit Log",
+        "description": "Log of destructive actions taken by admin users"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "action": {
+            "type": "string",
+            "required": true
+        },
+        "model": {
+            "type": "string",
+            "required": true
+        },
+        "model_id": {
+            "type": "biginteger"
+        },
+        "admin_user_id": {
+            "type": "integer"
+        },
+        "admin_email": {
+            "type": "string"
+        },
+        "payload_json": {
+            "type": "json"
+        }
+    }
+}

@@ -66,4 +66,6 @@ export default ({ env }: { env: { array: (key: string, defaultValue: string[]) =
   'strapi::favicon',
   'strapi::public',
   'global::auth-ratelimit',
+  'global::prometheus-tracker',
+  'global::admin-cookie-auth',
 ];

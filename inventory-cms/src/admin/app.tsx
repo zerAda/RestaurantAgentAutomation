@@ -1,4 +1,5 @@
 import type { StrapiApp } from '@strapi/strapi/admin';
+import './custom.css';
 
 export default {
     config: {
@@ -19,13 +20,23 @@ export default {
             },
             dark: {
                 colors: {
-                    primary100: '#3b2f1f',
-                    primary200: '#5c4a2a',
-                    primary500: '#f59e0b',
-                    primary600: '#fbbf24',
-                    primary700: '#fcd34d',
-                    buttonPrimary500: '#f59e0b',
-                    buttonPrimary600: '#fbbf24',
+                    // SaaS pitch black background
+                    neutral0: '#000000',
+                    neutral100: '#111111',
+                    neutral150: '#161616',
+                    neutral200: '#262626', // Border accuracy
+                    neutral500: '#666666',
+                    neutral800: '#e5e5e5', // High Contrast Text
+                    neutral900: '#ffffff',
+
+                    // Quantum brand essence
+                    primary100: '#1a1a1a',
+                    primary200: '#33111a', // Subtle brand glow
+                    primary500: '#FF3366', // Brand Primary
+                    primary600: '#E62E5C',
+                    primary700: '#CC2952',
+                    buttonPrimary500: '#FF3366',
+                    buttonPrimary600: '#E62E5C',
                 },
             },
         },
@@ -39,6 +50,7 @@ export default {
                 id: 'app.nav.system-config',
                 defaultMessage: '⚙️ Panneau de Contrôle',
             },
+            Component: async () => ({ default: () => null }),
             permissions: [],
         });
     },

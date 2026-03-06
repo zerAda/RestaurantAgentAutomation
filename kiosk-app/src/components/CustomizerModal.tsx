@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
-import { X, Check, ChevronUp, ChevronDown } from "lucide-react";
+import { X, Check, ChevronUp, ChevronDown, Sparkles, Zap, Package, Layers } from "lucide-react";
 import type { Product, ExtraOption, SauceOption, SizeOption } from "../services/menuService";
 import { useState } from "react";
 import { getTranslation } from "../utils/i18n";
+import { cn } from "@/lib/utils";
 
 interface SelectedSauce {
     name: string;
@@ -27,7 +28,6 @@ export default function CustomizerModal({ product, lang, onClose, onConfirm }: C
     );
     const [quantity, setQuantity] = useState(1);
 
-    // Find how many free sauces are included
     const includedSauceCount = product.sauces?.[0]?.included_count || 0;
     const freeSauceSlots = Math.max(0, includedSauceCount - selectedSauces.filter(s => s.is_free).length);
 
@@ -43,18 +43,15 @@ export default function CustomizerModal({ product, lang, onClose, onConfirm }: C
         setSelectedSauces(prev => {
             const existing = prev.find(s => s.name === sauce.name);
             if (existing) return prev.filter(s => s.name !== sauce.name);
-
-            // Determine if this sauce is free
             const currentFreeCount = prev.filter(s => s.is_free).length;
             const isFree = currentFreeCount < includedSauceCount;
-
             return [...prev, { name: sauce.name, price: isFree ? 0 : sauce.price, is_free: isFree }];
         });
     };
 
-    const extrasTotal = selectedExtras.reduce((s, e) => s + e.price, 0);
-    const saucesTotal = selectedSauces.filter(s => !s.is_free).reduce((s, sauce) => s + sauce.price, 0);
-    const unitPrice = product.price + selectedSize.price_modifier + extrasTotal + saucesTotal;
+    const unitPrice = product.price + selectedSize.price_modifier +
+        selectedExtras.reduce((s, e) => s + e.price, 0) +
+        selectedSauces.filter(s => !s.is_free).reduce((s, sc) => s + sc.price, 0);
     const totalPrice = unitPrice * quantity;
 
     return (
@@ -62,150 +59,172 @@ export default function CustomizerModal({ product, lang, onClose, onConfirm }: C
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-zinc-950/80 backdrop-blur-3xl flex items-center justify-center p-4 sm:p-6"
+            className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-3xl flex items-center justify-center p-8"
         >
             <motion.div
                 initial={{ scale: 0.95, y: 40, opacity: 0 }}
                 animate={{ scale: 1, y: 0, opacity: 1 }}
                 exit={{ scale: 0.95, y: 40, opacity: 0 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="w-full max-w-xl diamond-glass bg-zinc-900/80 rounded-[2.5rem] overflow-hidden flex flex-col max-h-[92vh] shadow-[0_0_80px_rgba(0,0,0,0.5)] border-white/10"
+                transition={{ type: "spring", damping: 30, stiffness: 200 }}
+                className="w-full max-w-3xl quantum-card flex flex-col max-h-[90vh] shadow-[0_50px_100px_rgba(0,0,0,0.8)]"
             >
-                {/* Header */}
-                <div className="p-8 border-b border-white/5 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-3xl font-black text-white">{getTranslation('customize', lang)}</h3>
-                        <p className="text-white/40">{product.name}</p>
+                {/* Header Matrix */}
+                <div className="p-10 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                    <div className="flex items-center gap-6">
+                        <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
+                            <Layers size={32} />
+                        </div>
+                        <div>
+                            <h3 className="text-4xl font-black text-white uppercase italic tracking-tighter leading-none">{getTranslation('customize', lang)}</h3>
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">{product.name}</span>
+                                <div className="w-1 h-1 rounded-full bg-brand-primary" />
+                                <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest italic">Unit Configuration</span>
+                            </div>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10">
-                        <X className="w-6 h-6 text-white" />
+                    <button onClick={onClose} className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all active:scale-90">
+                        <X size={28} className="text-zinc-400" />
                     </button>
                 </div>
 
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                {/* Configuration Zones */}
+                <div className="flex-1 overflow-y-auto p-10 space-y-12 no-scrollbar">
 
-                    {/* SIZE SELECTOR */}
+                    {/* Sizing Protocol */}
                     {product.sizes && product.sizes.length > 1 && (
-                        <div>
-                            <h4 className="text-xl font-bold text-white uppercase tracking-widest mb-4">📐 {getTranslation('size', lang) || 'Taille'}</h4>
-                            <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                                <Package size={18} className="text-zinc-500" />
+                                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-[0.4em] italic">{getTranslation('size', lang) || 'Scale Protocol'}</h4>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 {product.sizes.map(size => {
-                                    const isActive = selectedSize.name === size.name;
+                                    const active = selectedSize.name === size.name;
                                     return (
-                                        <motion.div
-                                            layout
+                                        <button
                                             key={size.name}
                                             onClick={() => setSelectedSize(size)}
-                                            className={`p-5 rounded-[1.5rem] border-2 transition-all cursor-pointer text-center relative overflow-hidden ${isActive
-                                                ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_20px_rgba(250,204,21,0.2)]'
-                                                : 'border-white/10 bg-white/5 hover:bg-white/10'
-                                                }`}
-                                        >
-                                            <span className="text-xl font-black text-white block">{size.name}</span>
-                                            {size.price_modifier > 0 && (
-                                                <span className="text-sm text-yellow-400 font-bold mt-1 block">+{size.price_modifier} DA</span>
+                                            className={cn(
+                                                "p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-2",
+                                                active ? "border-white bg-white text-black shadow-2xl scale-105" : "border-white/5 bg-white/[0.02] text-zinc-500"
                                             )}
-                                        </motion.div>
+                                        >
+                                            <span className="text-2xl font-black uppercase italic tracking-tighter">{size.name}</span>
+                                            {size.price_modifier > 0 && <span className={cn("text-xs font-bold", active ? "text-zinc-600" : "text-brand-primary")}>+{size.price_modifier} DA</span>}
+                                        </button>
                                     );
                                 })}
                             </div>
                         </div>
                     )}
 
-                    {/* EXTRAS */}
+                    {/* Synthesis Modules (Extras) */}
                     {product.extras && product.extras.length > 0 && (
-                        <div>
-                            <h4 className="text-xl font-bold text-white uppercase tracking-widest mb-4">✨ {getTranslation('extras', lang)}</h4>
-                            <div className="grid grid-cols-1 gap-3">
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                                <Sparkles size={18} className="text-zinc-500" />
+                                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-[0.4em] italic">{getTranslation('extras', lang) || 'Synthesis Modules'}</h4>
+                            </div>
+                            <div className="space-y-3">
                                 {product.extras.map(extra => {
-                                    const isSelected = selectedExtras.find(e => e.name === extra.name);
+                                    const active = selectedExtras.find(e => e.name === extra.name);
                                     return (
-                                        <motion.div
-                                            layout
+                                        <button
                                             key={extra.name}
                                             onClick={() => toggleExtra(extra)}
-                                            className={`p-5 rounded-[1.5rem] border-2 transition-all cursor-pointer flex justify-between items-center ${isSelected ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_20px_rgba(250,204,21,0.2)]' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}
+                                            className={cn(
+                                                "w-full p-6 rounded-3xl border transition-all flex justify-between items-center group",
+                                                active ? "border-brand-primary bg-brand-primary/10" : "border-white/5 bg-white/[0.02] hover:bg-white/[0.05]"
+                                            )}
                                         >
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-yellow-400 border-yellow-400' : 'border-white/20'}`}>
-                                                    {isSelected && <Check className="w-5 h-5 text-black" strokeWidth={3} />}
+                                            <div className="flex items-center gap-5">
+                                                <div className={cn("w-8 h-8 rounded-xl border flex items-center justify-center transition-all", active ? "bg-brand-primary border-brand-primary" : "border-white/10 group-hover:border-white/30")}>
+                                                    {active && <Check size={18} className="text-black" strokeWidth={4} />}
                                                 </div>
-                                                <span className="text-lg font-bold text-white">{extra.name}</span>
+                                                <span className={cn("text-xl font-black uppercase italic tracking-tighter transition-colors", active ? "text-white" : "text-zinc-500")}>{extra.name}</span>
                                             </div>
-                                            <span className="text-lg font-bold text-yellow-400">+{extra.price} DA</span>
-                                        </motion.div>
+                                            <span className="text-lg font-black text-brand-primary italic">+{extra.price} DA</span>
+                                        </button>
                                     );
                                 })}
                             </div>
                         </div>
                     )}
 
-                    {/* SAUCES */}
+                    {/* Fluid Matrices (Sauces) */}
                     {product.sauces && product.sauces.length > 0 && (
-                        <div>
-                            <h4 className="text-xl font-bold text-white uppercase tracking-widest mb-2">🫙 {getTranslation('sauces', lang) || 'Sauces'}</h4>
-                            {includedSauceCount > 0 && (
-                                <p className="text-sm text-[#FFB800] mb-4">
-                                    {freeSauceSlots > 0
-                                        ? `${freeSauceSlots} sauce${freeSauceSlots > 1 ? 's' : ''} gratuite${freeSauceSlots > 1 ? 's' : ''} restante${freeSauceSlots > 1 ? 's' : ''}`
-                                        : 'Sauces supplémentaires payantes'}
-                                </p>
-                            )}
-                            <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Zap size={18} className="text-zinc-500" />
+                                    <h4 className="text-xs font-black text-zinc-500 uppercase tracking-[0.4em] italic">Fluid Matrices</h4>
+                                </div>
+                                {includedSauceCount > 0 && (
+                                    <span className="text-[10px] font-black text-success uppercase tracking-widest">
+                                        {freeSauceSlots} Units Included
+                                    </span>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 {product.sauces.map(sauce => {
-                                    const selected = selectedSauces.find(s => s.name === sauce.name);
-                                    const wouldBeFree = !selected && selectedSauces.filter(s => s.is_free).length < includedSauceCount;
+                                    const active = selectedSauces.find(s => s.name === sauce.name);
+                                    const free = active?.is_free || (!active && selectedSauces.filter(s => s.is_free).length < includedSauceCount);
                                     return (
-                                        <motion.div
-                                            layout
+                                        <button
                                             key={sauce.name}
                                             onClick={() => toggleSauce(sauce)}
-                                            className={`p-4 rounded-[1.5rem] border-2 transition-all cursor-pointer text-center ${selected ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_20px_rgba(250,204,21,0.2)]' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}
+                                            className={cn(
+                                                "p-6 rounded-3xl border transition-all flex flex-col items-start gap-1 group",
+                                                active ? "border-indigo-500 bg-indigo-500/10" : "border-white/5 bg-white/[0.02]"
+                                            )}
                                         >
-                                            <span className="text-sm font-bold text-white block">{sauce.name}</span>
-                                            <span className={`text-xs font-bold mt-1 block ${wouldBeFree || selected?.is_free ? 'text-green-400' : 'text-yellow-400'}`}>
-                                                {wouldBeFree || selected?.is_free ? '✓ Gratuite' : `+${sauce.price} DA`}
+                                            <span className={cn("text-lg font-black uppercase italic tracking-tighter truncate w-full text-left", active ? "text-white" : "text-zinc-500")}>{sauce.name}</span>
+                                            <span className={cn("text-[9px] font-black uppercase italic tracking-widest", free ? "text-success" : "text-zinc-600")}>
+                                                {free ? "System Credit" : `+${sauce.price} DA`}
                                             </span>
-                                        </motion.div>
+                                        </button>
                                     );
                                 })}
                             </div>
                         </div>
                     )}
 
-                    {/* QUANTITY */}
-                    <div>
-                        <h4 className="text-xl font-bold text-white uppercase tracking-widest mb-4">🔢 {getTranslation('quantity', lang) || 'Quantité'}</h4>
-                        <div className="flex items-center justify-center gap-6">
+                    {/* Replication Quantity */}
+                    <div className="space-y-8 pt-4">
+                        <h4 className="text-xs font-black text-zinc-500 uppercase tracking-[0.4em] italic text-center">Replication Count</h4>
+                        <div className="flex items-center justify-center gap-10">
                             <button
                                 onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                                className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"
+                                className="w-20 h-20 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center transition-all active:scale-90 hover:bg-white/10"
                             >
-                                <ChevronDown className="w-8 h-8 text-white" />
+                                <ChevronDown size={32} />
                             </button>
-                            <span className="text-5xl font-black text-white min-w-[60px] text-center">{quantity}</span>
+                            <span className="text-8xl font-black text-white italic tracking-tighter leading-none min-w-[120px] text-center">{quantity}</span>
                             <button
                                 onClick={() => setQuantity(q => Math.min(20, q + 1))}
-                                className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"
+                                className="w-20 h-20 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center transition-all active:scale-90 hover:bg-white/10"
                             >
-                                <ChevronUp className="w-8 h-8 text-white" />
+                                <ChevronUp size={32} />
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Footer */}
-                <div className="p-8 bg-zinc-950/50 backdrop-blur-xl border-t border-white/5">
-                    <div className="flex justify-between items-center mb-6">
-                        <span className="text-white/60 text-xl font-medium tracking-tight">{getTranslation('total', lang)}</span>
-                        <span className="text-4xl font-black text-white tracking-tight">{totalPrice.toLocaleString()} DA</span>
+                {/* Confirm Layer */}
+                <div className="p-10 bg-black/40 backdrop-blur-3xl border-t border-white/5 flex items-center justify-between">
+                    <div>
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] italic block mb-2">Aggregate Value</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-6xl font-black text-white italic tracking-tighter">{totalPrice.toLocaleString()}</span>
+                            <span className="text-xl font-black text-zinc-500 uppercase italic">Credits</span>
+                        </div>
                     </div>
                     <button
                         onClick={() => onConfirm(selectedExtras, selectedSauces, selectedSize, quantity)}
-                        className="btn-gold w-full text-2xl h-20"
+                        className="btn-quantum px-16 py-7"
                     >
-                        {getTranslation('add_to_cart', lang)} {quantity > 1 ? `(${quantity})` : ''}
+                        Deploy Unit {quantity > 1 && `x${quantity}`}
                     </button>
                 </div>
             </motion.div>

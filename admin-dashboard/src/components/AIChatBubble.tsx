@@ -1,185 +1,347 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Bot, User, Sparkles } from 'lucide-react';
-import { strapi } from '../services/strapiClient';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Send, Bot, User, Sparkles, BarChart3, Lightbulb, Package, Rocket, Settings, CheckCircle, AlertTriangle, ChevronRight, Maximize2, Minimize2, Users, Star, Truck, AlertOctagon, Trash2, ThumbsUp, ThumbsDown, MessageSquare, BrainCircuit, Activity } from 'lucide-react';
+import { cn } from '../lib/utils';
+
+/* ─────────────── Types ─────────────── */
 
 interface ChatMessage {
     id: string;
     role: 'user' | 'agent';
     content: string;
-    timestamp: Date;
+    timestamp: string;
+    actions?: AgentAction[];
+    needsConfirmation?: boolean;
+    confirmAction?: { message: string; payload: unknown };
+    ragSlices?: string[];
+    feedback?: 1 | -1 | null;
+}
+
+interface AgentAction {
+    type: 'update' | 'create' | 'delete' | 'info' | 'campaign' | 'alert';
+    label: string;
+    detail?: string;
+    status?: 'success' | 'pending' | 'error';
+}
+
+/* ─────────── Quick Action Presets ─────────── */
+
+const QUICK_ACTIONS = [
+    { icon: BarChart3, label: 'Quantum KPIs', message: 'Analyse mes KPIs de cette semaine et explique chaque indicateur simplement. Dis-moi ce que signifie chaque métrique et si mes chiffres sont bons.', group: 'analytics' },
+    { icon: Lightbulb, label: 'Capital Growth', message: 'Utilise les données funnel, les avis clients, et les AI learnings pour me proposer 3 idées concrètes pour augmenter mon chiffre d\'affaires. Base-toi sur les vrais chiffres.', group: 'analytics' },
+    { icon: Package, label: 'Inventory DNA', message: 'Analyse mon menu ET mes ingrédients : quels produits marchent, lesquels floppent, quels ingrédients sont en rupture ou proches du seuil d\'alerte.', group: 'ops' },
+    { icon: Rocket, label: 'Inception Protocol', message: 'Propose-moi une campagne marketing complète basée sur les données funnel. Quel produit, quel canal, quel contenu. Utilise les creative assets existants et leurs scores de performance.', group: 'ops' },
+    { icon: Users, label: 'Cluster Groups', message: 'Analyse mes clients : top clients par points, répartition par tier de fidélité, clients inactifs à relancer. Utilise les préférences IA pour des suggestions d\'upsell.', group: 'intel' },
+    { icon: AlertOctagon, label: 'Neural Errors', message: 'Y a-t-il des erreurs n8n récentes ? Montre-moi les workflows qui plantent et diagnostique les problèmes.', group: 'intel' },
+];
+
+const GROUP_COLORS: Record<string, string> = {
+    analytics: 'bg-brand-primary/10 border-brand-primary/20 text-brand-primary hover:bg-brand-primary hover:text-black',
+    ops: 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10',
+    intel: 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white',
+};
+
+/* ─────────── LocalStorage persistence ─── */
+const STORAGE_KEY = 'ralphe_agent_history';
+function loadHistory(): ChatMessage[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.slice(-50) : [];
+    } catch { return []; }
+}
+function saveHistory(messages: ChatMessage[]) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); }
+    catch { }
 }
 
 export function AIChatBubble() {
     const [isOpen, setIsOpen] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [pendingConfirm, setPendingConfirm] = useState<{ message: string; payload: unknown } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const initialized = useRef(false);
 
-    // Auto-scroll to bottom of messages
+    useEffect(() => {
+        if (!initialized.current) {
+            const history = loadHistory();
+            if (history.length > 0) setMessages(history);
+            initialized.current = true;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (messages.length > 0 && messages[0]?.id !== 'welcome') saveHistory(messages);
+    }, [messages]);
+
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // Initial greeting
+    useEffect(() => {
+        if (isOpen) inputRef.current?.focus();
+    }, [isOpen]);
+
     useEffect(() => {
         if (isOpen && messages.length === 0) {
-            setMessages([
-                {
-                    id: 'welcome',
-                    role: 'agent',
-                    content: 'Hello Admin! I am your Autonomous Restaurant Assistant. I can help you update menu prices, manage delivery zones, send marketing campaigns, or analyze sales data. How can I help you today?',
-                    timestamp: new Date(),
-                }
-            ]);
+            setMessages([{
+                id: 'welcome',
+                role: 'agent',
+                content: 'Quantum Connection Established. I am **Ralphé**, your Neural Copilot.\n\nI have real-time visibility across the entire DNS architecture:\n• 📊 **Relational Logic**: 28 Strapi Tables\n• ⚙️ **Process Orchestration**: 77 n8n Workflows\n• 🧠 **Cognitive Insight**: Funnel Analytics + AI Learning Context\n• 🎨 **Creative DNA**: Inception Prompts (Strategy/Image/Video)\n\nSystem is ready. Awaiting directive.',
+                timestamp: new Date().toISOString(),
+            }]);
         }
     }, [isOpen, messages.length]);
 
-    const handleSend = async () => {
-        if (!input.trim()) return;
+    const sendMessage = useCallback(async (text: string, isConfirmation = false) => {
+        if (!text.trim() || isLoading) return;
 
         const userMsg: ChatMessage = {
             id: Date.now().toString(),
             role: 'user',
-            content: input,
-            timestamp: new Date(),
+            content: text,
+            timestamp: new Date().toISOString(),
         };
 
-        setMessages((prev) => [...prev, userMsg]);
+        setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsLoading(true);
+        setPendingConfirm(null);
 
         try {
-            // Send to proxy via Strapi
-            const res = await strapi.post<{ data?: { output?: string; message?: string; text?: string } }>('/api/proxy/n8n/webhook/admin/chat', {
-                message: userMsg.content,
-                sessionId: 'admin-dashboard-session'
-            });
+            const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
+            const token = sessionStorage.getItem('admin_jwt');
+            const agentController = new AbortController();
+            const agentTimeout = setTimeout(() => agentController.abort(), 50000);
 
-            const responseData = (res?.data || {}) as { output?: string; message?: string; text?: string };
+            const rawRes = await fetch(`${STRAPI_URL}/api/agent/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ data: { message: text, sessionId: 'admin-dashboard-session', confirm: isConfirmation } }),
+                signal: agentController.signal,
+            });
+            clearTimeout(agentTimeout);
+
+            if (!rawRes.ok) throw new Error(`Strapi ${rawRes.status}`);
+            const resJson = await rawRes.json();
+
+            const data = (resJson?.data || resJson || {}) as any;
 
             const agentMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'agent',
-                content: responseData.output || responseData.message || responseData.text || 'I processed your request.',
-                timestamp: new Date(),
+                content: data.reply || 'Directive processed.',
+                timestamp: new Date().toISOString(),
+                actions: data.actions,
+                needsConfirmation: data.needsConfirmation,
+                confirmAction: data.confirmAction,
+                ragSlices: data.ragSlices,
             };
 
-            setMessages((prev) => [...prev, agentMsg]);
-        } catch (error) {
-            console.error('Chat error:', error);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: (Date.now() + 1).toString(),
-                    role: 'agent',
-                    content: '⚠️ I am currently offline or restarting. Please try again in a moment.',
-                    timestamp: new Date(),
-                }
-            ]);
+            setMessages(prev => [...prev, agentMsg]);
+            if (data.needsConfirmation && data.confirmAction) setPendingConfirm(data.confirmAction);
+        } catch (error: any) {
+            setMessages(prev => [...prev, {
+                id: (Date.now() + 1).toString(),
+                role: 'agent',
+                content: '⚠️ **Communication Link Severed**. Neural gateway is currently unresponsive. Re-attempt protocol or verify node status.',
+                timestamp: new Date().toISOString(),
+            }]);
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [isLoading]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            handleSend();
+            sendMessage(input);
         }
     };
 
+    const clearHistory = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        setMessages([]);
+        initialized.current = false;
+    };
+
+    const sendFeedback = useCallback(async (msgId: string, score: 1 | -1) => {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, feedback: score } : m));
+        try {
+            const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
+            const token = sessionStorage.getItem('admin_jwt');
+            await fetch(`${STRAPI_URL}/api/agent/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                body: JSON.stringify({ data: { message: 'feedback', sessionId: 'admin-dashboard-session', feedbackScore: score } }),
+            });
+        } catch { }
+    }, []);
+
+    const renderActions = (actions: AgentAction[]) => (
+        <div className="mt-4 space-y-2">
+            {actions.map((action, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/5 shadow-inner">
+                    <div className={cn(
+                        "mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 border",
+                        action.status === 'success' ? 'bg-success/10 text-success border-success/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]' :
+                            action.status === 'error' ? 'bg-error/10 text-error border-error/20' :
+                                'bg-brand-primary/10 text-brand-primary border-brand-primary/20'
+                    )}>
+                        {action.status === 'success' ? <CheckCircle size={12} /> :
+                            action.status === 'error' ? <AlertTriangle size={12} /> :
+                                <ChevronRight size={12} />}
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-black text-white uppercase tracking-widest leading-none">{action.label}</p>
+                        {action.detail && <p className="text-[10px] font-bold text-zinc-500 mt-1.5 italic leading-tight">{action.detail}</p>}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
+    const panelClasses = isExpanded
+        ? 'fixed inset-4 max-w-none max-h-none'
+        : 'fixed bottom-6 right-6 w-full max-w-[440px] h-[720px] max-h-[88vh]';
+
     return (
         <>
-            {/* Floating Button */}
             <button
                 onClick={() => setIsOpen(true)}
-                className={`fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-xl shadow-indigo-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 ${isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}
+                className={cn(
+                    "fixed bottom-6 right-6 w-16 h-16 rounded-full bg-white text-black shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 group overflow-hidden",
+                    isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'
+                )}
             >
-                <Sparkles className="w-6 h-6 absolute animate-ping opacity-20" />
-                <Bot className="w-6 h-6 relative z-10" />
+                <div className="absolute inset-0 bg-brand-primary/20 animate-pulse group-hover:bg-brand-primary/40 transition-colors" />
+                <Bot className="w-7 h-7 relative z-10" />
+                <Sparkles size={12} className="absolute top-4 right-4 text-brand-primary animate-bounce delay-300" />
             </button>
 
-            {/* Chat Window */}
-            <div
-                className={`fixed bottom-6 right-6 w-full max-w-sm md:max-w-md h-[600px] max-h-[85vh] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50 transition-all duration-300 origin-bottom-right ${isOpen ? 'scale-100 opacity-100' : 'scale-0 opacity-0 pointer-events-none'}`}
-            >
+            <div className={cn(
+                panelClasses,
+                "quantum-card flex flex-col overflow-hidden z-[100] transition-all duration-500 origin-bottom-right shadow-[0_50px_100px_rgba(0,0,0,0.8)]",
+                isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'
+            )}>
                 {/* Header */}
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 p-4 flex items-center justify-between text-white shadow-md">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                            <Bot className="w-5 h-5" />
+                <div className="p-6 flex items-center justify-between border-b border-white/5 bg-white/[0.02] relative">
+                    <div className="flex items-center gap-4">
+                        <div className="w-11 h-11 rounded-2xl bg-brand-primary text-black flex items-center justify-center shadow-[0_0_30px_rgba(255,51,102,0.3)]">
+                            <BrainCircuit size={20} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-sm">Diamond AI Agent</h3>
-                            <p className="text-[10px] text-indigo-100 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-                                Online & Ready
-                            </p>
+                            <h3 className="font-black text-lg text-white tracking-widest uppercase italic leading-none">Ralphé AI</h3>
+                            <div className="flex items-center gap-2 mt-1.5">
+                                <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Neural Link v4.2 Stable</span>
+                            </div>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setIsOpen(false)}
-                        className="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={clearHistory} className="w-9 h-9 rounded-xl hover:bg-white/5 flex items-center justify-center text-zinc-600 hover:text-error transition-colors"><Trash2 size={16} /></button>
+                        <button onClick={() => setIsExpanded(!isExpanded)} className="w-9 h-9 rounded-xl hover:bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white transition-colors">
+                            {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                        </button>
+                        <button onClick={() => { setIsOpen(false); setIsExpanded(false); }} className="w-9 h-9 rounded-xl hover:bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"><X size={20} /></button>
+                    </div>
                 </div>
 
-                {/* Messages Layout */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-50 dark:bg-zinc-950/50">
-                    {messages.map((msg) => (
-                        <div
-                            key={msg.id}
-                            className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-                        >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-zinc-200 dark:bg-zinc-800' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400'}`}>
-                                {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar bg-black/40">
+                    {messages.map(msg => (
+                        <div key={msg.id} className={cn("flex items-start gap-4", msg.role === 'user' ? 'flex-row-reverse' : '')}>
+                            <div className={cn(
+                                "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg border",
+                                msg.role === 'user' ? 'bg-zinc-900 border-white/5 text-zinc-500' : 'bg-brand-primary/20 border-brand-primary/20 text-brand-primary'
+                            )}>
+                                {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                             </div>
-                            <div
-                                className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 rounded-tr-none' : 'bg-white tracking-tight dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-tl-none shadow-sm'}`}
-                                style={{ whiteSpace: 'pre-wrap' }}
-                            >
-                                {msg.content}
+                            <div className={cn("max-w-[85%]", msg.role === 'user' ? 'text-right' : 'text-left')}>
+                                <div className={cn(
+                                    "px-5 py-3.5 rounded-2xl text-[13px] font-medium leading-relaxed shadow-xl",
+                                    msg.role === 'user'
+                                        ? 'bg-white text-black rounded-tr-none'
+                                        : 'bg-white/[0.04] border border-white/5 text-zinc-200 rounded-tl-none backdrop-blur-md italic'
+                                )}>
+                                    {msg.content}
+                                </div>
+                                {msg.actions && renderActions(msg.actions)}
+                                {msg.role === 'agent' && msg.id !== 'welcome' && (
+                                    <div className="mt-3 flex items-center gap-2 px-1">
+                                        <button onClick={() => sendFeedback(msg.id, 1)} className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all border", msg.feedback === 1 ? 'bg-success/20 border-success/30 text-success' : 'bg-white/5 border-white/5 text-zinc-600 hover:text-success')}><ThumbsUp size={12} /></button>
+                                        <button onClick={() => sendFeedback(msg.id, -1)} className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all border", msg.feedback === -1 ? 'bg-error/20 border-error/30 text-error' : 'bg-white/5 border-white/5 text-zinc-600 hover:text-error')}><ThumbsDown size={12} /></button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
                     {isLoading && (
-                        <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
-                                <Bot className="w-4 h-4" />
-                            </div>
-                            <div className="px-4 py-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-tl-none flex gap-1 items-center h-10 shadow-sm">
-                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></span>
-                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                        <div className="flex items-start gap-4">
+                            <div className="w-8 h-8 rounded-xl bg-brand-primary/20 border border-brand-primary/20 text-brand-primary flex items-center justify-center shadow-lg"><Bot size={14} /></div>
+                            <div className="px-6 py-4 rounded-2xl bg-white/[0.04] border border-white/5 flex gap-2 items-center">
+                                <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce shadow-[0_0_10px_#FF3366]" />
+                                <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce delay-150 shadow-[0_0_10px_#FF3366]" />
+                                <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce delay-300 shadow-[0_0_10px_#FF3366]" />
                             </div>
                         </div>
                     )}
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Input area */}
-                <div className="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800">
-                    <div className="flex items-end gap-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 p-1 focus-within:ring-2 focus-within:ring-indigo-500/50 transition-all">
+                {/* Footer Controls */}
+                <div className="p-6 border-t border-white/5 bg-white/[0.01]">
+                    {messages.length <= 1 && (
+                        <div className="grid grid-cols-2 gap-2 mb-6">
+                            {QUICK_ACTIONS.map((qa, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => sendMessage(qa.message)}
+                                    disabled={isLoading}
+                                    className={cn(
+                                        "px-3 py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3",
+                                        GROUP_COLORS[qa.group] || GROUP_COLORS.ops
+                                    )}
+                                >
+                                    <qa.icon size={14} strokeWidth={2.5} />
+                                    {qa.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="flex items-end gap-3 bg-black/40 border border-white/10 rounded-2xl p-2 focus-within:border-brand-primary transition-all shadow-inner">
                         <textarea
+                            ref={inputRef}
                             value={input}
-                            onChange={(e) => setInput(e.target.value)}
+                            onChange={e => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Ask the AI to update menu, analyze sales..."
-                            className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[40px] px-3 py-2 text-sm leading-relaxed"
+                            placeholder="Awaiting DNA directive..."
+                            className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none resize-none max-h-32 min-h-[44px] px-4 py-3 text-[13px] text-white placeholder-zinc-700 italic font-medium leading-relaxed"
                             rows={1}
                         />
                         <button
-                            onClick={handleSend}
+                            onClick={() => sendMessage(input)}
                             disabled={!input.trim() || isLoading}
-                            className="w-10 h-10 flex-shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg flex items-center justify-center disabled:opacity-50 disabled:hover:bg-indigo-500 transition-colors mb-0.5 mr-0.5"
+                            className="w-11 h-11 flex-shrink-0 bg-white text-black rounded-xl flex items-center justify-center disabled:opacity-20 hover:scale-105 active:scale-95 transition-all shadow-2xl"
                         >
-                            <Send className="w-4 h-4 ml-0.5" />
+                            <Send size={18} fill="currentColor" />
                         </button>
                     </div>
-                    <div className="text-center mt-2">
-                        <span className="text-[10px] text-zinc-400 font-medium">Powered by Autonomous LangChain Agent</span>
+                    <div className="flex items-center justify-center gap-4 mt-4">
+                        <div className="flex items-center gap-2">
+                            <Activity size={10} className="text-zinc-700" />
+                            <span className="text-[9px] font-black text-zinc-700 uppercase tracking-widest">Neural Link v4.2</span>
+                        </div>
+                        <div className="w-1 h-1 rounded-full bg-zinc-800" />
+                        <span className="text-[9px] font-black text-zinc-700 uppercase tracking-widest">Rate Limited</span>
                     </div>
                 </div>
             </div>

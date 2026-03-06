@@ -21,9 +21,9 @@ export const authService = {
 
             const data = await res.json();
             if (data?.jwt) {
-                sessionStorage.setItem(TOKEN_KEY, data.jwt);
-                sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
-                sessionStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + TOKEN_LIFESPAN_MS));
+                localStorage.setItem(TOKEN_KEY, data.jwt);
+                localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+                localStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + TOKEN_LIFESPAN_MS));
                 // Start auto-refresh timer
                 authService._scheduleRefresh();
                 return true;
@@ -36,9 +36,9 @@ export const authService = {
     },
 
     isAuthenticated: (): boolean => {
-        const token = sessionStorage.getItem(TOKEN_KEY);
+        const token = localStorage.getItem(TOKEN_KEY);
         if (!token) return false;
-        const expiry = Number(sessionStorage.getItem(TOKEN_EXPIRY_KEY) || 0);
+        const expiry = Number(localStorage.getItem(TOKEN_EXPIRY_KEY) || 0);
         if (expiry && Date.now() > expiry) {
             authService.logout();
             return false;
@@ -47,27 +47,39 @@ export const authService = {
     },
 
     getToken: (): string | null => {
-        return sessionStorage.getItem(TOKEN_KEY);
+        return localStorage.getItem(TOKEN_KEY);
+    },
+
+    getUser: (): { id: number; username: string; email: string; role?: { name: string } } | null => {
+        try {
+            const user = localStorage.getItem(USER_KEY);
+            return user ? JSON.parse(user) : null;
+        } catch {
+            return null;
+        }
     },
 
     logout: () => {
-        sessionStorage.removeItem(TOKEN_KEY);
-        sessionStorage.removeItem(USER_KEY);
-        sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
-        sessionStorage.removeItem(REFRESH_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(TOKEN_EXPIRY_KEY);
+        localStorage.removeItem(REFRESH_KEY);
         window.location.href = '/';
     },
 
     // Re-authenticate to get fresh token (Strapi v5 doesn't have refresh endpoint)
     _scheduleRefresh: () => {
-        const expiry = Number(sessionStorage.getItem(TOKEN_EXPIRY_KEY) || 0);
+        const expiry = Number(localStorage.getItem(TOKEN_EXPIRY_KEY) || 0);
         const delay = Math.max(0, expiry - Date.now() - 60000); // 1 min before expiry
 
         setTimeout(async () => {
-            const user = sessionStorage.getItem(USER_KEY);
+            const user = localStorage.getItem(USER_KEY);
             if (!user) return;
-            // Show notification that session is expiring
-            console.info('[AuthService] Session expiring soon, please re-login if needed');
+
+            // Dispatch event to show a toast warning the user
+            window.dispatchEvent(new CustomEvent('strapi-session-expiring', {
+                detail: { message: 'Votre session va expirer dans 1 minute. Veuillez vous reconnecter.' }
+            }));
         }, delay);
     },
 };

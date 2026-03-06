@@ -12,24 +12,54 @@ import { LoginView } from './components/LoginView';
 import { AppSwitcher } from './components/AppSwitcher';
 import { AIChatBubble } from './components/AIChatBubble';
 import { AnalyticsView } from './components/AnalyticsView';
+import { NotificationCenter } from './components/NotificationCenter';
+import DashboardHome from './pages/DashboardHome';
+import { AiObservatoryView } from './components/AiObservatoryView';
+import { ControlPlaneView } from './pages/ControlPlaneView';
+import { ToastProvider } from './components/ToastProvider';
+import { PageTransition } from './components/PageTransition';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ApiErrorListener } from './components/ApiErrorListener';
 import { authService } from './services/authService';
 import { getTranslation, setPageDirection, type Language } from './utils/i18n';
-import { Menu, X, Building2 } from 'lucide-react';
+import {
+  Menu,
+  X,
+  LayoutDashboard,
+  Package,
+  UtensilsCrossed,
+  BarChart3,
+  Palette,
+  Bot,
+  Users,
+  Brain,
+  Zap,
+  Diamond,
+  LogOut
+} from 'lucide-react';
+import { cn } from './lib/utils';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
-  const [activeTab, setActiveTab] = useState('stock');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [lang, setLang] = useState<Language>('fr');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isMultiTenant] = useState(true); // Example flag
-  const [currentTenant] = useState('RestoBot Diamond (HQ)');
+
+  // Basic RBAC Check
+  const user = authService.getUser();
+  const isFullAdmin = !user?.email?.toLowerCase().includes('cash') &&
+    (!user?.role?.name || !user.role.name.toLowerCase().includes('cashier'));
 
   useEffect(() => {
     setPageDirection(lang);
   }, [lang]);
 
   if (!isAuthenticated) {
-    return <LoginView onLogin={() => setIsAuthenticated(true)} />;
+    return (
+      <ToastProvider>
+        <LoginView onLogin={() => setIsAuthenticated(true)} />
+      </ToastProvider>
+    );
   }
 
   const toggleLang = () => {
@@ -41,204 +71,242 @@ function App() {
   const t = (key: string) => getTranslation(key, lang);
 
   return (
-    <div className={`min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30 ${lang === 'ar' ? 'font-arabic' : ''}`}>
-      {/* Sidebar / Navigation */}
-      {/* Mobile Overlay */}
-      {isMobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
+    <ToastProvider>
+      <ApiErrorListener />
+      <div className={`min-h-screen bg-black text-zinc-100 font-sans selection:bg-brand-primary/30 relative overflow-hidden ${lang === 'ar' ? 'font-arabic' : ''}`}>
 
-      <nav className={`fixed top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} ${lang === 'ar' ? 'border-l' : 'border-r'} w-72 h-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-zinc-200 dark:border-zinc-800 p-6 flex flex-col z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : lang === 'ar' ? 'translate-x-full md:translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <span className="text-white font-bold text-xl">R</span>
-            </div>
-            <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent">
-              RestoBot <span className="text-indigo-500 italic">Diamond</span>
-            </h1>
-          </div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500">
-            <X size={18} />
-          </button>
+        {/* Cinematic Quantum Backdrop */}
+        <div className="quantum-backdrop">
+          <div className="quantum-glow-halo top-[-10%] left-[-10%] w-[50%] h-[50%] bg-brand-primary/10 animate-pulse-subtle" />
+          <div className="quantum-glow-halo bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-indigo-500/10 animate-pulse-subtle delay-1000" />
+          <div className="grain-overlay" />
         </div>
 
-        {/* Multi-tenant Switcher */}
-        {isMultiTenant && (
-          <div className="mb-6 pb-6 border-b border-zinc-100 dark:border-zinc-800">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2 block px-2">Current Location</label>
-            <button className="w-full flex items-center justify-between bg-zinc-100 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 px-3 py-2 rounded-xl transition-colors text-left text-sm">
-              <div className="flex items-center gap-2 truncate">
-                <Building2 size={14} className="text-indigo-500 shrink-0" />
-                <span className="font-bold truncate">{currentTenant}</span>
-              </div>
-              <span className="text-xs text-zinc-400 ml-2">▼</span>
-            </button>
-          </div>
-        )}
+        <div className="relative z-10 min-h-screen flex flex-col md:flex-row">
+          {/* Sidebar / Navigation */}
+          {/* Mobile Overlay */}
+          {isMobileMenuOpen && (
+            <div
+              className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+          )}
 
-        <div className="mb-6 flex items-center gap-2">
-          <div className="flex-1"><AppSwitcher /></div>
-          <button
-            onClick={toggleLang}
-            className="w-10 h-10 rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-[10px] font-bold uppercase hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          {/* Sidebar - Quantum Glass Panel */}
+          <nav
+            className={cn(
+              "fixed inset-y-4 rounded-quantum quantum-card w-72 flex-shrink-0 transition-all duration-500 z-50 flex flex-col scale-100",
+              lang === 'ar' ? 'right-4' : 'left-4',
+              !isMobileMenuOpen && (lang === 'ar' ? 'translate-x-[calc(100%+1rem)] md:translate-x-0' : '-translate-x-[calc(100%+1rem)] md:translate-x-0')
+            )}
           >
-            {lang}
-          </button>
+            {/* Logo Section */}
+            <div className="p-8 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center shadow-quantum-glow animate-float">
+                  <span className="text-white font-black text-xl">R</span>
+                </div>
+                <div>
+                  <h1 className="text-xl font-black tracking-tight leading-tight">
+                    RestoBot <span className="opacity-40 font-medium italic">Diamond</span>
+                  </h1>
+                  <p className="text-[10px] font-bold text-brand-primary tracking-[0.2em] uppercase">Quantum v3.5</p>
+                </div>
+              </div>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-2 rounded-lg hover:bg-white/10 text-zinc-400">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Lang Switcher - Integral to Sidebar */}
+            <div className="px-6 mb-4 flex items-center gap-2">
+              <button
+                onClick={toggleLang}
+                className="flex-1 py-1.5 rounded-xl border border-white/5 bg-white/5 flex items-center justify-center gap-2 text-[10px] font-black uppercase hover:bg-white/10 transition-all"
+              >
+                🌍 {lang}
+              </button>
+              <AppSwitcher />
+            </div>
+
+            {/* Navigation */}
+            <div className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto scrollbar-hide pb-10">
+              <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Operations</p>
+              <div className="space-y-1">
+                <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} label="Dashboard" icon={LayoutDashboard} lang={lang} />
+                <NavItem active={activeTab === 'stock'} onClick={() => setActiveTab('stock')} label={t('stock_inventory')} icon={Package} lang={lang} />
+                <NavItem active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')} label={t('kitchen_display')} icon={UtensilsCrossed} lang={lang} />
+              </div>
+
+              <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-6 mb-4 italic">Strategy</p>
+              <div className="space-y-1">
+                {isFullAdmin && (
+                  <>
+                    <NavItem active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} label="Intelligence" icon={BarChart3} lang={lang} />
+                    <NavItem active={activeTab === 'marketing'} onClick={() => setActiveTab('marketing')} label="Creative Hub" icon={Palette} lang={lang} />
+                    <NavItem active={activeTab === 'automation'} onClick={() => setActiveTab('automation')} label="n8n Engine" icon={Bot} lang={lang} />
+                  </>
+                )}
+                <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="User Base" icon={Users} lang={lang} />
+              </div>
+
+              {isFullAdmin && (
+                <>
+                  <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-6 mb-4">Advanced</p>
+                  <div className="space-y-1">
+                    <NavItem active={activeTab === 'ai-observatory'} onClick={() => setActiveTab('ai-observatory')} label="AI Observ." icon={Brain} lang={lang} />
+                    <NavItem active={activeTab === 'control-plane'} onClick={() => setActiveTab('control-plane')} label="Control Plane" icon={Zap} lang={lang} />
+                    <NavItem active={activeTab === 'brand'} onClick={() => setActiveTab('brand')} label="DNA Studio" icon={Diamond} lang={lang} />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* System Status Footer */}
+            <div className="p-6 mt-auto">
+              <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-3">
+                <div className="flex items-center justify-between text-[10px] font-bold text-zinc-500 uppercase">
+                  <span>Cluster Sync</span>
+                  <span className="text-success flex items-center gap-1">
+                    <span className="status-dot bg-success" /> Active
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-primary w-2/3 rounded-full shadow-[0_0_8px_var(--color-brand-primary)]" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 mt-6 px-2">
+                <div className="h-10 w-10 rounded-full bg-zinc-800 border-2 border-brand-primary/20 p-0.5 shadow-quantum">
+                  <img src={`https://ui-avatars.com/api/?name=${user?.username || 'Admin'}&background=0D0D0D&color=fff`} className="w-full h-full rounded-full object-cover" alt="Avatar" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold truncate">{user?.username || 'Master Admin'}</p>
+                  <p className="text-[10px] text-zinc-500 font-medium">Lvl 99 Ghost</p>
+                </div>
+                <button onClick={() => authService.logout()} className="p-2 rounded-xl hover:bg-white/10 text-zinc-500 hover:text-white transition-colors group">
+                  <LogOut size={18} className="transition-transform group-hover:translate-x-0.5" />
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          {/* Main Content */}
+          <main className={cn(
+            "min-h-screen transition-all duration-500 p-6 md:p-10",
+            lang === 'ar' ? 'md:mr-80' : 'md:ml-80'
+          )}>
+            {/* Mobile Header */}
+            <div className="md:hidden flex items-center gap-4 mb-8 p-4 quantum-card">
+              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white">
+                <Menu size={20} />
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-black tracking-tight text-white">RestoBot</span>
+                <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse shadow-[0_0_10px_var(--color-brand-primary)]" />
+              </div>
+            </div>
+
+            <header className="mb-12 flex flex-col sm:flex-row sm:justify-between items-start sm:items-end gap-6">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{activeTab}</div>
+                  {activeTab === 'dashboard' && <span className="text-[10px] font-bold text-success uppercase tracking-widest flex items-center gap-1"><span className="status-dot bg-success" /> Live Sync</span>}
+                </div>
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-white">
+                  {activeTab === 'dashboard' && "Vue d'ensemble"}
+                  {activeTab === 'stock' && "Inventory"}
+                  {activeTab === 'alerts' && "Quick Adjust"}
+                  {activeTab === 'kitchen' && "Kitchen Display"}
+                  {activeTab === 'support' && "Support Hub"}
+                  {activeTab === 'marketing' && "Creative Center"}
+                  {activeTab === 'automation' && "n8n Workflows"}
+                  {activeTab === 'analytics' && "Ops Intelligence"}
+                  {activeTab === 'ai-observatory' && 'AI Observatory'}
+                  {activeTab === 'fleet' && "Delivery Fleet"}
+                  {activeTab === 'customers' && "Customer Base"}
+                  {activeTab === 'control-plane' && 'Control Plane'}
+                  {activeTab === 'brand' && "Brand DNA"}
+                </h2>
+                <p className="text-zinc-500 font-medium max-w-xl mt-3">
+                  RestoBot Quantum Engine v3.5. Real-time data aggregation across cluster nodes.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <NotificationCenter />
+                <div className="quantum-glass pl-5 pr-2 py-2 rounded-full text-sm font-bold flex items-center gap-4">
+                  <span className="text-zinc-400 select-none tracking-tight">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+                  <div className="px-4 py-1.5 rounded-full bg-white text-black font-black text-[10px] uppercase shadow-xl">
+                    {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            <ErrorBoundary>
+              <PageTransition activeKey={activeTab}>
+                {activeTab === 'dashboard' && <DashboardHome />}
+                {activeTab === 'stock' && <StockView />}
+                {activeTab === 'alerts' && <QuickAdjust />}
+                {activeTab === 'kitchen' && <KitchenView />}
+                {activeTab === 'support' && <SupportView lang={lang} />}
+                {activeTab === 'marketing' && <MarketingView lang={lang} />}
+                {activeTab === 'automation' && <AutomationView lang={lang} />}
+                {activeTab === 'analytics' && <AnalyticsView lang={lang} />}
+                {activeTab === 'ai-observatory' && <AiObservatoryView />}
+                {activeTab === 'control-plane' && <ControlPlaneView />}
+                {activeTab === 'fleet' && <FleetPlaceholder />}
+                {activeTab === 'customers' && <CustomerView lang={lang} />}
+                {activeTab === 'brand' && <BrandView lang={lang} />}
+              </PageTransition>
+            </ErrorBoundary>
+            <AIChatBubble />
+          </main>
         </div>
-
-        <div className="flex-1 space-y-6 overflow-y-auto no-scrollbar pb-10">
-          <div>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-3 px-4">{t('management')}</p>
-            <div className="space-y-1">
-              <NavItem active={activeTab === 'stock'} onClick={() => setActiveTab('stock')} label={t('stock_inventory')} icon="📦" lang={lang} />
-              <NavItem active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')} label={t('kitchen_display')} icon="👨‍🍳" lang={lang} />
-              <NavItem active={activeTab === 'support'} onClick={() => setActiveTab('support')} label={t('support_hub')} icon="🧑‍💬" lang={lang} />
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-3 px-4">{t('marketing')}</p>
-            <div className="space-y-1">
-              <NavItem active={activeTab === 'marketing'} onClick={() => setActiveTab('marketing')} label={t('creative_center')} icon="🎨" lang={lang} />
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-3 px-4">{t('automation')}</p>
-            <div className="space-y-1">
-              <NavItem active={activeTab === 'automation'} onClick={() => setActiveTab('automation')} label={t('workflows')} icon="⚙️" lang={lang} />
-              <NavItem active={activeTab === 'alerts'} onClick={() => setActiveTab('alerts')} label={t('quick_adjust')} icon="⚡" lang={lang} />
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-3 px-4">{t('customers')}</p>
-            <div className="space-y-1">
-              <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label={t('customers')} icon="👥" lang={lang} />
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-3 px-4">{t('insights')}</p>
-            <div className="space-y-1">
-              <NavItem active={activeTab === 'analytics'} onClick={() => { setActiveTab('analytics'); setIsMobileMenuOpen(false); }} label={t('live_analytics')} icon="📊" lang={lang} />
-              <NavItem active={activeTab === 'fleet'} onClick={() => { setActiveTab('fleet'); setIsMobileMenuOpen(false); }} label={t('fleet_status')} icon="🚚" lang={lang} />
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-3 px-4">{t('settings')}</p>
-            <NavItem active={activeTab === 'brand'} onClick={() => setActiveTab('brand')} label={t('brand_dna')} icon="💎" lang={lang} />
-          </div>
-        </div>
-
-        <div className="pt-6 border-t border-zinc-100 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 -mx-6 px-6 -mb-6 pb-6">
-          <div className="diamond-card p-4 rounded-xl text-xs">
-            <p className="opacity-60 mb-1">{t('system_health')}</p>
-            <div className="flex items-center gap-2 font-mono">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span>{t('all_services_online')}</span>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className={`${lang === 'ar' ? 'md:mr-72' : 'md:ml-72'} p-6 md:p-10 min-h-screen transition-all`}>
-        {/* Mobile Header */}
-        <div className="md:hidden flex items-center gap-4 mb-8">
-          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 rounded-xl bg-white dark:bg-zinc-900 shadow-sm border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200">
-            <Menu size={20} />
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-black tracking-tight bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500 bg-clip-text text-transparent">RestoBot</span>
-            <span className="text-indigo-500 italic font-bold">Diamond</span>
-          </div>
-        </div>
-
-        <header className="mb-8 md:mb-12 flex flex-col sm:flex-row sm:justify-between items-start sm:items-end gap-4">
-          <div>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
-              {activeTab === 'stock' && t('stock_inventory')}
-              {activeTab === 'alerts' && t('quick_adjust')}
-              {activeTab === 'kitchen' && t('kitchen_display')}
-              {activeTab === 'support' && t('support_hub')}
-              {activeTab === 'marketing' && t('creative_center')}
-              {activeTab === 'automation' && t('workflows')}
-              {activeTab === 'analytics' && t('operational_intelligence')}
-              {activeTab === 'fleet' && t('delivery_fleet')}
-              {activeTab === 'customers' && t('customers')}
-              {activeTab === 'brand' && t('brand_dna')}
-            </h2>
-            <p className="text-zinc-500 dark:text-zinc-400 mt-2 text-sm md:text-lg">
-              Diamond Grade administration interface.
-            </p>
-          </div>
-          <div className="diamond-glass px-4 py-2 rounded-full text-xs md:text-sm font-medium flex items-center gap-3">
-            <span className="opacity-60 italic whitespace-nowrap">Feb 22, 2026</span>
-            <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-700" />
-            <span className="text-indigo-500 font-bold whitespace-nowrap">LIVE</span>
-            <button onClick={() => authService.logout()} className="md:hidden w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[10px] ml-2">🚪</button>
-          </div>
-        </header>
-
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
-          {activeTab === 'stock' && <StockView />}
-          {activeTab === 'alerts' && <QuickAdjust />}
-          {activeTab === 'kitchen' && <KitchenView />}
-          {activeTab === 'support' && <SupportView lang={lang} />}
-          {activeTab === 'marketing' && <MarketingView lang={lang} />}
-          {activeTab === 'automation' && <AutomationView lang={lang} />}
-          {activeTab === 'analytics' && <AnalyticsView lang={lang} />}
-          {activeTab === 'fleet' && <FleetPlaceholder />}
-          {activeTab === 'customers' && <CustomerView lang={lang} />}
-          {activeTab === 'brand' && <BrandView lang={lang} />}
-        </div>
-        <AIChatBubble />
-      </main>
-    </div>
+      </div>
+    </ToastProvider>
   );
 }
 
-function NavItem({ active, onClick, label, icon, lang }: { active: boolean, onClick: () => void, label: string, icon: string, lang: Language }) {
+interface NavItemProps {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  icon: React.ElementType;
+  lang: string;
+}
+
+function NavItem({ active, onClick, label, icon: Icon, lang }: NavItemProps) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${active
-        ? 'nav-item-active'
-        : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
-        }`}
+      className={cn(
+        "w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 group relative overflow-hidden",
+        active
+          ? "bg-white/10 text-white shadow-quantum-glow"
+          : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+      )}
     >
-      <span className="text-xl leading-none">{icon}</span>
-      <span className="text-sm font-medium">{label}</span>
-      {active && <div className={`${lang === 'ar' ? 'mr-auto' : 'ml-auto'} w-1.5 h-1.5 rounded-full bg-white animate-pulse`} />}
+      {active && (
+        <div className={cn(
+          "absolute inset-y-2 w-1 bg-brand-primary rounded-full shadow-[0_0_8px_var(--color-brand-primary)]",
+          lang === 'ar' ? "right-0" : "left-0"
+        )} />
+      )}
+      <Icon size={18} className={cn(
+        "transition-transform duration-500",
+        active ? "scale-110 text-brand-primary" : "group-hover:scale-110"
+      )} />
+      <span className="text-xs font-black uppercase tracking-widest">{label}</span>
     </button>
   );
 }
 
 // Removed AnalyticsPlaceholder and MetricCard (Now in components/AnalyticsView.tsx)
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function TopItem({ name, sales, growth }: { name: string, sales: number, growth: string }) {
-  return (
-    <div className="flex items-center gap-4">
-      <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold">#{sales}</div>
-      <div className="flex-1">
-        <div className="font-bold">{name}</div>
-        <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-1 rounded-full mt-2">
-          <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(sales / 500) * 100}%` }} />
-        </div>
-      </div>
-      <div className={`text-xs font-bold ${growth.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
-        {growth}
-      </div>
-    </div>
-  );
-}
 
 interface StrapiDriver {
   id: number;

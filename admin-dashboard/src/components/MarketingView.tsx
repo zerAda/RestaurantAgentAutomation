@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getTranslation, type Language } from '../utils/i18n';
 import { strapi } from '../services/strapiClient';
-import { Sparkles, X, Loader2, Send } from 'lucide-react';
+import { Sparkles, X, Loader2, Send, Play, BarChart, Image as ImageIcon, Video, Layers, BrainCircuit } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface ContentAsset {
     id: number;
@@ -57,7 +58,6 @@ export function MarketingView({ lang }: { lang: Language }) {
             });
             setShowModal(false);
             setPrompt('');
-            // Optimistically poll for new assets after 5 seconds
             setTimeout(fetchAssets, 5000);
         } catch (err) {
             console.error('Failed to trigger generation workflow', err);
@@ -68,76 +68,107 @@ export function MarketingView({ lang }: { lang: Language }) {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h3 className="text-2xl font-black">{t('creative_center') || 'Creative Center'}</h3>
-                    <p className="text-zinc-500 text-sm">Track real-time AI-generated social media campaigns.</p>
+            <div className="p-8 quantum-card relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 group">
+                <div className="absolute inset-0 bg-gradient-to-r from-brand-primary/10 to-transparent opacity-50 transition-opacity group-hover:opacity-100" />
+                <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-xl bg-brand-primary/20 text-brand-primary flex items-center justify-center shadow-inner">
+                            <BrainCircuit size={20} />
+                        </div>
+                        <h3 className="text-3xl font-black text-white tracking-tighter italic">Creative DNA Hub</h3>
+                    </div>
+                    <p className="text-zinc-500 font-medium max-w-xl italic leading-relaxed">
+                        Orchestrate real-time AI-driven marketing across WhatsApp, TikTok, and Meta. High-fidelity asset generation with predictive quality scoring.
+                    </p>
                 </div>
                 <button
                     onClick={() => setShowModal(true)}
-                    className="px-6 py-3 rounded-xl bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 group"
+                    className="relative z-10 px-8 py-4 rounded-2xl bg-brand-primary text-black font-black uppercase text-[11px] tracking-[0.2em] shadow-[0_10px_30px_rgba(255,51,102,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-3"
                 >
-                    <Sparkles size={18} className="group-hover:animate-pulse" />
-                    {t('generate_ad') || 'Generate Ad'}
+                    <Sparkles size={16} />
+                    {t('generate_ad') || 'Inception Protocol'}
                 </button>
             </div>
 
             {loading ? (
-                <div className="flex justify-center py-20">
-                    <Loader2 className="animate-spin text-zinc-400" size={32} />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="quantum-card aspect-[9/16] animate-pulse bg-white/[0.02]" />
+                    ))}
                 </div>
             ) : assets.length === 0 ? (
-                <div className="text-center py-20 diamond-card rounded-3xl">
-                    <span className="text-6xl mb-4 block opacity-50">🤖</span>
-                    <h4 className="text-xl font-bold mb-2">No Creative Assets Yet</h4>
-                    <p className="text-zinc-500 max-w-sm mx-auto">Generate your first AI-driven marketing campaign by clicking the Generate Ad button.</p>
+                <div className="text-center py-32 quantum-card rounded-quantum flex flex-col items-center justify-center">
+                    <div className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-8 shadow-quantum-glow text-zinc-600">
+                        <Layers size={48} />
+                    </div>
+                    <h3 className="text-3xl font-black text-white tracking-tighter mb-2 italic">No Assets Synthesized</h3>
+                    <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-[0.3em]">Trigger the Inception Protocol to populate library</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                     {assets.map((asset) => {
                         const attr = asset.attributes;
                         const thumbnail = attr.image_vertical_url || attr.image_square_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
                         return (
                             <motion.div
                                 key={asset.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="diamond-card p-4 rounded-3xl group"
+                                layout
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="quantum-card p-4 group"
                             >
-                                <div className="relative aspect-[9/16] rounded-2xl overflow-hidden mb-4 bg-zinc-100 dark:bg-zinc-800">
-                                    <img src={thumbnail} alt={attr.dish_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                                <div className="relative aspect-[9/16] rounded-2xl overflow-hidden mb-6 bg-black shadow-2xl border border-white/5">
+                                    <img src={thumbnail} alt={attr.dish_name} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
 
-                                    <div className="absolute top-4 inset-x-4 flex justify-between items-start">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg backdrop-blur-md ${attr.status === 'published' ? 'bg-green-500/90 text-white' :
-                                            attr.status === 'draft' || attr.status === 'ready' ? 'bg-indigo-500/90 text-white animate-pulse' :
-                                                'bg-zinc-900/90 text-white'
-                                            }`}>
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
+
+                                    <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
+                                        <div className={cn(
+                                            "px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border",
+                                            attr.status === 'published' ? 'bg-success/20 text-success border-success/30' :
+                                                attr.status === 'draft' || attr.status === 'ready' ? 'bg-brand-primary/20 text-brand-primary border-brand-primary/30 animate-pulse' :
+                                                    'bg-zinc-900/40 text-zinc-400 border-white/10'
+                                        )}>
                                             {attr.status}
-                                        </span>
-                                        {attr.video_url && (
-                                            <span className="px-2 py-1 rounded-md bg-white/20 backdrop-blur-md text-white text-[10px] font-black tracking-wider border border-white/20">
-                                                VIDEO
-                                            </span>
-                                        )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {attr.video_url && (
+                                                <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/10">
+                                                    <Video size={14} />
+                                                </div>
+                                            )}
+                                            <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/10">
+                                                <ImageIcon size={14} />
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    {(attr.quality_score > 0) && (
-                                        <div className="absolute bottom-4 right-4 w-12 h-12 rounded-full bg-zinc-900/80 backdrop-blur-md flex flex-col items-center justify-center text-white font-black shadow-xl border border-white/10">
-                                            <span className="text-sm leading-none">{attr.quality_score}</span>
-                                            <span className="text-[8px] opacity-70 leading-none mt-0.5">SCORE</span>
+                                    <div className="absolute bottom-5 inset-x-5 space-y-4">
+                                        <div className="flex items-end justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="text-xl font-black text-white tracking-tighter truncate">{attr.dish_name || 'AI Concept'}</h4>
+                                                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest italic">{attr.brand_name || 'Generic'}</p>
+                                            </div>
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-2xl font-black text-brand-primary leading-none">{attr.quality_score}</span>
+                                                <span className="text-[8px] font-black text-zinc-500 tracking-tighter">SCORE</span>
+                                            </div>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
 
-                                <div className="px-2">
-                                    <h4 className="font-bold text-lg mb-1 leading-tight">{attr.dish_name || 'AI Concept'}</h4>
-                                    <p className="text-zinc-500 dark:text-zinc-400 text-xs italic line-clamp-2 h-8">
-                                        {attr.caption_a || attr.caption_b || 'Caption being generated...'}
+                                <div className="space-y-6">
+                                    <p className="text-xs text-zinc-500 font-medium leading-relaxed line-clamp-2 h-10 italic px-2">
+                                        "{attr.caption_a || attr.caption_b || 'Core DNA sequence pending synthesis...'}"
                                     </p>
 
-                                    <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="text-xs font-bold text-zinc-500 hover:text-indigo-500 transition-colors">Edit Asset</button>
-                                        <button className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-xs font-black hover:bg-indigo-600 transition-colors">Publish Now</button>
+                                    <div className="flex gap-3 px-1">
+                                        <button className="flex-1 h-11 rounded-xl bg-white/5 border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2">
+                                            <BarChart size={12} /> Analytics
+                                        </button>
+                                        <button className="flex-[2] h-11 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all flex items-center justify-center gap-2 shadow-xl">
+                                            <Play size={12} fill="black" /> Deploy Now
+                                        </button>
                                     </div>
                                 </div>
                             </motion.div>
@@ -146,48 +177,73 @@ export function MarketingView({ lang }: { lang: Language }) {
                 </div>
             )}
 
-            {/* Generation Modal */}
             <AnimatePresence>
                 {showModal && (
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                    >
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-12 overflow-hidden">
                         <motion.div
-                            initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-                            className="bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl relative overflow-hidden"
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+                            onClick={() => setShowModal(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 40 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 40 }}
+                            className="w-full max-w-xl quantum-card relative z-10 flex flex-col max-h-full overflow-hidden"
                         >
-                            <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white">
-                                <X size={20} />
-                            </button>
-
-                            <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                                <Sparkles className="text-indigo-500" size={20} />
-                                Omnichannel AI Generation
-                            </h3>
-                            <p className="text-sm text-zinc-400 mb-6">Describe the promotion, menu item, or brand message you want the AI to create assets for. It will generate text and images instantly.</p>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">AI Prompt</label>
-                                    <textarea
-                                        value={prompt}
-                                        onChange={e => setPrompt(e.target.value)}
-                                        placeholder="e.g. Generate an aggressive TikTok campaign for our new Spicy Tacos, emphasize the melting cheese and cheap price."
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all h-32 resize-none"
-                                    />
+                            <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 text-brand-primary flex items-center justify-center shadow-inner">
+                                        <Sparkles size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-black text-white tracking-tighter leading-none">Inception Protocol</h3>
+                                        <p className="text-xs font-black text-zinc-500 uppercase tracking-widest mt-1 italic">Omnichannel Synthesis Engine</p>
+                                    </div>
                                 </div>
+                                <button
+                                    onClick={() => setShowModal(false)}
+                                    className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/10 transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-8 space-y-8">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2 italic">
+                                        <Send size={12} /> Synthesis Directive (Prompt)
+                                    </label>
+                                    <div className="relative group">
+                                        <div className="absolute inset-0 bg-brand-primary/5 rounded-2xl blur-xl group-focus-within:bg-brand-primary/10 transition-all" />
+                                        <textarea
+                                            value={prompt}
+                                            onChange={e => setPrompt(e.target.value)}
+                                            placeholder="e.g. Synthesize a TikTok blitz for 'Spicy Tacos'—focus on melting textures and high-energy transitions..."
+                                            className="w-full h-40 bg-black/50 border border-white/10 rounded-2xl p-6 text-sm text-white focus:outline-none focus:border-brand-primary transition-all resize-none relative z-10 shadow-inner italic"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-8 border-t border-white/5 flex gap-4">
+                                <button
+                                    onClick={() => setShowModal(null)}
+                                    className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/5 text-[11px] font-black text-zinc-500 uppercase tracking-widest hover:text-white transition-all"
+                                >
+                                    Abort synthesis
+                                </button>
                                 <button
                                     onClick={handleGenerate}
                                     disabled={!prompt || isGenerating}
-                                    className="w-full h-12 rounded-xl bg-indigo-500 text-white font-bold flex items-center justify-center gap-2 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    className="flex-[2] h-14 rounded-2xl bg-brand-primary text-black text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-[0_10px_30px_rgba(255,51,102,0.3)]"
                                 >
-                                    {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                                    {isGenerating ? 'Waking up the AI...' : 'Fire W_OMNICHANNEL_CONTENT_GEN Workflow'}
+                                    {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <BrainCircuit size={18} />}
+                                    {isGenerating ? 'Synthesizing...' : 'Initialize Inception'}
                                 </button>
                             </div>
                         </motion.div>
-                    </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
         </div>

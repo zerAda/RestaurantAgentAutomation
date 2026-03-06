@@ -1,0 +1,52 @@
+{
+    "kind": "collectionType",
+    "collectionName": "fortune_spins",
+    "info": {
+        "singularName": "fortune-spin",
+        "pluralName": "fortune-spins",
+        "displayName": "Fortune Spin",
+        "description": "Logs tracking W25_GAMIFICATION_WHEEL spins and results"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "customer": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::customer.customer",
+            "inversedBy": "fortune_spins"
+        },
+        "prize_label": {
+            "type": "string",
+            "required": true,
+            "description": "What they won (e.g. '10% Off', 'Free Fries')"
+        },
+        "prize_type": {
+            "type": "enumeration",
+            "enum": [
+                "discount",
+                "free_item",
+                "points",
+                "nothing"
+            ],
+            "required": true
+        },
+        "prize_value": {
+            "type": "integer",
+            "description": "Value of prize in percentage or loyalty points"
+        },
+        "redeemed": {
+            "type": "boolean",
+            "default": false,
+            "description": "Has this prize been used on an order?"
+        },
+        "order": {
+            "type": "relation",
+            "relation": "oneToOne",
+            "target": "api::order.order",
+            "description": "The order where the prize was redeemed"
+        }
+    }
+}
