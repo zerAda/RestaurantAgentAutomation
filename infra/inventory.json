@@ -1,6 +1,4 @@
 {
-  "description": "Deployment inventory - Diamond Grade Pro One Multi-Node System",
-  "version": "1.1",
   "nodes": [
     {
       "name": "vps-primary",
