@@ -5,10 +5,12 @@ export default {
             path: '/realtime/orders/stream',
             handler: 'realtime.streamOrders',
             config: {
-                auth: false, // In production, secure this with admin token block
-                // OR auth: { strategies: ['admin'] } 
-                // But browsers don't send auth headers automatically in EventSource.
-                // We will handle token via query params or middleware if needed.
+                // SSE: browsers cannot send Authorization headers with EventSource.
+                // Authentication is enforced manually inside the controller via ?token query param
+                // using strapi.admin.services.token.decodeJwtToken(token).
+                // auth: false is intentional here — do NOT change without updating the controller.
+                auth: false,
+                policies: [],
             },
         },
     ],

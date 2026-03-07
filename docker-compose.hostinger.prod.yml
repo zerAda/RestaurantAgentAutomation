@@ -97,6 +97,9 @@ services:
       - ENCRYPTION_KEY=${STRAPI_ENCRYPTION_KEY:?STRAPI_ENCRYPTION_KEY must be set}
       - APP_KEYS=${STRAPI_APP_KEYS:?STRAPI_APP_KEYS must be set}
       - CORS_ORIGINS=https://admin.${DOMAIN_NAME},https://kiosk.${DOMAIN_NAME},https://cms.${DOMAIN_NAME}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - N8N_WEBHOOK_BASE=http://n8n-main:5678
     expose:
       - "1337"
     healthcheck:

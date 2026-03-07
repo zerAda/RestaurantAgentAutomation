@@ -1,5 +1,122 @@
 # PATCHLOG — RESTO BOT
 
+## v3.4.0 — n8n Workflow Completion + Frontend Deploy (2026-03-07)
+
+### What
+Completed n8n workflow activation: 50→76/77 active. Imported 14 missing workflows from local to VPS.
+Fixed cross-workflow references, Strapi credential type, node parameter names. VPS→local .env sync.
+Deployed updated frontend images (kiosk, cms, admin-dashboard) with security fixes and UI overhaul.
+
+### Changes
+
+#### n8n Credential + Node Fixes
+- Created `strapiTokenApi` credential (`sT8kApXwN2mFqUvR`) via CLI (correct type for token auth)
+- Fixed all 7 Strapi workflows: `authentication: 'password'`→`'token'`, `collection`→`contentType`, `id`→`entryId`
+- Fixed Switch nodes: typeVersion 1→3 in W_HIVE_MIND_DISPATCH and others
+- Fixed W60: `webhookResponse`→`respondToWebhook` node type rename
+
+#### 14 Missing Workflows Imported
+W25_GAMIFICATION_WHEEL, W30_VOICE_CALL_INIT, W31_VOICE_ORDER_CONFIRM, W4.1_ROUTER,
+W4.2_CART_MANAGER, W4.3_FAQ_AGENT, W50_CART_ABANDONMENT, W51_VIP_WIN_BACK,
+W53_DYNAMIC_KITCHEN_LOAD, W55_PREDICTIVE_86ING, W56_STRAPI_DIALECT_SYNC,
+W58_DYNAMIC_SURGE, W60_KITCHEN_CLOUD_PRINT, W61_REVIEW_CATCHER
+All activated with credential/node fixes applied on import.
+
+#### Cross-workflow Reference Fix
+- W4.1_ROUTER: `W4.2_CART_MANAGER`→`dNeTNlj1h0T1UBS3`, `W4.3_FAQ_AGENT`→`Y3Ym6paJZwM761AP`
+- W4.2_CART_MANAGER: `W_INVENTORY_SYNC`→`1WCM9fomUnAtwUbb`, `W5_OUT_WA`→`okij4yRWLcXX9Tqf`
+
+#### VPS .env Critical Fixes (applied via SSH sed)
+- `ADMIN_ALLOWED_IPS`: `0.0.0.0/0` → `127.0.0.1/32,176.137.184.195/32` (P0 security)
+- `WEBHOOK_URL`: `http://localhost:5678` → `https://api.${DOMAIN_NAME}/webhook`
+- `OUTBOX_ASYNC_ENABLED`: `false` → `true`
+- `META_SIGNATURE_REQUIRED`: `off` → `warn`
+- `CORE_WORKFLOW_ID`, `ADMIN_WA_CONSOLE_WORKFLOW_ID`, `REDIS_HELPER_WORKFLOW_ID`: set to live IDs
+
+#### Local .env Sync
+- `N8N_ENCRYPTION_KEY`: placeholder → actual VPS key value
+- `CONSOLE_SUBDOMAIN`: `console` → `n8n` (matches API-only Traefik router)
+- `WA_SEND_URL`, `IG_SEND_URL`, `MSG_SEND_URL`: mock-api → real Meta Graph API URLs
+
+#### Frontend Deploy (2026-03-07)
+- Rsync all updated source files (2026-03-01→2026-03-06 commits) to VPS
+- Rebuilt cms, kiosk-app, admin-dashboard Docker images on VPS
+- Recreated frontend containers with new images + fixed ADMIN_ALLOWED_IPS labels
+- VERSION: `3.3.0`→`3.4.0`
+
+### Final State
+- **76/77 workflows active** (only W_ADMIN_AGENT inactive — toolPostgres not in n8n 2.9.4 langchain)
+- All frontend containers running latest code (kiosk Strapi v4 fix, Quantum UI, Strapi route auth)
+- ADMIN_ALLOWED_IPS effective in all Traefik middlewares (admin, cms, console, api-internal)
+
+### Risk
+- Low: frontend rebuild with no DB/schema changes
+- Medium: ADMIN_ALLOWED_IPS now restricts admin/cms access to 127.0.0.1 + your IP only
+
+### Rollback
+- Frontend: `docker compose up -d --no-deps --build admin-dashboard kiosk-app cms` from prior source
+- ADMIN_ALLOWED_IPS: Update `.env` on VPS, recreate traefik + affected containers
+
+### Remaining P0s
+- **META_APP_SECRET, WA/IG/MSG tokens**: Obtain from Meta portal to enable real messaging
+- **Chargily**: `CHARGILY_API_KEY` + `CHARGILY_SECRET` for payment processing
+- **W_ADMIN_AGENT**: `toolPostgres` requires n8n upgrade or replace with ToolCode node
+
+---
+
+## v3.3.6 — P0 Security & Ops Sprint (2026-03-06)
+
+### What
+Full P0 audit and remediation: credentials leak, unauthenticated Strapi routes, mock send URLs in prod, wrong n8n version, all 23 critical workflows activated from 0.
+
+### Changes
+
+#### P0-01: Credentials exposure
+- Deleted `credentials.md` (contained plaintext production passwords)
+- Fixed `.gitignore`: added lowercase `credentials.md` (was only uppercase, bypass on Linux)
+
+#### P0-03/04/07/11: .env critical values
+- `N8N_VERSION`: `1.80.0` → `2.9.4`
+- `META_SIGNATURE_REQUIRED`: `off` → `warn` (`enforce` blocked pending META_APP_SECRET)
+- `WA_SEND_URL`, `IG_SEND_URL`, `MSG_SEND_URL`: mock-api → real Meta Graph API URLs
+- `CORE_WORKFLOW_ID`, `ADMIN_WA_CONSOLE_WORKFLOW_ID`, `REDIS_HELPER_WORKFLOW_ID`: set to live VPS IDs
+- `WEBHOOK_URL`: `http://localhost:5678` → `https://api.${DOMAIN_NAME}/webhook`
+- `OUTBOX_ASYNC_ENABLED`: `false` → `true`
+
+#### P0-06: Unauthenticated Strapi routes (3 fixed)
+- `control-plane.ts`, `metric.ts`, `agent-chat.ts`: `auth: false` → `auth: 'users-permissions'`
+- `realtime.ts`: kept `auth: false` (SSE/EventSource limitation); added comment confirming manual JWT verification
+
+#### P0-05: CMS missing env vars (docker-compose)
+- cms service: added `REDIS_HOST=redis`, `REDIS_PORT=6379`, `N8N_WEBHOOK_BASE=http://n8n-main:5678`
+
+#### P0-05: Workflow activation — 0 → 23 active
+Created n8n credentials: PostgreSQL (`1mZZJEscADgQ8InR`), Redis (`43SDqJYMGa6RvFqW`)
+
+Key fixes per workflow batch:
+- W1-W3, W9, W11, W12, W14, W16: Missing postgres/redis credentials assigned to all DB nodes
+- W4-CORE: Removed broken nameless node; fixed expression credential IDs; resolved sub-workflow chain
+- W8-OPS: Fixed IF node typeVersion mismatch; `scheduleTrigger` O1 `value:1`→`minutesInterval:1`; R1 cron format `rule.cronExpression`→`rule.interval[{field:'cronExpression'}]`
+- W_INVENTORY_SYNC: `n8n-nodes-base.start`→`executeWorkflowTrigger`; fixed placeholder workflowIds
+- W_LOW_STOCK_ALERT: Same start node fix; `W5_OUT_WA`→real ID `okij4yRWLcXX9Tqf`
+
+### Risk
+- Low: all changes are additive or corrective
+- Medium: `META_SIGNATURE_REQUIRED=warn` allows malformed webhooks through (logged, not blocked)
+
+### Rollback
+- `.env` changes: `git restore project/.env` then redeploy
+- Strapi routes: revert `auth` field (NOT recommended)
+- Workflows: `POST /api/v1/workflows/{id}/deactivate`
+
+### Pending P0s (require manual action)
+- **P0-09**: Set `ADMIN_ALLOWED_IPS` to real admin IP(s) (currently `127.0.0.1/32`)
+- **META_APP_SECRET**: Obtain from Meta portal → then set `META_SIGNATURE_REQUIRED=enforce`
+- **WA/IG/MSG API tokens**: Obtain from Meta and fill `WA_API_TOKEN`, `IG_API_TOKEN`, `MSG_API_TOKEN`
+- **Weak passwords**: Rotate `POSTGRES_PASSWORD`, `N8N_BASIC_AUTH_PASSWORD`, `N8N_ENCRYPTION_KEY` with coordinated VPS restart
+
+---
+
 ## v3.3.6 — Audit Fix: Mock Data Removal, API Unification, Kiosk Flow (2026-03-04)
 
 ### Changes
