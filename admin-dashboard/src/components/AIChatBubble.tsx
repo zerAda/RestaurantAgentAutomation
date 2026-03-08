@@ -112,7 +112,7 @@ export function AIChatBubble() {
 
         try {
             const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
-            const token = sessionStorage.getItem('admin_jwt');
+            const token = sessionStorage.getItem('admin_jwt') || localStorage.getItem('admin_jwt');
             const agentController = new AbortController();
             const agentTimeout = setTimeout(() => agentController.abort(), 50000);
 
@@ -174,7 +174,7 @@ export function AIChatBubble() {
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, feedback: score } : m));
         try {
             const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
-            const token = sessionStorage.getItem('admin_jwt');
+            const token = sessionStorage.getItem('admin_jwt') || localStorage.getItem('admin_jwt');
             await fetch(`${STRAPI_URL}/api/agent/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },

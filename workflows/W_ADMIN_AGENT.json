@@ -123,22 +123,33 @@
         {
             "parameters": {
                 "name": "KPI_Analytics",
-                "description": "Use this tool to query the PostgreSQL database for sales analytics, order volume, cart abandonments, and revenue metrics. You must write a valid PL/pgSQL SELECT query. CRITICAL: READ-ONLY OPERATIONS ONLY. DO NOT USE UPDATE, DELETE, INSERT, OR DROP.",
-                "operation": "executeQuery",
-                "query": "={{ $parameter.query }}"
+                "description": "Use this tool to get recent orders and sales data for analytics. Returns the last 200 orders from Strapi including status, total_cents, service_mode, and createdAt. Use this data to compute revenue, order volume, and trends.",
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://cms:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=200&populate[0]=order_items",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiTokenApi",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
             },
-            "id": "tool-postgres",
+            "id": "tool-kpi",
             "name": "KPI AnalyticsDB",
-            "type": "@n8n/n8n-nodes-langchain.toolPostgres",
+            "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
             "typeVersion": 1,
             "position": [
                 450,
                 400
             ],
             "credentials": {
-                "postgres": {
-                    "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
-                    "name": "Postgres"
+                "strapiTokenApi": {
+                    "id": "sT8kApXwN2mFqUvR",
+                    "name": "StrapiTokenAPI"
                 }
             }
         },
@@ -179,22 +190,33 @@
         {
             "parameters": {
                 "name": "ROI_Calculator",
-                "description": "Use this tool to get pre-computed KPI metrics: revenue this week vs last week, conversion rate, cart abandonment rate, average order value, and top-selling items. Returns structured JSON with deltas and recommendations.",
-                "operation": "executeQuery",
-                "query": "SELECT json_build_object('revenue_this_week', COALESCE((SELECT SUM(total_cents)/100.0 FROM orders WHERE created_at > NOW() - INTERVAL '7 days' AND status='CONFIRMED'), 0), 'revenue_last_week', COALESCE((SELECT SUM(total_cents)/100.0 FROM orders WHERE created_at BETWEEN NOW() - INTERVAL '14 days' AND NOW() - INTERVAL '7 days' AND status='CONFIRMED'), 0), 'orders_this_week', COALESCE((SELECT COUNT(*) FROM orders WHERE created_at > NOW() - INTERVAL '7 days'), 0), 'abandoned_carts', COALESCE((SELECT COUNT(*) FROM carts WHERE updated_at > NOW() - INTERVAL '7 days' AND conversation_key NOT IN (SELECT conversation_key FROM orders WHERE created_at > NOW() - INTERVAL '7 days')), 0), 'avg_order_value', COALESCE((SELECT AVG(total_cents)/100.0 FROM orders WHERE created_at > NOW() - INTERVAL '7 days' AND status='CONFIRMED'), 0)) AS kpis;"
+                "description": "Use this tool to get order data from the last 14 days for ROI and revenue calculations. Returns orders with total_cents, status, and createdAt. Compute: revenue_this_week (sum total_cents/100 where createdAt > 7d ago and status=CONFIRMED), revenue_last_week (7-14d ago), orders_this_week (count last 7d), avg_order_value (avg total_cents/100 last 7d).",
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://cms:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=500&filters[createdAt][$gte]={{ new Date(Date.now() - 14*24*60*60*1000).toISOString() }}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiTokenApi",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
             },
             "id": "tool-roi",
             "name": "ROI Calculator",
-            "type": "@n8n/n8n-nodes-langchain.toolPostgres",
+            "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
             "typeVersion": 1,
             "position": [
                 900,
                 400
             ],
             "credentials": {
-                "postgres": {
-                    "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
-                    "name": "Postgres"
+                "strapiTokenApi": {
+                    "id": "sT8kApXwN2mFqUvR",
+                    "name": "StrapiTokenAPI"
                 }
             }
         }

@@ -65,6 +65,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       localStorage.removeItem('admin_jwt');
       sessionStorage.removeItem('admin_user');
       localStorage.removeItem('admin_user');
+      window.dispatchEvent(new CustomEvent('strapi-auth-error', { detail: { code: 401 } }));
       window.location.href = '/';
     }
 

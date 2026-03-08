@@ -5,6 +5,7 @@ export default {
             path: '/automation/trigger',
             handler: 'automation.trigger',
             config: {
+                auth: 'users-permissions',
                 policies: [],
                 middlewares: [],
             },
