@@ -15,6 +15,8 @@
 
 import { Context } from 'koa';
 
+declare const strapi: any;
+
 const N8N_WEBHOOK = process.env.N8N_INTERNAL_WEBHOOK || 'http://n8n-main:5678';
 
 export default {
@@ -22,7 +24,7 @@ export default {
    * POST /api/agent/chat
    * Called by AIChatBubble on the Admin Dashboard and optionally by n8n AI agents.
    */
-  async chat(ctx: Context) {
+  async chat(ctx: any) {
     const { message, sessionId, confirm, feedbackScore } = ctx.request.body?.data || {};
 
     if (!message || typeof message !== 'string') {
