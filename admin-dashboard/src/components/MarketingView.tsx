@@ -2,8 +2,30 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getTranslation, type Language } from '../utils/i18n';
 import { strapi } from '../services/strapiClient';
-import { Sparkles, X, Loader2, Send, Play, BarChart, Image as ImageIcon, Video, Layers, BrainCircuit } from 'lucide-react';
+import { Sparkles, X, Loader2, Send, Play, BarChart, Image as ImageIcon, Video, Layers, BrainCircuit, Activity, Target, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
+
+interface FunnelInsight {
+    id: number;
+    attributes: {
+        insight: string;
+        recommendations: string;
+        metrics_json: Record<string, unknown>;
+        createdAt: string;
+    };
+}
+
+interface AdCampaign {
+    id: number;
+    attributes: {
+        name: string;
+        status: string;
+        platform: string;
+        roas: number;
+        spend_cents: number;
+        auto_paused: boolean;
+    };
+}
 
 interface ContentAsset {
     id: number;
@@ -18,31 +40,44 @@ interface ContentAsset {
         quality_score: number;
         status: 'draft' | 'ready' | 'published' | 'failed' | 'retry';
         platforms_published: string[] | null;
+        performance_json: {
+            tiktok?: { hook: string; scenes: any[]; viral_tag: string; };
+            insta?: { vibe: string; scenes: any[]; aesthetic_style: string; };
+            localized?: {
+                fr: { tiktok: string; insta: string; };
+                darija: { tiktok: string; insta: string; };
+            };
+        } | null;
     };
 }
 
 export function MarketingView({ lang }: { lang: Language }) {
     const t = (key: string) => getTranslation(key, lang);
     const [assets, setAssets] = useState<ContentAsset[]>([]);
+    const [funnelInsight, setFunnelInsight] = useState<FunnelInsight | null>(null);
+    const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([]);
     const [loading, setLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [selectedAsset, setSelectedAsset] = useState<ContentAsset | null>(null);
     const [prompt, setPrompt] = useState('');
 
     useEffect(() => {
-        fetchAssets();
+        fetchData();
     }, []);
 
-    const fetchAssets = async () => {
+    const fetchData = async () => {
         try {
-            const res = await strapi.find<ContentAsset>('content-libraries', {
-                sort: ['createdAt:desc'],
-                pagination: { limit: 12 },
-            });
-            setAssets(res.data as unknown as ContentAsset[]);
+            const [assetsRes, funnelRes, adsRes] = await Promise.all([
+                strapi.find<ContentAsset>('content-libraries', { sort: ['createdAt:desc'], pagination: { limit: 12 } }),
+                strapi.find<FunnelInsight>('ai-learnings', { filters: { source: { $eq: 'W_FUNNEL_ANALYZER' } }, sort: ['createdAt:desc'], pagination: { limit: 1 } }),
+                strapi.find<AdCampaign>('ad-campaigns', { sort: ['createdAt:desc'], pagination: { limit: 10 } })
+            ]);
+            setAssets(assetsRes.data as unknown as ContentAsset[]);
+            setFunnelInsight((funnelRes.data as unknown as FunnelInsight[])[0] || null);
+            setAdCampaigns(adsRes.data as unknown as AdCampaign[]);
         } catch (error) {
-            console.error('Error fetching marketing assets:', error);
-            setAssets([]);
+            console.error('Error fetching marketing data:', error);
         } finally {
             setLoading(false);
         }
@@ -52,13 +87,13 @@ export function MarketingView({ lang }: { lang: Language }) {
         if (!prompt) return;
         setIsGenerating(true);
         try {
-            await strapi.post<{ status: string }>('/api/proxy/n8n/webhook/generate-content', {
-                prompt,
+            await strapi.post<{ status: string }>('/api/proxy/n8n/webhook/inception-protocol', {
+                dish_name: prompt, // Using prompt as dish name for now to trigger synthesis
                 timestamp: new Date().toISOString()
             });
             setShowModal(false);
             setPrompt('');
-            setTimeout(fetchAssets, 5000);
+            setTimeout(fetchData, 5000);
         } catch (err) {
             console.error('Failed to trigger generation workflow', err);
         } finally {
@@ -90,6 +125,114 @@ export function MarketingView({ lang }: { lang: Language }) {
                 </button>
             </div>
 
+            {/* AI Tracking Loop & Funnel Insights */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Funnel Analyzer */}
+                <div className="quantum-card p-6">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                                <Activity size={20} />
+                            </div>
+                            <h3 className="text-xl font-black text-white italic">Funnel Diagnostics (AI)</h3>
+                        </div>
+                    </div>
+                    {funnelInsight ? (
+                        <div className="space-y-6">
+                            <div className="flex justify-between items-center text-sm font-bold text-zinc-400 uppercase tracking-widest border-b border-white/5 pb-2">
+                                <span>Views</span>
+                                <span>Cart</span>
+                                <span>Checkout</span>
+                            </div>
+                            <div className="flex justify-between items-end gap-2">
+                                <div className="h-24 w-full bg-white/5 rounded-lg relative overflow-hidden flex items-end">
+                                    <div className="w-full bg-purple-500/40" style={{ height: '100%' }} />
+                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{(funnelInsight.attributes.metrics_json as any)?.raw?.page_view || 0} VIEWS</span>
+                                </div>
+                                <div className="h-24 w-full bg-white/5 rounded-lg relative overflow-hidden flex items-end">
+                                    <div className="w-full bg-brand-primary/40" style={{ height: `${(funnelInsight.attributes.metrics_json as any)?.metrics?.cartRate || 50}%` }} />
+                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{(funnelInsight.attributes.metrics_json as any)?.raw?.add_to_cart || 0} CART</span>
+                                </div>
+                                <div className="h-24 w-full bg-white/5 rounded-lg relative overflow-hidden flex items-end">
+                                    <div className="w-full bg-success/40" style={{ height: `${(funnelInsight.attributes.metrics_json as any)?.metrics?.conversionRate * 10 || 20}%` }} />
+                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{(funnelInsight.attributes.metrics_json as any)?.raw?.purchase || 0} SALES</span>
+                                </div>
+                            </div>
+                            
+                            {/* P5-05: Conversion Heat Metric */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 bg-brand-primary/10 rounded-xl border border-brand-primary/20">
+                                    <div className="text-[10px] font-black text-brand-primary uppercase tracking-widest mb-1">Conversion Heat</div>
+                                    <div className="text-3xl font-black text-white italic">{(funnelInsight.attributes.metrics_json as any)?.metrics?.funnel_heat || '0.0'}<span className="text-xs">/10</span></div>
+                                </div>
+                                <div className="p-4 bg-purple-500/10 rounded-xl border border-purple-500/20">
+                                    <div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">Forecast Potential</div>
+                                    <div className="text-xl font-black text-white uppercase italic">{(funnelInsight.attributes.metrics_json as any)?.forecast_metadata?.revenue_potential || 'High'}</div>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-zinc-900/50 rounded-xl border border-white/5 space-y-2">
+                                <h4 className="text-sm font-black text-brand-primary uppercase tracking-widest flex items-center gap-2">
+                                    <BrainCircuit size={14} /> AI Revolution Insight
+                                </h4>
+                                <p className="text-sm text-zinc-300 leading-relaxed italic">"{funnelInsight.attributes.recommendations}"</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="h-40 flex items-center justify-center text-zinc-500 italic text-sm">Waiting for Funnel Analyzer loop...</div>
+                    )}
+                </div>
+
+                {/* Ad Manager */}
+                <div className="quantum-card p-6">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                <Target size={20} />
+                            </div>
+                            <h3 className="text-xl font-black text-white italic">Active ROAS (Live)</h3>
+                        </div>
+                    </div>
+                    {adCampaigns.length > 0 ? (
+                        <div className="space-y-4">
+                            {adCampaigns.map(ad => (
+                                <div key={ad.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={cn("w-2 h-2 rounded-full", ad.attributes.status === 'active' ? 'bg-success animate-pulse' : 'bg-red-500')} />
+                                            <h4 className="font-bold text-white uppercase text-sm tracking-widest">{ad.attributes.name}</h4>
+                                        </div>
+                                        <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Platform: {ad.attributes.platform}</div>
+                                    </div>
+                                    <div className="flex items-center gap-6">
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-2xl font-black leading-none text-white">
+                                                {ad.attributes.roas > 0 ? ad.attributes.roas.toFixed(2) : '-'}x
+                                            </span>
+                                            <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold">ROAS</span>
+                                        </div>
+                                        {ad.attributes.auto_paused && (
+                                            <div className="bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-widest border border-red-500/30">
+                                                <AlertTriangle size={14} /> AI Paused
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="h-40 flex items-center justify-center text-zinc-500 italic text-sm">No active ad campaigns tracked.</div>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex items-center gap-3 mt-12 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-zinc-800 text-white flex items-center justify-center shadow-inner">
+                    <ImageIcon size={20} />
+                </div>
+                <h3 className="text-2xl font-black text-white tracking-tighter italic">Content Library</h3>
+            </div>
+
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {[1, 2, 3].map(i => (
@@ -115,7 +258,8 @@ export function MarketingView({ lang }: { lang: Language }) {
                                 layout
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
-                                className="quantum-card p-4 group"
+                                className="quantum-card p-4 group cursor-pointer"
+                                onClick={() => setSelectedAsset(asset)}
                             >
                                 <div className="relative aspect-[9/16] rounded-2xl overflow-hidden mb-6 bg-black shadow-2xl border border-white/5">
                                     <img src={thumbnail} alt={attr.dish_name} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
@@ -228,7 +372,7 @@ export function MarketingView({ lang }: { lang: Language }) {
 
                             <div className="p-8 border-t border-white/5 flex gap-4">
                                 <button
-                                    onClick={() => setShowModal(null)}
+                                    onClick={() => setShowModal(false)}
                                     className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/5 text-[11px] font-black text-zinc-500 uppercase tracking-widest hover:text-white transition-all"
                                 >
                                     Abort synthesis
@@ -241,6 +385,153 @@ export function MarketingView({ lang }: { lang: Language }) {
                                     {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <BrainCircuit size={18} />}
                                     {isGenerating ? 'Synthesizing...' : 'Initialize Inception'}
                                 </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {selectedAsset && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-12 overflow-hidden">
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+                            onClick={() => setSelectedAsset(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, x: 40 }}
+                            animate={{ opacity: 1, scale: 1, x: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, x: 40 }}
+                            className="w-full max-w-4xl quantum-card relative z-10 flex flex-col md:flex-row max-h-[90vh] overflow-hidden bg-zinc-950"
+                        >
+                            {/* Visual Preview */}
+                            <div className="w-full md:w-[400px] aspect-[9/16] bg-black relative">
+                                <img
+                                    src={selectedAsset.attributes.image_vertical_url || selectedAsset.attributes.image_square_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'}
+                                    className="w-full h-full object-cover opacity-60"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+                                <div className="absolute top-8 left-8">
+                                    <div className="px-4 py-2 rounded-full bg-brand-primary text-black text-[10px] font-black uppercase tracking-widest">
+                                        Asset #00{selectedAsset.id}
+                                    </div>
+                                </div>
+                                <div className="absolute bottom-12 left-8 right-8 text-white">
+                                    <h3 className="text-4xl font-black italic tracking-tighter leading-none mb-2">{selectedAsset.attributes.dish_name}</h3>
+                                    <p className="text-xs font-black text-brand-primary uppercase tracking-[0.2em]">{selectedAsset.attributes.brand_name || 'Ralphé Originals'}</p>
+                                </div>
+                            </div>
+
+                            {/* Content Details */}
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <div className="p-8 border-b border-white/5 flex items-center justify-between bg-zinc-900/50">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-zinc-400">
+                                            <Layers size={20} />
+                                        </div>
+                                        <h4 className="font-black text-white uppercase text-sm tracking-widest">Master Creative Blueprint</h4>
+                                    </div>
+                                    <button onClick={() => setSelectedAsset(null)} className="text-zinc-500 hover:text-white transition-colors">
+                                        <X size={24} />
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                                    {/* Platform Specific Scripts */}
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="font-black text-white uppercase text-xs tracking-[0.2em] flex items-center gap-2">
+                                                <Layers size={14} /> Platform Variants
+                                            </h5>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-6">
+                                            {/* TikTok Script */}
+                                            {selectedAsset.attributes.performance_json?.tiktok && (
+                                                <div className="p-6 bg-black/40 rounded-2xl border border-white/5 space-y-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded bg-zinc-800 flex items-center justify-center text-[10px] font-black">TT</div>
+                                                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">TikTok Viral Script</span>
+                                                    </div>
+                                                    <div className="p-3 bg-brand-primary/10 rounded-xl border border-brand-primary/20 text-xs font-bold text-white italic">
+                                                        Hook: "{selectedAsset.attributes.performance_json.tiktok.hook}"
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {selectedAsset.attributes.performance_json.tiktok.scenes.map((scene: any, i: number) => (
+                                                            <div key={i} className="text-[11px] text-zinc-300 leading-relaxed border-l-2 border-brand-primary/30 pl-3 py-1">
+                                                                <span className="font-black text-brand-primary">SC{i+1}:</span> {scene.action} — <span className="italic text-white">"{scene.text}"</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Insta Script */}
+                                            {selectedAsset.attributes.performance_json?.insta && (
+                                                <div className="p-6 bg-black/40 rounded-2xl border border-white/5 space-y-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded bg-zinc-800 flex items-center justify-center text-[10px] font-black">IG</div>
+                                                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Instagram Aesthetic Script</span>
+                                                    </div>
+                                                    <div className="p-3 bg-purple-500/10 rounded-xl border border-purple-500/20 text-xs font-bold text-white italic">
+                                                        Vibe: "{selectedAsset.attributes.performance_json.insta.vibe}"
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {selectedAsset.attributes.performance_json.insta.scenes.map((scene: any, i: number) => (
+                                                            <div key={i} className="text-[11px] text-zinc-300 leading-relaxed border-l-2 border-purple-500/30 pl-3 py-1">
+                                                                <span className="font-black text-purple-400">SC{i+1}:</span> {scene.action} — <span className="italic text-white">"{scene.text}"</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Captions Section */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="p-5 rounded-2xl bg-brand-primary/5 border border-brand-primary/10 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest">Variant A: Gen-Z</span>
+                                                <div className="px-2 py-0.5 rounded-full bg-brand-primary text-black text-[8px] font-black">HIGH RETENTION</div>
+                                            </div>
+                                            <p className="text-sm text-zinc-300 italic leading-relaxed">"{selectedAsset.attributes.caption_a}"</p>
+                                        </div>
+                                        <div className="p-5 rounded-2xl bg-white/5 border border-white/5 space-y-3">
+                                            <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Variant B: Premium</span>
+                                            <p className="text-sm text-zinc-300 italic leading-relaxed">"{selectedAsset.attributes.caption_b}"</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Localization Preview */}
+                                    {selectedAsset.attributes.performance_json?.localized && (
+                                        <div className="space-y-4">
+                                            <h5 className="font-black text-zinc-600 uppercase text-[10px] tracking-[0.2em] flex items-center gap-2">
+                                                <Activity size={12} /> Localization Blitz
+                                            </h5>
+                                            <div className="flex flex-wrap gap-4">
+                                                <div className="px-4 py-2 rounded-xl bg-zinc-900 border border-white/5 flex items-center gap-3">
+                                                    <span className="text-[10px] font-black text-zinc-500">FR (TT)</span>
+                                                    <span className="text-xs text-white italic">{selectedAsset.attributes.performance_json.localized.fr.tiktok.substring(0, 30)}...</span>
+                                                </div>
+                                                <div className="px-4 py-2 rounded-xl bg-zinc-900 border border-white/5 flex items-center gap-3">
+                                                    <span className="text-[10px] font-black text-zinc-500">DZ (TT)</span>
+                                                    <span className="text-xs text-white italic">{selectedAsset.attributes.performance_json.localized.darija.tiktok.substring(0, 30)}...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="p-8 bg-zinc-900/80 border-t border-white/5 flex gap-4">
+                                    <button className="flex-1 h-12 rounded-xl bg-white/5 border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest hover:text-white transition-all">
+                                        Revise Script
+                                    </button>
+                                    <button className="flex-1 h-12 rounded-xl bg-brand-primary text-black text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg">
+                                        Blast to TikTok
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </div>

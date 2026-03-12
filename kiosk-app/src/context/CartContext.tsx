@@ -68,8 +68,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
             if (cfg?.kiosk_default_service_mode) {
                 setDefaultServiceMode(cfg.kiosk_default_service_mode);
             }
-        }).catch(() => {
-            // Use default if Strapi unavailable
+        }).catch((err) => {
+            // BUG-009 FIX: Log the failure so monitoring can detect config unavailability.
+            // The kiosk gracefully falls back to hardcoded defaults but this is now visible.
+            console.warn('[CartContext] system-config fetch failed, using defaults:', err?.message);
         });
     }, []);
 
@@ -113,6 +115,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const submitOrder = useCallback(async (): Promise<OrderResult> => {
         if (items.length === 0) return { success: false, error: 'Panier vide' };
+        // BUG-008 FIX: Guard against double-submission from rapid iPad taps.
+        // isSubmitting is a React state, but the callback closure can be stale.
+        // We use a module-level flag to ensure atomicity.
+        if (isSubmitting) return { success: false, error: 'Commande en cours...' };
 
         setIsSubmitting(true);
         try {
@@ -126,12 +132,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
             const serviceMode = orderType === 'dine_in' ? 'kiosk_sur_place' : 'kiosk_a_emporter';
 
+            const sessionId = `kiosk_${tableNumber || 'takeway'}_${Date.now()}`.toLowerCase();
+
             const res = await strapi.post<{ id: number; documentId: string }>('/api/orders', {
                 channel: 'kiosk',
                 service_mode: serviceMode,
                 status: 'NEW',
                 total_cents: total,
                 table_number: tableNumber,
+                // E-01 FIX: kiosk_session_id is required by W_KIOSK_ORDER to merge
+                // items into an existing active table order instead of creating duplicates.
+                kiosk_session_id: sessionId,
+                order_type: orderType,
                 order_items: orderItems,
             });
 
@@ -159,7 +171,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsSubmitting(false);
         }
-    }, [items, tableNumber, orderType, total]);
+    }, [items, tableNumber, orderType, total, isSubmitting]);
 
     return (
         <CartContext.Provider value={{

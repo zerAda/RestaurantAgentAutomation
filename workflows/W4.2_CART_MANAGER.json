@@ -518,6 +518,24 @@
         -820
       ],
       "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT link_customer_identity($1, $2, $3, $4);",
+        "additionalFields": {
+          "queryParams": "={{[$json.state.restaurantId || $json.restaurantId || $json.restaurant_id || $node['C9 - Create Order (DB)'].json.restaurant_id, $json.channel || $json.state.channel, $json.userId || $json.state.userId || $json.state.user_id, $json.state.phone]}}"
+        }
+      },
+      "id": "link-identity-db-node",
+      "name": "Link Identity (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        200,
+        -100
+      ],
+      "continueOnFail": true
     }
   ],
   "connections": {
@@ -682,6 +700,17 @@
       ]
     },
     "C9 - Create Order (DB)": {
+      "main": [
+        [
+          {
+            "node": "Link Identity (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Identity (DB)": {
       "main": [
         [
           {

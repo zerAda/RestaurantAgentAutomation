@@ -1,0 +1,307 @@
+{
+  "name": "W0 - CONFIG READER (Strapi Runtime Config)",
+  "active": true,
+  "settings": {
+    "executionTimeout": 15,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cfg-trigger-01",
+      "name": "IN - Sub-workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "config:platform"
+      },
+      "id": "cfg-redis-get-01",
+      "name": "Redis - GET Cache",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Check if Redis returned a valid cached config\nconst raw = $json.value || $json.data || null;\nif (raw && typeof raw === 'string' && raw.startsWith('{')) {\n  try {\n    const parsed = JSON.parse(raw);\n    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {\n      return [{ json: { _cacheHit: true, config: parsed } }];\n    }\n  } catch (e) { /* fall through */ }\n}\nreturn [{ json: { _cacheHit: false, config: null } }];\n"
+      },
+      "id": "cfg-cache-check-02",
+      "name": "Cache Hit?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._cacheHit}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "cfg-if-cache-03",
+      "name": "Branch - Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Cache hit — return parsed config directly\nreturn [{ json: $json.config }];\n"
+      },
+      "id": "cfg-return-cache-04",
+      "name": "Return Cached Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://cms:1337/api/system-config",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "cfg-strapi-fetch-05",
+      "name": "Strapi - Fetch system-config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        960,
+        120
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://cms:1337/api/platform-settings?pagination[pageSize]=200&filters[publishedAt][$notNull]=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "cfg-platform-fetch-06",
+      "name": "Strapi - Fetch platform-settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        120
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * W0_CONFIG_READER - Diamond Grade Scoped Merging\n * Reorganizes all settings by 'category' (scope) for structured access.\n * Returns: { SCOPES: { CORE: {...}, AI: {...} }, FLAT: {...}, ...flatKeys }\n */\n\nconst sysData = $('Strapi - Fetch system-config').item?.json?.data || {};\nconst sys = sysData.attributes || sysData;\nconst psRaw = $('Strapi - Fetch platform-settings').item?.json?.data || [];\n\n// 1. Initialize Scopes\nconst SCOPES = {\n  CORE: {},\n  AI: {},\n  SOCIAL: {},\n  LOGISTICS: {},\n  WEB_KIOSK: {},\n  WEB_ADMIN: {},\n  PAYMENT: {},\n  SECURITY: {}\n};\n\n// 2. Map system-config (Single Type) to CORE scope defaults\nSCOPES.CORE = {\n  LLM_MODEL: sys.llm_model,\n  LLM_API_URL: sys.llm_api_url || sys.ollama_api_url,\n  LLM_TEMPERATURE: sys.llm_temperature,\n  WA_PHONE_NUMBER_ID: sys.whatsapp_phone_number_id,\n  WA_API_TOKEN: sys.whatsapp_access_token,\n  KIOSK_ENABLED: sys.kiosk_enabled?.toString(),\n  ADMIN_PHONE_NUMBER: sys.admin_phone_number\n};\n\n// 3. Process Platform Settings (overrides with explicit category)\nconst flatMap = { ...SCOPES.CORE };\nfor (const entry of psRaw) {\n  const attrs = entry?.attributes || entry;\n  const scope = attrs.category || 'CORE';\n  const key = attrs.key;\n  const val = attrs.value;\n  \n  if (key && val !== undefined) {\n    if (SCOPES[scope]) {\n      SCOPES[scope][key] = val;\n    }\n    flatMap[key] = val;\n  }\n}\n\n// 4. Final Merge & Timestamp\nconst finalConfig = {\n  ...flatMap,\n  SCOPES,\n  _timestamp: new Date().toISOString()\n};\n\nreturn [{ json: finalConfig }];\n"
+      },
+      "id": "cfg-merge-07",
+      "name": "Merge Config Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "config:platform",
+        "value": "={{JSON.stringify($json)}}",
+        "expire": true,
+        "ttl": 60
+      },
+      "id": "cfg-redis-set-08",
+      "name": "Redis - SET Cache (60s TTL)",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        120
+      ],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Pass config through after caching\nreturn [{ json: $json }];\n"
+      },
+      "id": "cfg-return-fresh-09",
+      "name": "Return Fresh Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "IN - Sub-workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Redis - GET Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - GET Cache": {
+      "main": [
+        [
+          {
+            "node": "Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "Branch - Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Branch - Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "Return Cached Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Strapi - Fetch system-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strapi - Fetch system-config": {
+      "main": [
+        [
+          {
+            "node": "Strapi - Fetch platform-settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strapi - Fetch platform-settings": {
+      "main": [
+        [
+          {
+            "node": "Merge Config Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Config Sources": {
+      "main": [
+        [
+          {
+            "node": "Redis - SET Cache (60s TTL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - SET Cache (60s TTL)": {
+      "main": [
+        [
+          {
+            "node": "Return Fresh Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

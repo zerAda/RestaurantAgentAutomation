@@ -8,63 +8,101 @@
     "nodes": [
         {
             "parameters": {
-                "httpMethod": "POST",
-                "path": "v1/voice/order-create",
-                "responseMode": "responseNode",
-                "options": {
-                    "rawBody": true
+                "workflowId": "W_CORTEX_REGISTRY",
+                "workflowInputs": {
+                    "parameters": [
+                        {
+                            "name": "action",
+                            "value": "GET"
+                        },
+                        {
+                            "name": "key",
+                            "value": "LOGISTICS_SURGE"
+                        }
+                    ]
                 }
             },
-            "id": "trigger-voice-order",
-            "name": "IN - Vapi/Retell Tool Call",
-            "type": "n8n-nodes-base.webhook",
+            "id": "get-cortex-surge",
+            "name": "Get Cortex Surge",
+            "type": "n8n-nodes-base.executeWorkflow",
             "typeVersion": 1,
             "position": [
-                0,
-                200
+                250,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ Number($node['Get Cortex Surge'].json.value?.multiplier || 1.0) }}",
+                            "operation": "larger",
+                            "value2": 1.8
+                        }
+                    ]
+                }
+            },
+            "id": "capacity-guard",
+            "name": "Capacity Guard?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                450,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{JSON.stringify({ status: 'failure', message: 'Désolé, notre cuisine est saturee. Veuillez réessayer dans 30 minutes.' })}}",
+                "options": {}
+            },
+            "id": "busy-response",
+            "name": "Kitchen Busy (To Caller)",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                700,
+                -100
             ]
         },
         {
             "parameters": {
                 "language": "javascript",
-                "jsCode": "const payload = $input.all()[0].json.body;\n// Extraction du résumé généré par Vapi (ex: { items: [{ name: 'Burger', qty: 1}], type: 'takeaway' })\nconst orderData = payload.message?.toolCalls[0]?.function?.arguments || {};\nconst customerPhone = payload.message?.call?.customer?.number;\n\nif (!orderData.items || orderData.items.length === 0) {\n  throw new Error('Panier vide reçu par VoiceBot');\n}\n\nreturn [{\n  json: {\n    customerPhone,\n    orderData,\n    totalAmount: orderData.items.reduce((acc, item) => acc + (item.price * item.qty), 0)\n  }\n}];"
+                "jsCode": "const payload = $input.all()[0].json.body;\nconst orderData = payload.message?.toolCalls[0]?.function?.arguments || {};\nconst customerPhone = payload.message?.call?.customer?.number;\n\nif (!orderData.items || orderData.items.length === 0) {\n  throw new Error('Panier vide reçu par VoiceBot');\n}\n\nreturn [{\n  json: {\n    customerPhone,\n    orderData,\n    totalAmount: orderData.items.reduce((acc, item) => acc + (item.price * item.qty), 0)\n  }\n}];"
             },
             "id": "parse-voice-arguments",
             "name": "Parse LLM Tool Call",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                250,
+                700,
+                150
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/order/finalize",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"customerPhone\": \"={{$json.customerPhone}}\",\n  \"restaurantId\": \"REST001\", \n  \"totalAmount\": \"={{$json.totalAmount}}\",\n  \"source\": \"VOICE_BOT\",\n  \"items\": \"={{$json.orderData.items.map(i => ({ id: i.item_code || i.name, qty: i.qty, price: i.price }))}}\",\n  \"metadata\": {\n    \"voice_call\": true,\n    \"order_type\": \"={{$json.orderData.type}}\"\n  }\n}",
+                "options": {}
+            },
+            "id": "call-order-finalizer",
+            "name": "Finalize Order (HTTP)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                500,
                 200
             ]
         },
         {
             "parameters": {
-                "operation": "executeQuery",
-                "query": "INSERT INTO orders (customer_phone, total_amount, order_type, status, source) VALUES ($1, $2, $3, 'A_PREPARER', 'VOICE_BOT') RETURNING id;",
-                "additionalFields": {
-                    "queryParams": "={{[$json.customerPhone, $json.totalAmount, $json.orderData.type]}}"
-                }
-            },
-            "id": "create-order-db",
-            "name": "Create Order (DB)",
-            "type": "n8n-nodes-base.postgres",
-            "typeVersion": 2,
-            "position": [
-                500,
-                200
-            ],
-            "credentials": {
-                "postgres": {
-                    "id": "POSTGRES_CREDENTIAL_ID",
-                    "name": "Postgres"
-                }
-            }
-        },
-        {
-            "parameters": {
                 "respondWith": "json",
-                "responseBody": "={{JSON.stringify({ status: 'success', message: 'Commande transmise à la cuisine avec succès. Le numéro de suivi est ' + $json.id })}}",
+                "responseBody": "={{JSON.stringify({ status: 'success', message: 'Commande transmise avec succès. Numéro: ' + $json.id })}}",
                 "options": {}
             },
             "id": "return-success-to-voice",
@@ -78,29 +116,58 @@
         }
     ],
     "connections": {
-        "IN - Vapi/Retell Tool Call": {
-            "main": [
-                [
-                    {
-                        "node": "Parse LLM Tool Call",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        },
-        "Parse LLM Tool Call": {
-            "main": [
-                [
-                    {
-                        "node": "Create Order (DB)",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        },
-        "Create Order (DB)": {
+    "IN - Vapi/Retell Tool Call": {
+      "main": [
+        [
+          {
+            "node": "Get Cortex Surge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Cortex Surge": {
+      "main": [
+        [
+          {
+            "node": "Capacity Guard?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capacity Guard?": {
+      "main": [
+        [
+          {
+            "node": "Kitchen Busy (To Caller)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse LLM Tool Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Tool Call": {
+      "main": [
+        [
+          {
+            "node": "Finalize Order (HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+        "Finalize Order (HTTP)": {
             "main": [
                 [
                     {

@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { strapi, getToken } from "./strapiClient";
+import { strapi } from "./strapiClient";
 
-export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERING' | 'DONE' | 'CANCELLED';
+// F-04 FIX: Strapi order schema status enum is LOWERCASE ('pending','confirmed','preparing','ready','delivered','cancelled')
+// Previous UPPERCASE values (NEW, PREPARING, READY) were rejected silently by Strapi.
+export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
 
 export interface Order {
     id: string;
@@ -21,7 +22,8 @@ interface StrapiOrder {
     documentId: string;
     user_id: string;
     status: string;
-    total_cents: number;
+    // F-03 FIX: Strapi field is 'total_amount' in DA (not 'total_cents' in centimes).
+    total_amount: number;
     service_mode: string;
     channel: string;
     // Strapi v5 uses camelCase system fields — snake_case (created_at) returns undefined
@@ -43,8 +45,10 @@ function mapOrder(item: StrapiOrder): Order {
         documentId: item.documentId,
         customer: item.user_id?.slice(0, 12) || 'Unknown',
         items: item.order_items?.map(oi => `${oi.label} x${oi.qty}`) || [],
-        total: `${(item.total_cents / 100).toFixed(0)} DA`,
-        status: (item.status || 'NEW').toUpperCase() as OrderStatus,
+        // F-03 FIX: total_amount is already in DA — no division needed.
+        total: `${(item.total_amount ?? 0).toLocaleString('fr-DZ')} DA`,
+        // F-04 FIX: Normalize to lowercase to match Strapi schema enum values.
+        status: ((item.status || 'pending').toLowerCase() as OrderStatus),
         time: `${ago} min`,
         method: methodMap[item.service_mode] || 'TAKEOUT',
         rawCreatedAt: item.createdAt,
@@ -52,34 +56,6 @@ function mapOrder(item: StrapiOrder): Order {
 }
 
 export const useOrders = () => {
-    const queryClient = useQueryClient();
-
-    useEffect(() => {
-        const token = getToken();
-        if (!token) return;
-
-        const url = `${import.meta.env.VITE_STRAPI_URL}/api/realtime/orders/stream?token=${encodeURIComponent(token)}`;
-        const eventSource = new EventSource(url);
-
-        eventSource.addEventListener('order_update', (e) => {
-            console.log('[SSE] Order updated:', e.data);
-            queryClient.invalidateQueries({ queryKey: ["orders"] });
-        });
-
-        eventSource.addEventListener('ping', () => {
-            // keep-alive ping received
-        });
-
-        eventSource.onerror = (err) => {
-            console.error('[SSE] EventSource Error:', err);
-            // Browser will automatically attempt to reconnect, but log it
-        };
-
-        return () => {
-            eventSource.close();
-        };
-    }, [queryClient]);
-
     return useQuery({
         queryKey: ["orders"],
         queryFn: async (): Promise<Order[]> => {
@@ -91,7 +67,7 @@ export const useOrders = () => {
             const items = Array.isArray(res.data) ? res.data : [];
             return items.map(mapOrder);
         },
-        // Polling removed in favor of Server-Sent Events!
+        refetchInterval: 10000,
     });
 };
 

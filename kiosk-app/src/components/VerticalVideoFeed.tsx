@@ -35,8 +35,28 @@ const FALLBACK_FEED: ProductVideo[] = [
     }
 ];
 
-function mapStrapiToFeed(data: any[]): ProductVideo[] {
-    return data.map((item: any, idx: number) => {
+interface StrapiMediaItem { attributes?: { url?: string }; url?: string; }
+
+interface StrapiProductRaw {
+    id: number | string;
+    attributes?: {
+        name?: string;
+        marketing_name?: string;
+        price?: number;
+        base_price?: number;
+        description?: string;
+        creative_assets?: { data?: StrapiMediaItem[] | StrapiMediaItem };
+    };
+    name?: string;
+    marketing_name?: string;
+    price?: number;
+    base_price?: number;
+    description?: string;
+    creative_assets?: { data?: StrapiMediaItem[] | StrapiMediaItem };
+}
+
+function mapStrapiToFeed(data: StrapiProductRaw[]): ProductVideo[] {
+    return data.map((item: StrapiProductRaw, idx: number) => {
         const attrs = item.attributes || item;
         
         // Handle Strapi v4 media payload structure
@@ -44,9 +64,9 @@ function mapStrapiToFeed(data: any[]): ProductVideo[] {
         if (attrs.creative_assets?.data) {
             const mediaData = attrs.creative_assets.data;
             if (Array.isArray(mediaData) && mediaData.length > 0) {
-                assetUrl = mediaData[0].attributes?.url || mediaData[0].url;
-            } else if (mediaData.attributes?.url || mediaData.url) {
-                assetUrl = mediaData.attributes?.url || mediaData.url;
+                assetUrl = mediaData[0].attributes?.url || mediaData[0].url || null;
+            } else if (!Array.isArray(mediaData)) {
+                assetUrl = (mediaData as StrapiMediaItem).attributes?.url || (mediaData as StrapiMediaItem).url || null;
             }
         }
 
@@ -83,23 +103,46 @@ export default function VerticalVideoFeed() {
     const [lang, setLang] = useState<Language>('fr');
     const [showLangSelector, setShowLangSelector] = useState(false);
     const [flyers, setFlyers] = useState<{ id: number; x: number; y: number }[]>([]);
+    const [cortex, setCortex] = useState<{ kitchenLoad: number }>({ kitchenLoad: 0 });
 
     useEffect(() => {
         let cancelled = false;
-        (async () => {
+        const fetchCortex = async () => {
+            try {
+                const res = await fetch(`${STRAPI_URL}/api/realtime/cortex?keys=KITCHEN_LOAD`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!cancelled) setCortex({ kitchenLoad: data.KITCHEN_LOAD || 0 });
+                }
+            } catch { /* Silence signal drift */ }
+        };
+
+        const fetchFeed = async () => {
             try {
                 const res = await fetch(`${STRAPI_URL}/api/products?populate=creative_assets&filters[is_kiosk_visible][$eq]=true&pagination[pageSize]=10&sort=createdAt:desc`);
-                const json = await res.json();
-                if (!cancelled && json.data?.length > 0) {
-                    setFeed(mapStrapiToFeed(json.data));
+                if (!res.ok) {
+                    console.warn(`[Kiosk] Feed HTTP ${res.status} — keeping fallback feed.`);
+                } else {
+                    const json = await res.json();
+                    if (!cancelled && json.data?.length > 0) {
+                        setFeed(mapStrapiToFeed(json.data));
+                    }
                 }
-            } catch (err) {
+            } catch {
                 console.warn('[Kiosk] Signal drift: using fallback');
             } finally {
                 if (!cancelled) setLoading(false);
             }
-        })();
-        return () => { cancelled = true; };
+        };
+
+        fetchFeed();
+        fetchCortex();
+        const interval = setInterval(fetchCortex, 15000);
+
+        return () => { 
+            cancelled = true; 
+            clearInterval(interval);
+        };
     }, []);
 
     useEffect(() => {
@@ -111,7 +154,7 @@ export default function VerticalVideoFeed() {
         setIndex((prev) => (prev + 1) % feed.length);
     };
 
-    const confirmAddition = (extras: any[], sauces: any[], size: any, quantity: number) => {
+    const confirmAddition = (extras: { name: string; price: number }[], sauces: { name: string; price: number; is_free?: boolean }[], size: { name: string; price_modifier: number } | null, quantity: number) => {
         const product = feed[index];
         addItem({
             id: product.id,
@@ -150,6 +193,14 @@ export default function VerticalVideoFeed() {
     return (
         <div className="relative w-full h-screen bg-black overflow-hidden select-none touch-none">
 
+            {/* Neural Grain Overlay */}
+            <div className="grain-overlay" />
+            
+            {/* Cinematic Mesh Backdrop */}
+            <div className="absolute inset-0 z-0">
+                <div className="cinematic-mesh w-full h-full" />
+            </div>
+
             {/* Cinematic Background Feed */}
             <AnimatePresence mode="wait">
                 <motion.div
@@ -178,8 +229,13 @@ export default function VerticalVideoFeed() {
                     <div>
                         <h4 className="text-2xl font-black text-white tracking-widest uppercase italic leading-none">Ralphé <span className="text-zinc-500">Kiosk</span></h4>
                         <div className="flex items-center gap-2 mt-1.5 px-2 py-0.5 rounded bg-white/5 border border-white/10 max-w-fit">
-                            <Activity size={10} className="text-success animate-pulse" />
-                            <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Network Secure</span>
+                            <Activity size={10} className={cn("transition-colors", cortex.kitchenLoad > 80 ? "text-error" : "text-success animate-pulse")} />
+                            <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                                Kitchen Hub: 
+                                <span className={cn("font-bold", cortex.kitchenLoad > 80 ? "text-error" : "text-success")}>
+                                    {cortex.kitchenLoad > 80 ? 'CRITICAL' : 'OPTIMAL'} ({cortex.kitchenLoad}%)
+                                </span>
+                            </span>
                         </div>
                     </div>
                 </div>

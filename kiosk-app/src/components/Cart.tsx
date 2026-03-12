@@ -1,6 +1,6 @@
 import { useCart } from '../context/CartContext';
 import { getTranslation } from '../utils/i18n';
-import { X, Trash2, ChevronUp, ChevronDown, Check, Loader2, CreditCard, ShoppingBag, MapPin, Clock } from "lucide-react";
+import { X, Trash2, ChevronUp, ChevronDown, Check, Loader2, CreditCard, ShoppingBag, MapPin, Clock, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { trackEvent } from '../utils/tracking';
@@ -74,7 +74,7 @@ export function Cart({ lang, onClose }: CartProps) {
                         </div>
                         <div className="pt-8 border-t border-white/5 flex justify-between items-end">
                             <span className="text-sm font-black text-zinc-500 uppercase tracking-widest">Credits</span>
-                            <span className="text-5xl font-black text-white italic tracking-tighter">{lastOrderResult.total_amount.toLocaleString()} DA</span>
+                            <span className="text-5xl font-black text-white italic tracking-tighter">{lastOrderResult.total_amount?.toLocaleString('fr-DZ')} DA</span>
                         </div>
                     </div>
 
@@ -213,8 +213,8 @@ export function Cart({ lang, onClose }: CartProps) {
                         <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] italic block mb-2">{getTranslation('total', lang)}</span>
                         <div className="flex items-center gap-3">
                             <Activity size={20} className="text-brand-primary" />
-                            <span className="text-8xl font-black text-white italic tracking-tighter leading-none">{total}</span>
-                            <span className="text-2xl font-black text-zinc-500 uppercase italic">Credits</span>
+                            <span className="text-8xl font-black text-white italic tracking-tighter leading-none">{total.toLocaleString('fr-DZ')}</span>
+                            <span className="text-2xl font-black text-zinc-500 uppercase italic">DA</span>
                         </div>
                     </div>
                 </div>

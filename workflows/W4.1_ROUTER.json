@@ -275,6 +275,28 @@
     {
       "parameters": {
         "workflowId": "W4.2_CART_MANAGER",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{ $json.restaurantId }}"
+            },
+            {
+              "name": "channel",
+              "value": "={{ $json.channel }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            }
+          ]
+        },
         "options": {
           "waitTillFinished": true
         }
@@ -291,6 +313,28 @@
     {
       "parameters": {
         "workflowId": "W4.3_FAQ_AGENT",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{ $json.restaurantId }}"
+            },
+            {
+              "name": "channel",
+              "value": "={{ $json.channel }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            }
+          ]
+        },
         "options": {
           "waitTillFinished": true
         }

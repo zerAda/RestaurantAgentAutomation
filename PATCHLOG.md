@@ -1,5 +1,164 @@
 # PATCHLOG — RESTO BOT
 
+## v3.4.1-p0-security — P0 Security & Reliability Fixes (2026-03-09)
+
+### What
+Fixed 6 of 7 critical (P0) issues identified in security/reliability audit:
+- **P0-1**: Kiosk order creation — added `api::order.order.create` for Public role (SQL)
+- **P0-2**: Automation trigger endpoint — changed `auth: 'users-permissions'` → `auth: false` (Strapi 5 requirement)
+- **P0-3**: SSE token in URL — replaced EventSource + `?token=` with 10s polling (OWASP A07 eliminated)
+- **P0-4**: AIChatBubble sessionStorage-only — added localStorage fallback
+- **P0-5**: strapiClient 401 missing event — added `strapi-auth-error` CustomEvent dispatch
+- **P0-7**: W_ADMIN_AGENT toolPostgres — replaced both Postgres nodes with toolHttpRequest → Strapi API
+
+### Why
+OWASP A07 (token in URL), broken kiosk ordering, CMS startup crash (invalid route config),
+broken AI agent (n8n 2.9.4 missing toolPostgres), auth event not dispatched causing React state desync.
+
+### Risk: LOW
+- All changes are additive or fix broken functionality
+- CMS route fix (auth: false) maintains same security level (controller does manual JWT verify)
+- Polling replaces SSE — slightly higher latency but eliminates OWASP issue
+- W_ADMIN_AGENT was inactive before fix; now uses HTTP calls to Strapi instead of direct DB
+
+### Rollback
+- orders.ts: restore EventSource code + `?token=` (git revert)
+- automation.ts route: change auth back to string (will need Strapi 5 compatible value)
+- kiosk permission: `DELETE FROM up_permissions_role_lnk WHERE permission_id = (SELECT id FROM up_permissions WHERE action='api::order.order.create')`
+- W_ADMIN_AGENT: PUT previous version via n8n API (ID: 48lRw4rA1I2HA39g)
+
+### Files Changed
+- `admin-dashboard/src/services/orders.ts` — SSE → polling
+- `admin-dashboard/src/services/strapiClient.ts` — 401 event dispatch
+- `admin-dashboard/src/components/AIChatBubble.tsx` — localStorage fallback
+- `inventory-cms/src/api/system-config/routes/automation.ts` — auth: false
+- `inventory-cms/src/api/system-config/routes/agent-chat.ts` — auth: false + comment
+- `workflows/W_ADMIN_AGENT.json` — toolPostgres → toolHttpRequest (×2)
+
+### Deployed
+- Admin dashboard rebuilt (7m45s vite build) and redeployed: 2026-03-09T07:15:59Z
+- CMS route files patched via docker cp + container restart
+- W_ADMIN_AGENT updated via n8n API PUT (ID: 48lRw4rA1I2HA39g, HTTP 200)
+
+---
+
+## v3.4.0-config-hub — Strapi as Runtime Config Hub (2026-03-08)
+
+### What
+Implements "Strapi as Config Hub" so operators can change runtime settings (LLM model,
+API tokens, feature flags, phone numbers, payment thresholds) via Strapi admin UI
+without touching `.env` or redeploying.
+
+### Why
+All config previously lived in `.env` — requiring a VPS deploy for every tweak.
+This adds a safe runtime override layer with 60s Redis cache, env fallbacks for
+Strapi-down resilience, and full audit trail via Strapi admin.
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| `inventory-cms/src/api/platform-setting/content-types/platform-setting/schema.json` | New collection type: key/value runtime config store |
+| `inventory-cms/src/api/platform-setting/controllers/platform-setting.ts` | Strapi 5 core controller |
+| `inventory-cms/src/api/platform-setting/services/platform-setting.ts` | Strapi 5 core service |
+| `inventory-cms/src/api/platform-setting/routes/platform-setting.ts` | Strapi 5 core router |
+| `db/migrations/011_platform_settings_seed.sql` | Idempotent seed of 34 default config rows |
+| `workflows/W0_CONFIG_READER.json` | n8n sub-workflow: fetch Strapi config, Redis cache 60s TTL, env fallbacks |
+
+### Architecture Decision
+Platform already has `system-config` (single-type, 100+ structured fields). W0_CONFIG_READER
+merges both sources: `platform-settings` entries > `system-config` fields > `.env` fallbacks.
+
+W5_OUT_WA, W6_OUT_IG, W7_OUT_MSG already use `payload._strapiConfig || {}` with env fallbacks
+— no changes needed to those workflows. W4_CORE already reads system_configs from DB via SQL.
+W_LLM_INTENT already reads `$json._strapiConfig?.llm_model`. All outbound workflows are
+Strapi-config-ready; W0_CONFIG_READER is the missing supply link.
+
+### W0_CONFIG_READER Flow
+```
+Sub-workflow Trigger
+  → Redis GET config:platform
+  → Cache hit? → Return cached object (skips Strapi calls)
+  → Cache miss:
+      → GET http://cms:1337/api/system-configs   (single type)
+      → GET http://cms:1337/api/platform-settings?pagination[pageSize]=200
+      → Merge: envFallback < sysMap < psMap
+      → Redis SET config:platform TTL=60s
+      → Return merged flat object as _strapiConfig
+```
+
+### Seed Data (migration 011) — 34 rows
+LLM (7), Messaging WA/IG/MSG (11), Payment (3), Fraud (3), Outbox/SLO (6),
+Feature flags (3), Driver phones (2), Kiosk (2). Secrets use placeholder values
+`REPLACE_IN_STRAPI_ADMIN` and are marked `is_secret=true`.
+
+### Kiosk App — verified already integrated
+`kiosk-app/src/services/configService.ts` reads `/api/system-config` for kiosk fields.
+`kiosk-app/src/services/strapiClient.ts` uses `VITE_STRAPI_URL`. No changes needed.
+
+### Admin Dashboard — verified already integrated
+`admin-dashboard/src/services/strapiClient.ts` full CRUD client using `VITE_STRAPI_URL`
++ JWT from sessionStorage. Reads orders, products, drivers, delivery zones. No changes needed.
+
+### Risk Register
+| ID | Risk | Severity | Mitigation |
+|----|------|----------|------------|
+| R1 | Strapi down | LOW | `continueOnFail:true` on all HTTP nodes; env fallbacks in merge JS |
+| R2 | Redis down | LOW | `continueOnFail:true`; Strapi called directly, still functional |
+| R3 | Secret leak via API | MEDIUM | `is_secret=true`; read-only API token scope; never log _strapiConfig |
+| R4 | Migration before Strapi table exists | LOW | `DO $$ IF NOT EXISTS` guard; re-runnable after cms boot |
+
+### Security
+- API tokens in platform-settings: `is_secret=true` (Strapi UI masks display)
+- Boot secrets (DB passwords, JWT keys, encryption key) stay in `.env` only — never in Strapi
+- W0_CONFIG_READER uses `STRAPI_API_TOKEN` from env to authenticate (not self-referential)
+- All Strapi calls are internal (`http://cms:1337`); Strapi remains private behind IP allowlist
+
+### Rollback
+1. Delete W0_CONFIG_READER from n8n UI (all other workflows use env fallbacks automatically)
+2. `DELETE FROM strapi.platform_settings;` to clear seed (system-config untouched)
+3. No existing tables altered; migration 011 is INSERT-only with ON CONFLICT DO NOTHING
+
+### Deployment
+```bash
+# 1. SCP new files to VPS
+scp -r project/inventory-cms/src/api/platform-setting \
+    deploy@72.60.190.192:/opt/resto/current/inventory-cms/src/api/
+
+scp project/db/migrations/011_platform_settings_seed.sql \
+    deploy@72.60.190.192:/opt/resto/current/db/migrations/
+
+scp project/workflows/W0_CONFIG_READER.json \
+    deploy@72.60.190.192:/opt/resto/current/workflows/
+
+# 2. Restart CMS to register new content type
+ssh deploy@72.60.190.192 "cd /opt/resto/current && docker compose restart cms"
+
+# 3. Wait for Strapi to boot (~60s), then run migration
+ssh deploy@72.60.190.192 "docker exec -i postgres psql -U strapi strapi \
+    < /opt/resto/current/db/migrations/011_platform_settings_seed.sql"
+
+# 4. Import W0_CONFIG_READER via n8n API
+ssh deploy@72.60.190.192 "curl -s -X POST \
+    https://n8n.srv1258231.hstgr.cloud/api/v1/workflows \
+    -H 'X-N8N-API-KEY: \$N8N_API_KEY' \
+    -H 'Content-Type: application/json' \
+    -d @/opt/resto/current/workflows/W0_CONFIG_READER.json"
+
+# 5. Verify
+# Strapi: GET https://cms.srv1258231.hstgr.cloud/api/platform-settings (expect 34 rows)
+# n8n: Execute W0_CONFIG_READER manually, expect flat config object returned
+# Redis: docker exec redis redis-cli GET config:platform (expect JSON after first run)
+```
+
+### Post-deploy: Update secrets in Strapi admin
+After deploy, go to cms.srv1258231.hstgr.cloud/admin > Platform Settings and update:
+- WA_API_TOKEN (real Meta Cloud API token)
+- IG_API_TOKEN (real Instagram token)
+- MSG_API_TOKEN (real Messenger token)
+These replace the placeholder `REPLACE_IN_STRAPI_ADMIN` values seeded by migration 011.
+
+---
+
 ## v3.4.0 — n8n Workflow Completion + Frontend Deploy (2026-03-07)
 
 ### What

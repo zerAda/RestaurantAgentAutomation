@@ -8,7 +8,7 @@
         "description": "Sales history for ROI calculations"
     },
     "options": {
-        "draftAndPublish": true
+        "draftAndPublish": false
     },
     "pluginOptions": {},
     "attributes": {
@@ -71,10 +71,20 @@
                 "kiosk",
                 "whatsapp",
                 "instagram",
+                "messenger",
                 "tiktok",
+                "voice",
                 "web"
             ],
             "default": "kiosk"
+        },
+        "customer_channel": {
+            "type": "string",
+            "description": "Channel used for the order (whatsapp, instagram, messenger, etc.)"
+        },
+        "customer_userId": {
+            "type": "string",
+            "description": "Platform-specific user ID (phone or scoped ID)"
         },
         "kiosk_session_id": {
             "type": "string",

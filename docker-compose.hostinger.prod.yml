@@ -100,6 +100,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - N8N_WEBHOOK_BASE=http://n8n-main:5678
+      - STRAPI_SUPER_ADMIN_EMAIL=${STRAPI_SUPER_ADMIN_EMAIL:-admin@${DOMAIN_NAME}}
+      - STRAPI_SUPER_ADMIN_PASSWORD=/run/secrets/strapi_admin_password
     expose:
       - "1337"
     healthcheck:
@@ -266,7 +268,7 @@ services:
     build:
       args:
         VITE_DOMAIN: ${DOMAIN_NAME}
-        VITE_STRAPI_URL: https://cms.${DOMAIN_NAME}
+        VITE_STRAPI_URL: https://api.${DOMAIN_NAME}/v1/strapi
       context: .
       dockerfile: kiosk-app/Dockerfile
     deploy:
@@ -698,6 +700,8 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --api.dashboard=true
+      - --ping=true
+      - --accesslog=true
       - --entrypoints.traefik.address=:8080
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entryPoint.to=websecure

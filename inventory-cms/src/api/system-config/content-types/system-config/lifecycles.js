@@ -116,6 +116,7 @@ module.exports = {
                         event: 'update',
                         data: result,
                     }),
+                    signal: AbortSignal.timeout(5000)
                 });
                 strapi.log.info('[system-config] n8n CMS sync triggered successfully');
             } catch (err) {

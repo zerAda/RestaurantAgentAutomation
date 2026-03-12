@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { strapi } from "@/services/strapiClient";
 import { SkeletonKPIRow, SkeletonChart, SkeletonRow } from "../components/SkeletonLoader";
 import { AnimatedNumber } from "../components/AnimatedNumber";
+import { CortexHub } from "../components/CortexHub";
 
 /* ── Types ── */
 interface KPICardProps {
@@ -51,32 +52,28 @@ interface DashboardData {
 
 /* ── KPI Card ── */
 const KPICard = ({ title, value, suffix = '', change, icon: Icon }: KPICardProps) => (
-    <div className="bg-[#0a0a0a] p-6 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-all duration-300 group">
+    <div className="quantum-card p-6 flex flex-col justify-between group h-full">
         <div className="flex items-center justify-between mb-4">
-            <div className="p-2.5 bg-neutral-900/80 rounded-lg border border-neutral-800 group-hover:border-neutral-700 transition-colors">
-                <Icon className="h-4 w-4 text-neutral-400 group-hover:text-neutral-300 transition-colors" />
+            <div className="p-3 bg-white/5 rounded-2xl border border-white/5 group-hover:border-brand-primary/30 group-hover:bg-brand-primary/5 transition-all duration-500">
+                <Icon className="h-5 w-5 text-zinc-400 group-hover:text-brand-primary group-hover:scale-110 transition-all" />
             </div>
             {change !== null && (
-                <div className="flex items-center gap-1.5">
-                    {change > 0 ? (
-                        <TrendingUp className="w-3 h-3 text-emerald-400" />
-                    ) : change < 0 ? (
-                        <TrendingDown className="w-3 h-3 text-red-400" />
-                    ) : null}
-                    <span className={cn(
-                        "text-xs font-semibold tracking-wider",
-                        change > 0 ? "text-emerald-400" : change < 0 ? "text-red-400" : "text-neutral-500"
-                    )}>
-                        {change > 0 ? "+" : ""}{change}%
-                    </span>
+                <div className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
+                    change >= 0 ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                )}>
+                    {change > 0 ? <TrendingUp size={10} /> : change < 0 ? <TrendingDown size={10} /> : null}
+                    {change > 0 && "+"}{change}%
                 </div>
             )}
         </div>
-        <h3 className="text-3xl font-semibold text-white tracking-tight flex items-baseline gap-1">
-            <AnimatedNumber value={value || 0} />
-            {suffix && <span className="text-xl text-neutral-400 font-medium">{suffix}</span>}
-        </h3>
-        <p className="text-sm text-neutral-500 mt-2 font-medium">{title}</p>
+        <div>
+            <h3 className="text-3xl font-black text-white tracking-tighter flex items-baseline gap-1.5">
+                <AnimatedNumber value={value || 0} />
+                {suffix && <span className="text-sm font-bold text-zinc-500 uppercase">{suffix}</span>}
+            </h3>
+            <p className="text-[10px] font-bold text-zinc-500 mt-2 uppercase tracking-widest leading-none">{title}</p>
+        </div>
     </div>
 );
 
@@ -235,32 +232,36 @@ export default function DashboardHome() {
     return (
         <div className="space-y-6 max-w-7xl">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
                 <div>
-                    <h2 className="text-2xl font-semibold text-white tracking-tight">Vue d'ensemble</h2>
-                    <p className="text-neutral-500 text-sm mt-1">
-                        Données en direct — actualisé {lastRefresh.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                   <div className="flex items-center gap-3 mb-2">
+                        <div className="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/20 text-[8px] font-black text-brand-primary uppercase tracking-[0.2em] italic">Operational Hub</div>
+                        <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest italic">{lastRefresh.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                   </div>
+                    <h2 className="text-4xl font-black text-white tracking-tighter italic uppercase">Diamond Dashboard</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                     <button
                         onClick={fetchDashboard}
-                        className="px-4 py-2 bg-neutral-900 border border-neutral-800 text-white text-sm font-medium rounded-lg hover:border-neutral-700 transition-all flex items-center gap-2"
+                        className="px-4 py-2 bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white/10 transition-all flex items-center gap-2 group"
                     >
                         <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-                        Actualiser
+                        RESYNC
                     </button>
                     <a
                         href="/kiosk"
                         target="_blank"
                         rel="noreferrer"
-                        className="px-4 py-2 bg-white text-black text-sm font-semibold rounded-lg hover:bg-neutral-200 transition-colors flex items-center gap-2"
+                        className="px-5 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-zinc-200 transition-all flex items-center gap-2 shadow-xl shadow-white/5"
                     >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Ouvrir Kiosque
+                        TERMINAL
                     </a>
                 </div>
             </div>
+
+            {/* Cortex Control Hub */}
+            <CortexHub />
 
             {/* KPI Grid */}
             {loading && !data ? (
@@ -309,9 +310,16 @@ export default function DashboardHome() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    {/* Revenue Chart */}
-                    <div className="lg:col-span-2 bg-[#0a0a0a] rounded-xl border border-neutral-800 p-6 flex flex-col">
-                        <h3 className="text-sm font-medium text-neutral-400 mb-4">Revenus — 7 derniers jours</h3>
+                <div className="lg:col-span-2 quantum-card p-8 flex flex-col border-white/5">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-lg font-black text-white tracking-tighter italic uppercase">Revenue Vector</h3>
+                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">7D Dynamic Trend</p>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center">
+                                <DollarSign size={20} />
+                            </div>
+                        </div>
                         {data && data.revenueChart.length > 0 ? (
                             <div className="flex-1 min-h-[280px]">
                                 <ResponsiveContainer width="100%" height="100%">
@@ -354,9 +362,16 @@ export default function DashboardHome() {
                         )}
                     </div>
 
-                    {/* Top Products */}
-                    <div className="bg-[#0a0a0a] rounded-xl border border-neutral-800 p-6 flex flex-col">
-                        <h3 className="text-sm font-medium text-neutral-400 mb-4">Top Produits (7j)</h3>
+                    <div className="quantum-card p-8 flex flex-col border-white/5">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-lg font-black text-white tracking-tighter italic uppercase">Neural Sales</h3>
+                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">High-Performing Assets</p>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                                <ShoppingBag size={20} />
+                            </div>
+                        </div>
                         {data && data.topProducts.length > 0 ? (
                             <div className="space-y-3 flex-1">
                                 {data.topProducts.map((p, i) => (
@@ -387,12 +402,16 @@ export default function DashboardHome() {
                 </div>
             )}
 
-            {/* Low Stock Alerts */}
             {data && data.lowStockAlerts.length > 0 && (
-                <div className="bg-red-500/5 rounded-xl border border-red-500/20 p-5">
-                    <div className="flex items-center gap-2 mb-3">
-                        <AlertTriangle className="w-4 h-4 text-red-400" />
-                        <h3 className="text-sm font-semibold text-red-400">Alertes Stock Bas ({data.lowStockAlerts.length})</h3>
+                <div className="bg-error/5 rounded-3xl border border-error/20 p-8 quantum-glow-low">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-xl bg-error/10 text-error flex items-center justify-center">
+                            <AlertTriangle size={20} />
+                        </div>
+                        <div>
+                           <h3 className="text-lg font-black text-white tracking-tighter italic uppercase">Neural Resource Depletion</h3>
+                           <p className="text-[10px] font-bold text-error uppercase tracking-widest mt-1">Critical Stock Alerts ({data.lowStockAlerts.length})</p>
+                        </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
                         {data.lowStockAlerts.map(a => (

@@ -52,15 +52,25 @@ export function StockView() {
                         </div>
 
                         <div className="flex items-end gap-2 mb-6">
-                            <span className="text-4xl font-black text-white tracking-tighter">
-                                {item.quantity}
-                            </span>
+                            <div className="flex flex-col">
+                                <span className="text-4xl font-black text-white tracking-tighter">
+                                    {item.quantity}
+                                </span>
+                                {item.reservedStock > 0 && (
+                                    <span className="text-[10px] font-black text-warning uppercase tracking-widest flex items-center gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
+                                        {item.reservedStock} Reserved
+                                    </span>
+                                )}
+                            </div>
                             <span className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-2 italic">
                                 {item.unit}
                             </span>
-                            <div className="ml-auto mb-2 flex items-center gap-1 text-[10px] font-black text-zinc-600 italic">
-                                <ArrowUpRight size={10} />
-                                Node 12
+                            <div className="ml-auto mb-2 flex flex-col items-end gap-1">
+                                <div className="flex items-center gap-1 text-[10px] font-black text-zinc-600 italic">
+                                    <ArrowUpRight size={10} />
+                                    Cluster A1
+                                </div>
                             </div>
                         </div>
 

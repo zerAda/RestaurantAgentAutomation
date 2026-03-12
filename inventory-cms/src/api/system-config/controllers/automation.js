@@ -11,8 +11,22 @@ module.exports = {
 
         // Security: Only allow n8n webhook base URL
         const n8nBase = process.env.N8N_WEBHOOK_BASE || 'http://localhost:5678/webhook';
-        if (!webhookUrl || !webhookUrl.startsWith(n8nBase)) {
-            return ctx.badRequest('Invalid webhook URL');
+        
+        let targetUrl;
+        let baseUrl;
+        try {
+            targetUrl = new URL(webhookUrl);
+            baseUrl = new URL(n8nBase);
+        } catch (e) {
+            return ctx.badRequest('Invalid URL format');
+        }
+
+        // Strict SSRF mitigation: hostname, port, and protocol must match EXACTLY, and pathname must start with the base pathname.
+        const isSafeHost = targetUrl.hostname === baseUrl.hostname && targetUrl.port === baseUrl.port && targetUrl.protocol === baseUrl.protocol;
+        const isSafePath = targetUrl.pathname.startsWith(baseUrl.pathname);
+
+        if (!isSafeHost || !isSafePath) {
+            return ctx.badRequest('Invalid webhook target for this proxy');
         }
 
         try {

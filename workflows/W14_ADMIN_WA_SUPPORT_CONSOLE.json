@@ -121,7 +121,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const e = $json;\nconst cmd = (e.adminConsole?.cmd || '').toLowerCase();\nconst args = Array.isArray(e.adminConsole?.args) ? e.adminConsole.args : [];\nconst raw = (e.adminConsole?.raw || '').toString();\n\nfunction usage() {\n  return [\n    '*Console Admin P2-02*',\n    '',\n    '*Statut & Monitoring*',\n    '- !status',\n    '- !flags [list]',\n    '- !flags set <FLAG> <VALUE>',\n    '',\n    '*Dead Letter Queue*',\n    '- !dlq list [limit]',\n    '- !dlq show <outbound_id>',\n    '- !dlq replay <outbound_id>',\n    '- !dlq drop <outbound_id>',\n    '',\n    '*Support Tickets*',\n    '- !help',\n    '- !tickets [open|all]',\n    '- !take <ticket_id>',\n    '- !close <ticket_id>',\n    '- !reply <ticket_id> <message>',\n    '',\n    '*Templates (FR/AR/Darija)*',\n    '- !template get <KEY> [fr|ar|darija]',\n    '- !template set <KEY> [locale] <CONTENT...>',\n    '',\n    '*Commandes (P2-DZ-01)*',\n    '- !order list [limit] [status]',\n    '- !order show <id>',\n    '- !order noshow <id>',\n    '- !order cancel <id> [reason]',\n    '- !order delivered <id>',\n    '',\n    '*Clients*',\n    '- !customer risk <phone>',\n    '- !customer blacklist <phone> [reason]',\n    '- !customer unblock <phone>',\n    '',\n\n    '*Catalogue (Strapi)*',\n    '- !menu stock <code_produit> <quantité>',\n    '- !menu 86 <code_produit> (rupture)',\n    '- !menu list',\n\n    '*Delivery Zones*',\n    '- !zone list',\n    '- !zone set <wilaya> ; <commune> ; <fee> ; <min> ; <eta_min> ; <eta_max> ; <active>'\n  ].join('\n');\n}\n\n\nfunction normLocale(x) {\n  const l = (x || 'fr').toString().trim().toLowerCase();\n  return (l.startsWith('ar')) ? 'ar' : 'fr';\n}\n\nlet action = 'HELP';\nlet ticketId = null;\nlet filter = 'open';\nlet message = '';\n\nlet templateKey = null;\nlet templateLocale = 'fr';\nlet templateContent = '';\nlet templateVars = [];\n\nlet zoneWilaya = null;\nlet zoneCommune = null;\nlet zoneFee = null;\nlet zoneMin = null;\nlet zoneEtaMin = null;\nlet zoneEtaMax = null;\nlet zoneActive = null;\nlet zoneOp = null;\n\nif (!cmd || cmd === 'help') action = 'HELP';\nelse if (cmd === 'tickets') { action = 'TICKETS'; filter = (args[0]||'open').toLowerCase(); }\nelse if (cmd === 'take') { action = 'TAKE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'close') { action = 'CLOSE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'reply') {\n  action = 'REPLY';\n  // raw tail: \"<id> <message>\"\n  const tail = (e.adminConsole?.tail || '').trim();\n  const m = tail.match(/^(\\d+)\\s+([\\s\\S]{1,2000})$/);\n  ticketId = m ? (parseInt(m[1],10)||0) : 0;\n  message = m ? m[2].trim() : '';\n}\nelse if (cmd === 'template') {\n  const sub = (args[0] || '').toLowerCase();\n  templateKey = (args[1] || '').toString().trim();\n  // locale can be args[2] if looks like fr/ar\n  const maybeLoc = (args[2] || '').toString().trim();\n  const hasLoc = /^(fr|ar)([-_].+)?$/i.test(maybeLoc);\n  templateLocale = normLocale(hasLoc ? maybeLoc : 'fr');\n\n  if (!templateKey) {\n    action = 'UNKNOWN';\n  } else if (sub === 'get') {\n    action = 'TEMPLATE_GET';\n  } else if (sub === 'set') {\n    action = 'TEMPLATE_SET';\n    // Parse tail: !template set KEY [loc] CONTENT...\n    const m = raw.match(/^!template\\s+set\\s+([^\\s]+)\\s+((fr|ar)([-_].+)?)?\\s*([\\s\\S]{0,4000})$/i);\n    if (m) {\n      templateKey = m[1].trim();\n      templateLocale = normLocale(m[2]);\n      templateContent = (m[5] || '').toString().trim();\n    } else {\n      templateContent = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    }\n    if (templateContent.length > 2000) templateContent = templateContent.slice(0, 2000);\n  } else if (sub === 'vars') {\n    action = 'TEMPLATE_VARS';\n    const rest = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    templateVars = rest.split(/[\\s,]+/).map(s => s.trim()).filter(Boolean);\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse if (cmd === 'zone' || cmd === 'delzone') {\n  const sub = (args[0] || 'list').toLowerCase();\n  zoneOp = sub;\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ZONE_LIST';\n  } else if (sub === 'set' || sub === 'add' || sub === 'upsert') {\n    action = 'ZONE_SET';\n    const m = raw.match(/^!zone\\s+(set|add|upsert)\\s+([\\s\\S]{1,500})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    zoneFee = parseInt(parts[2] || args[3] || '0', 10) || 0;\n    zoneMin = parseInt(parts[3] || args[4] || '0', 10) || 0;\n    zoneEtaMin = parseInt(parts[4] || args[5] || '45', 10) || 45;\n    zoneEtaMax = parseInt(parts[5] || args[6] || '60', 10) || 60;\n    const actRaw = (parts[6] || args[7] || 'true').toString().trim().toLowerCase();\n    zoneActive = !(actRaw === 'false' || actRaw === '0' || actRaw === 'off' || actRaw === 'inactive');\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else if (sub === 'del' || sub === 'delete' || sub === 'rm') {\n    action = 'ZONE_DELETE';\n    const m = raw.match(/^!zone\\s+(del|delete|rm)\\s+([\\s\\S]{1,200})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n\n// P2-02: STATUS command\nelse if (cmd === 'status') {\n  action = 'STATUS';\n}\n// P2-02: FLAGS command\nelse if (cmd === 'flags' || cmd === 'flag') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls' || !args[0]) {\n    action = 'FLAGS_LIST';\n  } else if (sub === 'set') {\n    action = 'FLAGS_SET';\n    e.adminFlagKey = (args[1] || '').toString().toUpperCase();\n    e.adminFlagValue = (args[2] || '').toString();\n  } else if (sub === 'unset' || sub === 'del') {\n    action = 'FLAGS_UNSET';\n    e.adminFlagKey = (args[1] || '').toString().toUpperCase();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n// P2-02: DLQ command\nelse if (cmd === 'dlq') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls') {\n    action = 'DLQ_LIST';\n    e.adminDlqLimit = parseInt(args[1] || '20', 10) || 20;\n  } else if (sub === 'show' || sub === 'get') {\n    action = 'DLQ_SHOW';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else if (sub === 'replay' || sub === 'retry') {\n    action = 'DLQ_REPLAY';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else if (sub === 'drop' || sub === 'delete' || sub === 'rm') {\n    action = 'DLQ_DROP';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n// P2-04: STATS command\nelse if (cmd === 'stats') {\n  action = 'STATS';\n  const sub = (args[0] || 'today').toLowerCase();\n  e.adminStatsRange = sub;\n  if (sub === 'week' || sub === '7d') {\n    e.adminStatsDays = 7;\n  } else if (sub === 'month' || sub === '30d') {\n    e.adminStatsDays = 30;\n  } else {\n    e.adminStatsDays = 1;\n  }\n}\n\n\n\n// STRAPI MENU\nelse if (cmd === 'menu' || cmd === 'product' || cmd === 'produit') {\n  const sub = (args[0] || 'list').toLowerCase();\n  e.adminStrapiOp = sub;\n  if (sub === '86' || sub === 'out' || sub === 'rupture') {\n    action = 'STRAPI_PRODUCT_86';\n    e.adminStrapiProduct = (args[1] || '').toString().toUpperCase();\n    e.adminStrapiStock = 0;\n  } else if (sub === 'stock') {\n    action = 'STRAPI_PRODUCT_STOCK';\n    e.adminStrapiProduct = (args[1] || '').toString().toUpperCase();\n    e.adminStrapiStock = parseInt(args[2] || '0', 10);\n  } else if (sub === 'list' || sub === 'ls') {\n    action = 'STRAPI_PRODUCT_LIST';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n// P2-DZ-01: ORDER command\nelse if (cmd === 'order' || cmd === 'orders' || cmd === 'cmd' || cmd === 'commande') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ORDER_LIST';\n    e.adminOrderLimit = parseInt(args[1] || '20', 10) || 20;\n    e.adminOrderStatus = (args[2] || '').toUpperCase() || null;\n  } else if (sub === 'show' || sub === 'get' || sub === 'view') {\n    action = 'ORDER_SHOW';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else if (sub === 'noshow' || sub === 'no-show' || sub === 'ns') {\n    action = 'ORDER_NOSHOW';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else if (sub === 'cancel' || sub === 'annuler') {\n    action = 'ORDER_CANCEL';\n    e.adminOrderId = (args[1] || '').toString().trim();\n    e.adminCancelReason = args.slice(2).join(' ') || 'Admin cancelled';\n  } else if (sub === 'delivered' || sub === 'done' || sub === 'livré' || sub === 'livre') {\n    action = 'ORDER_DELIVERED';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n// P2-DZ-01: CUSTOMER command\nelse if (cmd === 'customer' || cmd === 'client' || cmd === 'user') {\n  const sub = (args[0] || 'risk').toLowerCase();\n  if (sub === 'risk' || sub === 'risque' || sub === 'score' || sub === 'profile') {\n    action = 'CUSTOMER_RISK';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n  } else if (sub === 'blacklist' || sub === 'block' || sub === 'ban') {\n    action = 'CUSTOMER_BLACKLIST';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n    e.adminBlacklistReason = args.slice(2).join(' ') || 'Admin blacklisted';\n    e.adminBlacklistDays = 30;\n  } else if (sub === 'unblock' || sub === 'unban' || sub === 'unblacklist') {\n    action = 'CUSTOMER_UNBLOCK';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse action = 'UNKNOWN';\n\nreturn [{json:{\n  ...e,\n  adminAction: action,\n  adminTicketId: ticketId,\n  adminFilter: filter,\n  adminMessage: message,\n  adminUsage: usage(),\n  adminTemplateKey: templateKey,\n  adminTemplateLocale: templateLocale,\n  adminTemplateContent: templateContent,\n  adminTemplateVars: templateVars,\n  adminTemplateVarsJson: JSON.stringify(templateVars),\n  adminZoneOp: zoneOp,\n  adminZoneWilaya: zoneWilaya,\n  adminZoneCommune: zoneCommune,\n  adminZoneFeeCents: zoneFee,\n  adminZoneMinCents: zoneMin,\n  adminZoneEtaMin: zoneEtaMin,\n  adminZoneEtaMax: zoneEtaMax,\n  adminZoneActive: zoneActive,\n  adminStrapiOp: e.adminStrapiOp,\n  adminStrapiProduct: e.adminStrapiProduct,\n  adminStrapiStock: e.adminStrapiStock\n}}];\n"
+        "jsCode": "const e = $json;\nconst cmd = (e.adminConsole?.cmd || '').toLowerCase();\nconst args = Array.isArray(e.adminConsole?.args) ? e.adminConsole.args : [];\nconst raw = (e.adminConsole?.raw || '').toString();\n\nfunction usage() {\n  return [\n    '*Console Admin P2-02*',\n    '',\n    '*Statut & Monitoring*',\n    '- !status',\n    '- !flags [list]',\n    '- !flags set <FLAG> <VALUE>',\n    '',\n    '*Dead Letter Queue*',\n    '- !dlq list [limit]',\n    '- !dlq show <outbound_id>',\n    '- !dlq replay <outbound_id>',\n    '- !dlq drop <outbound_id>',\n    '',\n    '*Support Tickets*',\n    '- !help',\n    '- !tickets [open|all]',\n    '- !take <ticket_id>',\n    '- !close <ticket_id>',\n    '- !reply <ticket_id> <message>',\n    '',\n    '*Templates (FR/AR/Darija)*',\n    '- !template get <KEY> [fr|ar|darija]',\n    '- !template set <KEY> [locale] <CONTENT...>',\n    '',\n    '*Commandes (P2-DZ-01)*',\n    '- !order list [limit] [status]',\n    '- !order show <id>',\n    '- !order noshow <id>',\n    '- !order cancel <id> [reason]',\n    '- !order delivered <id>',\n    '',\n    '*Clients*',\n    '- !customer risk <phone>',\n    '- !customer blacklist <phone> [reason]',\n    '- !customer unblock <phone>',\n    '',\n\n    '*Catalogue (Strapi)*',\n    '- !menu stock <code_produit> <quantité>',\n    '- !menu 86 <code_produit> (rupture)',\n    '- !menu list',\n\n    '*Delivery Zones*',\n    '- !zone list',\n    '- !zone set <wilaya> ; <commune> ; <fee> ; <min> ; <eta_min> ; <eta_max> ; <active>',\n    '',\n    '*Ralphé Intelligence (Agents)*',\n    '- !agents [status|logs|trigger]'\n  ].join('\n');\n}\n\n\nfunction normLocale(x) {\n  const l = (x || 'fr').toString().trim().toLowerCase();\n  return (l.startsWith('ar')) ? 'ar' : 'fr';\n}\n\nlet action = 'HELP';\nlet ticketId = null;\nlet filter = 'open';\nlet message = '';\n\nlet templateKey = null;\nlet templateLocale = 'fr';\nlet templateContent = '';\nlet templateVars = [];\n\nlet zoneWilaya = null;\nlet zoneCommune = null;\nlet zoneFee = null;\nlet zoneMin = null;\nlet zoneEtaMin = null;\nlet zoneEtaMax = null;\nlet zoneActive = null;\nlet zoneOp = null;\n\nif (!cmd || cmd === 'help') action = 'HELP';\nelse if (cmd === 'tickets') { action = 'TICKETS'; filter = (args[0]||'open').toLowerCase(); }\nelse if (cmd === 'take') { action = 'TAKE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'close') { action = 'CLOSE'; ticketId = parseInt(args[0]||'0',10)||0; }\nelse if (cmd === 'reply') {\n  action = 'REPLY';\n  // raw tail: \"<id> <message>\"\n  const tail = (e.adminConsole?.tail || '').trim();\n  const m = tail.match(/^(\\d+)\\s+([\\s\\S]{1,2000})$/);\n  ticketId = m ? (parseInt(m[1],10)||0) : 0;\n  message = m ? m[2].trim() : '';\n}\nelse if (cmd === 'template') {\n  const sub = (args[0] || '').toLowerCase();\n  templateKey = (args[1] || '').toString().trim();\n  // locale can be args[2] if looks like fr/ar\n  const maybeLoc = (args[2] || '').toString().trim();\n  const hasLoc = /^(fr|ar)([-_].+)?$/i.test(maybeLoc);\n  templateLocale = normLocale(hasLoc ? maybeLoc : 'fr');\n\n  if (!templateKey) {\n    action = 'UNKNOWN';\n  } else if (sub === 'get') {\n    action = 'TEMPLATE_GET';\n  } else if (sub === 'set') {\n    action = 'TEMPLATE_SET';\n    // Parse tail: !template set KEY [loc] CONTENT...\n    const m = raw.match(/^!template\\s+set\\s+([^\\s]+)\\s+((fr|ar)([-_].+)?)?\\s*([\\s\\S]{0,4000})$/i);\n    if (m) {\n      templateKey = m[1].trim();\n      templateLocale = normLocale(m[2]);\n      templateContent = (m[5] || '').toString().trim();\n    } else {\n      templateContent = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    }\n    if (templateContent.length > 2000) templateContent = templateContent.slice(0, 2000);\n  } else if (sub === 'vars') {\n    action = 'TEMPLATE_VARS';\n    const rest = args.slice(2 + (hasLoc ? 1 : 0)).join(' ').trim();\n    templateVars = rest.split(/[\\s,]+/).map(s => s.trim()).filter(Boolean);\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse if (cmd === 'zone' || cmd === 'delzone') {\n  const sub = (args[0] || 'list').toLowerCase();\n  zoneOp = sub;\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ZONE_LIST';\n  } else if (sub === 'set' || sub === 'add' || sub === 'upsert') {\n    action = 'ZONE_SET';\n    const m = raw.match(/^!zone\\s+(set|add|upsert)\\s+([\\s\\S]{1,500})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    zoneFee = parseInt(parts[2] || args[3] || '0', 10) || 0;\n    zoneMin = parseInt(parts[3] || args[4] || '0', 10) || 0;\n    zoneEtaMin = parseInt(parts[4] || args[5] || '45', 10) || 45;\n    zoneEtaMax = parseInt(parts[5] || args[6] || '60', 10) || 60;\n    const actRaw = (parts[6] || args[7] || 'true').toString().trim().toLowerCase();\n    zoneActive = !(actRaw === 'false' || actRaw === '0' || actRaw === 'off' || actRaw === 'inactive');\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else if (sub === 'del' || sub === 'delete' || sub === 'rm') {\n    action = 'ZONE_DELETE';\n    const m = raw.match(/^!zone\\s+(del|delete|rm)\\s+([\\s\\S]{1,200})$/i);\n    const tail = (m ? m[2] : '').toString();\n    const parts = tail.split(';').map(s => s.trim()).filter(Boolean);\n    zoneWilaya = parts[0] || (args[1] || null);\n    zoneCommune = parts[1] || (args[2] || null);\n    if (!zoneWilaya || !zoneCommune) action = 'UNKNOWN';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n\n// P2-02: STATUS command\nelse if (cmd === 'status') {\n  action = 'STATUS';\n}\n// P2-02: FLAGS command\nelse if (cmd === 'flags' || cmd === 'flag') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls' || !args[0]) {\n    action = 'FLAGS_LIST';\n  } else if (sub === 'set') {\n    action = 'FLAGS_SET';\n    e.adminFlagKey = (args[1] || '').toString().toUpperCase();\n    e.adminFlagValue = (args[2] || '').toString();\n  } else if (sub === 'unset' || sub === 'del') {\n    action = 'FLAGS_UNSET';\n    e.adminFlagKey = (args[1] || '').toString().toUpperCase();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n// P2-02: DLQ command\nelse if (cmd === 'dlq') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls') {\n    action = 'DLQ_LIST';\n    e.adminDlqLimit = parseInt(args[1] || '20', 10) || 20;\n  } else if (sub === 'show' || sub === 'get') {\n    action = 'DLQ_SHOW';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else if (sub === 'replay' || sub === 'retry') {\n    action = 'DLQ_REPLAY';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else if (sub === 'drop' || sub === 'delete' || sub === 'rm') {\n    action = 'DLQ_DROP';\n    e.adminDlqId = parseInt(args[1] || '0', 10) || 0;\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n// P2-04: STATS command\nelse if (cmd === 'stats') {\n  action = 'STATS';\n  const sub = (args[0] || 'today').toLowerCase();\n  e.adminStatsRange = sub;\n  if (sub === 'week' || sub === '7d') {\n    e.adminStatsDays = 7;\n  } else if (sub === 'month' || sub === '30d') {\n    e.adminStatsDays = 30;\n  } else {\n    e.adminStatsDays = 1;\n  }\n}\n\n\n\n// STRAPI MENU\nelse if (cmd === 'menu' || cmd === 'product' || cmd === 'produit') {\n  const sub = (args[0] || 'list').toLowerCase();\n  e.adminStrapiOp = sub;\n  if (sub === '86' || sub === 'out' || sub === 'rupture') {\n    action = 'STRAPI_PRODUCT_86';\n    e.adminStrapiProduct = (args[1] || '').toString().toUpperCase();\n    e.adminStrapiStock = 0;\n  } else if (sub === 'stock') {\n    action = 'STRAPI_PRODUCT_STOCK';\n    e.adminStrapiProduct = (args[1] || '').toString().toUpperCase();\n    e.adminStrapiStock = parseInt(args[2] || '0', 10);\n  } else if (sub === 'list' || sub === 'ls') {\n    action = 'STRAPI_PRODUCT_LIST';\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\n// P2-DZ-01: ORDER command\nelse if (cmd === 'order' || cmd === 'orders' || cmd === 'cmd' || cmd === 'commande') {\n  const sub = (args[0] || 'list').toLowerCase();\n  if (sub === 'list' || sub === 'ls') {\n    action = 'ORDER_LIST';\n    e.adminOrderLimit = parseInt(args[1] || '20', 10) || 20;\n    e.adminOrderStatus = (args[2] || '').toUpperCase() || null;\n  } else if (sub === 'show' || sub === 'get' || sub === 'view') {\n    action = 'ORDER_SHOW';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else if (sub === 'noshow' || sub === 'no-show' || sub === 'ns') {\n    action = 'ORDER_NOSHOW';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else if (sub === 'cancel' || sub === 'annuler') {\n    action = 'ORDER_CANCEL';\n    e.adminOrderId = (args[1] || '').toString().trim();\n    e.adminCancelReason = args.slice(2).join(' ') || 'Admin cancelled';\n  } else if (sub === 'delivered' || sub === 'done' || sub === 'livré' || sub === 'livre') {\n    action = 'ORDER_DELIVERED';\n    e.adminOrderId = (args[1] || '').toString().trim();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n// P2-DZ-01: CUSTOMER command\nelse if (cmd === 'customer' || cmd === 'client' || cmd === 'user') {\n  const sub = (args[0] || 'risk').toLowerCase();\n  if (sub === 'risk' || sub === 'risque' || sub === 'score' || sub === 'profile') {\n    action = 'CUSTOMER_RISK';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n  } else if (sub === 'blacklist' || sub === 'block' || sub === 'ban') {\n    action = 'CUSTOMER_BLACKLIST';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n    e.adminBlacklistReason = args.slice(2).join(' ') || 'Admin blacklisted';\n    e.adminBlacklistDays = 30;\n  } else if (sub === 'unblock' || sub === 'unban' || sub === 'unblacklist') {\n    action = 'CUSTOMER_UNBLOCK';\n    e.adminCustomerId = (args[1] || '').toString().trim();\n  } else {\n    action = 'UNKNOWN';\n  }\n}\n\nelse if (cmd === 'agents' || cmd === 'agent') {\n  action = 'AGENTS';\n  e.adminAgentOp = (args[0] || 'status').toLowerCase();\n  e.adminAgentName = (args[1] || '').toUpperCase();\n}\n\nelse action = 'UNKNOWN';\n\nreturn [{json:{\n  ...e,\n  adminAction: action,\n  adminTicketId: ticketId,\n  adminFilter: filter,\n  adminMessage: message,\n  adminUsage: usage(),\n  adminTemplateKey: templateKey,\n  adminTemplateLocale: templateLocale,\n  adminTemplateContent: templateContent,\n  adminTemplateVars: templateVars,\n  adminTemplateVarsJson: JSON.stringify(templateVars),\n  adminZoneOp: zoneOp,\n  adminZoneWilaya: zoneWilaya,\n  adminZoneCommune: zoneCommune,\n  adminZoneFeeCents: zoneFee,\n  adminZoneMinCents: zoneMin,\n  adminZoneEtaMin: zoneEtaMin,\n  adminZoneEtaMax: zoneEtaMax,\n  adminZoneActive: zoneActive,\n  adminStrapiOp: e.adminStrapiOp,\n  adminStrapiProduct: e.adminStrapiProduct,\n  adminStrapiStock: e.adminStrapiStock\n}}];\n"
       },
       "id": "f146c550-0219-4ecf-84d8-24d5a7b64ec0",
       "name": "A5 - Parse Intent",
@@ -1822,6 +1822,63 @@
         1310,
         1680
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.adminAction}}",
+              "operation": "equal",
+              "value2": "AGENTS"
+            }
+          ]
+        }
+      },
+      "id": "G1_IS_AGENTS",
+      "name": "G1 - Is AGENTS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ai-learnings?sort=createdAt:desc&pagination[limit]=5",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "G1A_GET_AGENTS_LEARNINGS",
+      "name": "G1a - Get Agents Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        340,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $('A5 - Parse Intent').item.json;\nconst learnings = $node['G1a - Get Agents Status'].json.data || [];\nlet txt = '*🤖 Army of Agents Status*\\n';\ntxt += '─────────────\\n';\ntxt += '🟢 Omniscient: ACTIVE (Scanning inventories)\\n';\ntxt += '🟢 Revenue: ACTIVE (Tracking CAC/ROAS)\\n';\ntxt += '🟢 Growth: ACTIVE (Loyalty analysis)\\n';\ntxt += '🟢 Logistics: ACTIVE (Surge monitor)\\n\\n';\n\nif (learnings.length > 0) {\n  txt += '*Latest Strategic Insights:*\\n';\n  for (const l of learnings) {\n    const attr = l.attributes || l;\n    txt += `• ${attr.insight || attr.summary}\\n`;\n  }\n}\n\ntxt += `\\n➡️ !agents log <AGENT> | !agents trigger <AGENT>`;\nreturn [{json:{...e, adminReplyText: txt.trim()}}];"
+      },
+      "id": "G1B_FORMAT_AGENTS",
+      "name": "G1b - Format Agents Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        2240
+      ]
     }
   ],
   "connections": {
@@ -2015,6 +2072,11 @@
           },
           {
             "node": "SL1 - Is STRAPI LIST?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "G1 - Is AGENTS?",
             "type": "main",
             "index": 0
           }
@@ -3143,6 +3205,40 @@
       ]
     },
     "SL3 - Format List": {
+      "main": [
+        [
+          {
+            "node": "O0 - Build Admin Outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "G1 - Is AGENTS?": {
+      "main": [
+        [
+          {
+            "node": "G1a - Get Agents Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "G1a - Get Agents Status": {
+      "main": [
+        [
+          {
+            "node": "G1b - Format Agents Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "G1b - Format Agents Summary": {
       "main": [
         [
           {

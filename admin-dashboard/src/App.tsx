@@ -15,6 +15,7 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { NotificationCenter } from './components/NotificationCenter';
 import DashboardHome from './pages/DashboardHome';
 import { AiObservatoryView } from './components/AiObservatoryView';
+import { GrowthAgentView } from './components/GrowthAgentView';
 import { ControlPlaneView } from './pages/ControlPlaneView';
 import { ToastProvider } from './components/ToastProvider';
 import { PageTransition } from './components/PageTransition';
@@ -22,6 +23,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ApiErrorListener } from './components/ApiErrorListener';
 import { authService } from './services/authService';
 import { getTranslation, setPageDirection, type Language } from './utils/i18n';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   Menu,
   X,
@@ -33,22 +35,31 @@ import {
   Bot,
   Users,
   Brain,
+  TrendingUp,
   Zap,
   Diamond,
   LogOut
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
+// Helper view to map paths to active keys for PageTransition
+function ViewWrapper({ component: Component, activeKey }: { component: React.ReactNode, activeKey: string }) {
+  return <PageTransition activeKey={activeKey}>{Component}</PageTransition>;
+}
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeTab = location.pathname.split('/')[1] || 'dashboard';
+
   const [lang, setLang] = useState<Language>('fr');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Basic RBAC Check
+  // Robust RBAC Check: Rely on actual role structure instead of generic string matching
   const user = authService.getUser();
-  const isFullAdmin = !user?.email?.toLowerCase().includes('cash') &&
-    (!user?.role?.name || !user.role.name.toLowerCase().includes('cashier'));
+  const isAdminRole = user?.role?.type === 'authenticated' || user?.role?.name?.toLowerCase() === 'admin' || user?.role?.name?.toLowerCase() === 'super_admin';
+  const isFullAdmin = isAdminRole;
 
   useEffect(() => {
     setPageDirection(lang);
@@ -57,7 +68,13 @@ function App() {
   if (!isAuthenticated) {
     return (
       <ToastProvider>
-        <LoginView onLogin={() => setIsAuthenticated(true)} />
+        <LoginView onLogin={() => {
+          setIsAuthenticated(true);
+          // D-02 FIX: Restore the manager's location from before the 401 redirect.
+          const redirectPath = sessionStorage.getItem('redirect_after_login');
+          sessionStorage.removeItem('redirect_after_login');
+          navigate(redirectPath || '/dashboard');
+        }} />
       </ToastProvider>
     );
   }
@@ -133,30 +150,31 @@ function App() {
             <div className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto scrollbar-hide pb-10">
               <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Operations</p>
               <div className="space-y-1">
-                <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} label="Dashboard" icon={LayoutDashboard} lang={lang} />
-                <NavItem active={activeTab === 'stock'} onClick={() => setActiveTab('stock')} label={t('stock_inventory')} icon={Package} lang={lang} />
-                <NavItem active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')} label={t('kitchen_display')} icon={UtensilsCrossed} lang={lang} />
+                <NavItem active={activeTab === 'dashboard'} onClick={() => { navigate('/dashboard'); setIsMobileMenuOpen(false); }} label="Dashboard" icon={LayoutDashboard} lang={lang} />
+                <NavItem active={activeTab === 'stock'} onClick={() => { navigate('/stock'); setIsMobileMenuOpen(false); }} label={t('stock_inventory')} icon={Package} lang={lang} />
+                <NavItem active={activeTab === 'kitchen'} onClick={() => { navigate('/kitchen'); setIsMobileMenuOpen(false); }} label={t('kitchen_display')} icon={UtensilsCrossed} lang={lang} />
               </div>
 
               <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-6 mb-4 italic">Strategy</p>
               <div className="space-y-1">
                 {isFullAdmin && (
                   <>
-                    <NavItem active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} label="Intelligence" icon={BarChart3} lang={lang} />
-                    <NavItem active={activeTab === 'marketing'} onClick={() => setActiveTab('marketing')} label="Creative Hub" icon={Palette} lang={lang} />
-                    <NavItem active={activeTab === 'automation'} onClick={() => setActiveTab('automation')} label="n8n Engine" icon={Bot} lang={lang} />
+                    <NavItem active={activeTab === 'analytics'} onClick={() => { navigate('/analytics'); setIsMobileMenuOpen(false); }} label="Intelligence" icon={BarChart3} lang={lang} />
+                    <NavItem active={activeTab === 'growth'} onClick={() => { navigate('/growth'); setIsMobileMenuOpen(false); }} label="Growth AI" icon={TrendingUp} lang={lang} />
+                    <NavItem active={activeTab === 'marketing'} onClick={() => { navigate('/marketing'); setIsMobileMenuOpen(false); }} label="Creative Hub" icon={Palette} lang={lang} />
+                    <NavItem active={activeTab === 'automation'} onClick={() => { navigate('/automation'); setIsMobileMenuOpen(false); }} label="n8n Engine" icon={Bot} lang={lang} />
                   </>
                 )}
-                <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} label="User Base" icon={Users} lang={lang} />
+                <NavItem active={activeTab === 'customers'} onClick={() => { navigate('/customers'); setIsMobileMenuOpen(false); }} label="User Base" icon={Users} lang={lang} />
               </div>
 
               {isFullAdmin && (
                 <>
                   <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-6 mb-4">Advanced</p>
                   <div className="space-y-1">
-                    <NavItem active={activeTab === 'ai-observatory'} onClick={() => setActiveTab('ai-observatory')} label="AI Observ." icon={Brain} lang={lang} />
-                    <NavItem active={activeTab === 'control-plane'} onClick={() => setActiveTab('control-plane')} label="Control Plane" icon={Zap} lang={lang} />
-                    <NavItem active={activeTab === 'brand'} onClick={() => setActiveTab('brand')} label="DNA Studio" icon={Diamond} lang={lang} />
+                    <NavItem active={activeTab === 'ai-observatory'} onClick={() => { navigate('/ai-observatory'); setIsMobileMenuOpen(false); }} label="AI Observ." icon={Brain} lang={lang} />
+                    <NavItem active={activeTab === 'control-plane'} onClick={() => { navigate('/control-plane'); setIsMobileMenuOpen(false); }} label="Control Plane" icon={Zap} lang={lang} />
+                    <NavItem active={activeTab === 'brand'} onClick={() => { navigate('/brand'); setIsMobileMenuOpen(false); }} label="DNA Studio" icon={Diamond} lang={lang} />
                   </div>
                 </>
               )}
@@ -229,6 +247,7 @@ function App() {
                   {activeTab === 'customers' && "Customer Base"}
                   {activeTab === 'control-plane' && 'Control Plane'}
                   {activeTab === 'brand' && "Brand DNA"}
+                  {activeTab === 'growth' && 'Growth Intelligence'}
                 </h2>
                 <p className="text-zinc-500 font-medium max-w-xl mt-3">
                   RestoBot Quantum Engine v3.5. Real-time data aggregation across cluster nodes.
@@ -247,21 +266,30 @@ function App() {
             </header>
 
             <ErrorBoundary>
-              <PageTransition activeKey={activeTab}>
-                {activeTab === 'dashboard' && <DashboardHome />}
-                {activeTab === 'stock' && <StockView />}
-                {activeTab === 'alerts' && <QuickAdjust />}
-                {activeTab === 'kitchen' && <KitchenView />}
-                {activeTab === 'support' && <SupportView lang={lang} />}
-                {activeTab === 'marketing' && <MarketingView lang={lang} />}
-                {activeTab === 'automation' && <AutomationView lang={lang} />}
-                {activeTab === 'analytics' && <AnalyticsView lang={lang} />}
-                {activeTab === 'ai-observatory' && <AiObservatoryView />}
-                {activeTab === 'control-plane' && <ControlPlaneView />}
-                {activeTab === 'fleet' && <FleetPlaceholder />}
-                {activeTab === 'customers' && <CustomerView lang={lang} />}
-                {activeTab === 'brand' && <BrandView lang={lang} />}
-              </PageTransition>
+              <Routes>
+                <Route path="/dashboard" element={<ViewWrapper activeKey="dashboard" component={<DashboardHome />} />} />
+                <Route path="/stock" element={<ViewWrapper activeKey="stock" component={<StockView />} />} />
+                <Route path="/alerts" element={<ViewWrapper activeKey="alerts" component={<QuickAdjust />} />} />
+                <Route path="/kitchen" element={<ViewWrapper activeKey="kitchen" component={<KitchenView />} />} />
+                <Route path="/support" element={<ViewWrapper activeKey="support" component={<SupportView lang={lang} />} />} />
+                
+                {isFullAdmin && (
+                  <>
+                    <Route path="/marketing" element={<ViewWrapper activeKey="marketing" component={<MarketingView lang={lang} />} />} />
+                    <Route path="/automation" element={<ViewWrapper activeKey="automation" component={<AutomationView lang={lang} />} />} />
+                    <Route path="/analytics" element={<ViewWrapper activeKey="analytics" component={<AnalyticsView lang={lang} />} />} />
+                    <Route path="/growth" element={<ViewWrapper activeKey="growth" component={<GrowthAgentView />} />} />
+                    <Route path="/ai-observatory" element={<ViewWrapper activeKey="ai-observatory" component={<AiObservatoryView />} />} />
+                    <Route path="/control-plane" element={<ViewWrapper activeKey="control-plane" component={<ControlPlaneView />} />} />
+                    <Route path="/brand" element={<ViewWrapper activeKey="brand" component={<BrandView lang={lang} />} />} />
+                  </>
+                )}
+                
+                <Route path="/fleet" element={<ViewWrapper activeKey="fleet" component={<FleetPlaceholder />} />} />
+                <Route path="/customers" element={<ViewWrapper activeKey="customers" component={<CustomerView lang={lang} />} />} />
+                
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
             </ErrorBoundary>
             <AIChatBubble />
           </main>

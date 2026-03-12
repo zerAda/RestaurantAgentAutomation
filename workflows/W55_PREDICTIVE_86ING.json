@@ -68,7 +68,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const products = $json.data || [];\nlet text = '🚨 *Rapport 86\\'ing Prédictif* 🚨\\n\\nDes produits vont bientôt être en rupture de stock :\\n\\n';\nfor (const p of products) {\n  const a = p.attributes;\n  const stock = a.stock_quantity || 0;\n  text += `- ${a.name} (${a.code}) : reste *${stock}*\\n`;\n}\n\ntext += '\\nRéapprovisionnez rapidement ou utilisez !menu 86 <code_produit> depuis WhatsApp.';\n\nreturn [{json: {\n  alertText: text,\n  adminPhones: ($env.ADMIN_WA_PHONE_ALLOWLIST || '').split(',').map(p => p.trim()).filter(Boolean)\n}}];"
+                "jsCode": "const products = $json.data || [];\nlet text = '🚨 *Rapport Logistique & Burn-Rate* 🚨\\n\\nCertains produits sont en rupture imminente basée sur votre vitesse de vente :\\n\\n';\nfor (const p of products) {\n  const a = p.attributes;\n  const stock = a.stock_quantity || 0;\n  const burnRate = a.burn_rate_hourly || 'N/A';\n  const timeRemaining = burnRate !== 'N/A' ? Math.floor(stock / burnRate) : '??';\n  \n  text += `- ${a.name} (${a.code}) : *${stock}*restants | Burn-rate: ${burnRate}/h\\n`;\n  text += `  ⚠️ Temps estimé avant rupture : *${timeRemaining} heures*\\n`;\n}\n\ntext += '\\nRéapprovisionnez rapidement via Strapi ou utilisez !menu 86 <code_produit>.';"
             },
             "id": "FORMAT_ALERT",
             "name": "Format Alert Message",

@@ -8,21 +8,17 @@
     "nodes": [
         {
             "parameters": {
-                "rule": {
-                    "interval": [
-                        {
-                            "field": "days",
-                            "daysInterval": 1
-                        }
-                    ]
+                "workflowId": "W0_CONFIG_READER",
+                "workflowInputs": {
+                    "parameters": []
                 }
             },
-            "id": "daily-trigger-vip",
-            "name": "Daily Trigger (Midnight)",
-            "type": "n8n-nodes-base.scheduleTrigger",
+            "id": "fetch-strapi-config",
+            "name": "Fetch Strapi Config",
+            "type": "n8n-nodes-base.executeWorkflow",
             "typeVersion": 1,
             "position": [
-                0,
+                150,
                 0
             ]
         },
@@ -63,7 +59,7 @@
         {
             "parameters": {
                 "content": "Tu es le manager du restaurant Ralphé. Rédige un message SMS très chaleureux à l'attention d'un client VIP qui n'a pas commandé depuis 1 mois. Le message doit contenir un code promo VIP exclusif de -20% : RALPHE-VIP20. Sois humain, montre que son absence a été remarquée.",
-                "model": "gpt-4o",
+                "model": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.AI.LLM_MODEL || $node[\"Fetch Strapi Config\"].json.LLM_MODEL || 'llama3.1' }}",
                 "options": {
                     "temperature": 0.8
                 }
@@ -86,7 +82,7 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "={{ $env.SMS_API_URL }}",
+                "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.SOCIAL.SMS_API_URL || $node[\"Fetch Strapi Config\"].json.SMS_API_URL }}",
                 "sendBody": true,
                 "specifyBody": "json",
                 "jsonBody": "={{JSON.stringify({ to: $json.customer_phone, message: $json.text })}}"
@@ -103,6 +99,17 @@
     ],
     "connections": {
         "Daily Trigger (Midnight)": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Strapi Config",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Strapi Config": {
             "main": [
                 [
                     {

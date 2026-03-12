@@ -65,6 +65,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       localStorage.removeItem('admin_jwt');
       sessionStorage.removeItem('admin_user');
       localStorage.removeItem('admin_user');
+      // BUG-011 FIX: Preserve the current route so the manager returns to
+      // their page after re-login instead of being dumped on the home screen.
+      sessionStorage.setItem('redirect_after_login', window.location.pathname + window.location.search);
       window.dispatchEvent(new CustomEvent('strapi-auth-error', { detail: { code: 401 } }));
       window.location.href = '/';
     }
@@ -73,7 +76,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       if (res.status >= 500) {
         emitNetworkError(`Le serveur a retourné une erreur ${res.status}`);
       }
-      throw new Error(`Strapi ${res.status}: ${res.statusText}`);
+      // BUG-010 FIX: Parse the Strapi error JSON body before throwing so the
+      // manager sees the real validation message, not a generic HTTP status text.
+      let errorMessage = `Strapi ${res.status}: ${res.statusText}`;
+      try {
+        const errorBody = await res.json();
+        const strapiMsg = errorBody?.error?.message;
+        if (strapiMsg) errorMessage = strapiMsg;
+      } catch { /* If body isn't JSON, fall back to HTTP status */ }
+      throw new Error(errorMessage);
     }
     return res.json();
   } catch (error) {
@@ -152,4 +163,8 @@ export const strapi = {
 
   delete: <T>(path: string) =>
     request<StrapiResponse<T>>(path, { method: 'DELETE' }),
+
+  getCortexData: async (keys: string[]) => {
+    return request<Record<string, unknown>>(`/api/realtime/cortex?keys=${keys.join(',')}`);
+  }
 };

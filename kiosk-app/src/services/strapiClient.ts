@@ -34,7 +34,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${STRAPI_URL}${path}`, { ...options, headers, signal });
   if (!res.ok) {
-    throw new Error(`Strapi ${res.status}: ${res.statusText}`);
+    // BUG-004 FIX: Parse the Strapi error JSON body before throwing.
+    // Previous code discarded the real error message (e.g. "Produit indisponible").
+    let errorMessage = `Strapi ${res.status}: ${res.statusText}`;
+    try {
+      const errorBody = await res.json();
+      const strapiMsg = errorBody?.error?.message;
+      if (strapiMsg) errorMessage = strapiMsg;
+    } catch {
+      // If the body is not JSON, fall back to the HTTP status text
+    }
+    throw new Error(errorMessage);
   }
   return res.json();
 }

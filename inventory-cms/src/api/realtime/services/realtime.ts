@@ -29,5 +29,26 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     publishOrderUpdate(order: any, action: 'create' | 'update' | 'delete') {
         const pub = this.getRedisPublisher();
         pub.publish('order_updates', JSON.stringify({ action, order }));
+    },
+
+    async getCortexData(keys: string[]) {
+        const redis = this.getRedisPublisher();
+        const results: Record<string, any> = {};
+        
+        for (const key of keys) {
+            try {
+                const val = await redis.get(key);
+                if (val) {
+                    try {
+                        results[key] = JSON.parse(val);
+                    } catch {
+                        results[key] = val;
+                    }
+                }
+            } catch (e) {
+                strapi.log.error(`Cortex Fetch Error for ${key}`, e);
+            }
+        }
+        return results;
     }
 });

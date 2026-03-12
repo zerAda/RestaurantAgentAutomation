@@ -1,6 +1,6 @@
 {
   "name": "W3 - IN Messenger Adapter (Secure)",
-  "active": false,
+  "active": true,
   "settings": {
     "executionTimeout": 300,
     "saveExecutionProgress": true,

@@ -48,7 +48,9 @@ export default (config: any, { strapi }: { strapi: Core.Strapi }) => {
             let routeGroup = ctx.request.path;
             if (routeGroup.startsWith('/api/')) {
                 const parts = routeGroup.split('/');
-                routeGroup = `/${parts[1]}/${parts[2] || ''}`;
+                // Normalize UUIDs and numeric IDs to ":id"
+                const normalizedKey = parts[2] ? parts[2].replace(/^[0-9a-fA-F-]+$|^\d+$/, ':id') : '';
+                routeGroup = `/${parts[1]}/${normalizedKey}`;
             }
 
             const method = ctx.request.method;

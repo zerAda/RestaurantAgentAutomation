@@ -16,6 +16,7 @@ Document env vars by service. Mark whether SECRET.
 - `STRAPI_API_TOKEN` (SECRET? yes): Master Token for n8n to call Strapi
 - `JWT_SECRET` (SECRET? yes): Used to sign Admin JWT tokens
 - `DATABASE_URL` (SECRET? yes): Postgres connection string for Strapi
+- `N8N_INTERNAL_IPS` (SECRET? no): Comma-separated list of n8n container IPs to bypass rate limiting. Example: `172.20.0.5,172.20.0.6`. Find with `docker inspect n8n | grep IPAddress`. Required for auth-ratelimit.ts C-05 fix to function properly.
 
 ## n8n Automation
 

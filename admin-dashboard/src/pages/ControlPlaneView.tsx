@@ -25,7 +25,8 @@ export const ControlPlaneView = () => {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const response = await fetch('http://localhost:1337/api/control-plane/status');
+                const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
+                const response = await fetch(`${STRAPI_URL}/api/control-plane/status`);
                 if (!response.ok) throw new Error('API unreachable');
                 const json = await response.json();
                 setData(json);

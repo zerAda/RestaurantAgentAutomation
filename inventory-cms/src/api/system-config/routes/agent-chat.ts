@@ -5,9 +5,9 @@ export default {
             path: '/agent/chat',
             handler: 'agent-chat.chat',
             config: {
-                // Uses users-permissions JWT. The controller additionally verifies
-                // the token manually to populate ctx.state.user for downstream logic.
-                auth: 'users-permissions',
+                // auth: false — Strapi 5 does not accept string values for auth.
+                // JWT verification is done manually inside the controller.
+                auth: false,
                 policies: [],
                 middlewares: [],
             },

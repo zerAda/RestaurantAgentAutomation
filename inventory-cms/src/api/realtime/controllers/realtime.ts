@@ -71,5 +71,20 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         return new Promise((resolve) => {
             ctx.req.on('close', resolve);
         });
+    },
+
+    async cortex(ctx: Context) {
+        const queryKeys = ctx.query.keys as string;
+        if (!queryKeys) {
+            return ctx.badRequest('Missing keys parameter');
+        }
+
+        const keys = queryKeys.split(',');
+        try {
+            const data = await strapi.service('api::realtime.realtime').getCortexData(keys);
+            ctx.send(data);
+        } catch (error) {
+            ctx.throw(500, 'Cortex Bridge Error');
+        }
     }
 });

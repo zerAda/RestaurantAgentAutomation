@@ -20,7 +20,10 @@ export default (config: any, { strapi }: any) => {
                 ctx.cookies.set('adminJwt', token, {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production',
-                    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+                    // D-03 FIX: Reduced from 30 days to 24h. A restaurant terminal
+                    // is a shared device — a 30-day session is a major security risk
+                    // if a manager forgets to log out.
+                    maxAge: 1000 * 60 * 60 * 24, // 24 hours
                     sameSite: 'strict',
                     path: '/',
                 });

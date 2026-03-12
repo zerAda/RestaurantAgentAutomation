@@ -1,6 +1,6 @@
 {
   "name": "W2 - IN Instagram Adapter (Secure)",
-  "active": false,
+  "active": true,
   "settings": {
     "executionTimeout": 300,
     "saveExecutionProgress": true,

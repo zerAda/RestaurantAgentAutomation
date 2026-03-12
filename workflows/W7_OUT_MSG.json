@@ -1,6 +1,6 @@
 {
   "name": "W7 - OUT Messenger Sender (Meta Send API)",
-  "active": false,
+  "active": true,
   "settings": {
     "executionTimeout": 120,
     "saveExecutionProgress": true,

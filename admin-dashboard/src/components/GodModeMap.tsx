@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, Crosshair, Users, Activity, Map as MapIcon, ShieldCheck } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 /* ── Types ── */
 interface Driver {
@@ -14,7 +13,7 @@ interface Driver {
 
 export default function GodModeMap() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [stats, setStats] = useState({ online: 12, busy: 4, latency: '14ms' });
+    const [stats] = useState({ online: 12, busy: 4, latency: '14ms' });
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -143,9 +142,10 @@ export default function GodModeMap() {
             <div className="absolute bottom-8 left-8 right-8 z-10 flex justify-between items-end pointer-events-none">
                 <div className="flex gap-4 pointer-events-auto">
                     {[
-                        { label: 'Active nodes', value: stats.online, icon: Users, color: 'text-success' },
-                        { label: 'Latency', value: stats.latency, icon: Activity, color: 'text-warning' },
-                        { label: 'Integrity', value: '100%', icon: ShieldCheck, color: 'text-brand-primary' },
+                        { label: 'Active Drivers', value: stats.online, icon: Users, color: 'text-success' },
+                        { label: 'Surge Multiplier', value: '1.25x', icon: Activity, color: 'text-warning' },
+                        { label: 'Avg Dispatch', value: '1.2m', icon: Crosshair, color: 'text-brand-primary' },
+                        { label: 'Fleet Integrity', value: 'Optimal', icon: ShieldCheck, color: 'text-success' },
                     ].map((w, i) => (
                         <div key={i} className="px-6 py-4 rounded-2xl bg-black/60 border border-white/10 backdrop-blur-xl shadow-2xl flex flex-col items-start min-w-[140px]">
                             <div className="flex items-center gap-2 mb-2">

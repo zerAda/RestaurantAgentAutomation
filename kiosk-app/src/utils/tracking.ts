@@ -5,7 +5,7 @@ export const trackEvent = async (eventType: string, metadata: Record<string, unk
             localStorage.setItem('kiosk_session', session_id);
         }
 
-        await fetch(`${import.meta.env.VITE_N8N_URL || 'http://localhost:5678'}/webhook/track`, {
+        await fetch(`${import.meta.env.VITE_N8N_URL || 'https://n8n.srv1258231.hstgr.cloud'}/webhook/track`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

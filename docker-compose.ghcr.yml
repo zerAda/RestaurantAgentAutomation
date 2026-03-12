@@ -294,6 +294,8 @@ services:
       - ENCRYPTION_KEY=${STRAPI_ENCRYPTION_KEY:?STRAPI_ENCRYPTION_KEY must be set}
       - APP_KEYS=${STRAPI_APP_KEYS:?STRAPI_APP_KEYS must be set}
       - CORS_ORIGINS=https://admin.${DOMAIN_NAME},https://kiosk.${DOMAIN_NAME},https://cms.${DOMAIN_NAME}
+      - STRAPI_SUPER_ADMIN_EMAIL=${STRAPI_SUPER_ADMIN_EMAIL:-admin@${DOMAIN_NAME}}
+      - STRAPI_SUPER_ADMIN_PASSWORD=/run/secrets/strapi_admin_password
     volumes:
       - cms_uploads:/app/public/uploads
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro

@@ -5,6 +5,7 @@ export interface StockItem {
     name: string;
     category: string;
     quantity: number;
+    reservedStock: number;
     unit: string;
     minStock: number;
     status: 'ok' | 'low' | 'critical';
@@ -16,6 +17,7 @@ interface StrapiIngredient {
     name: string;
     category: string;
     current_stock: number;
+    reserved_stock?: number;
     unit: string;
     min_stock_alert: number;
     supplier?: { name: string };
@@ -33,6 +35,7 @@ function mapIngredient(item: StrapiIngredient): StockItem {
         name: item.name,
         category: item.category || 'Uncategorized',
         quantity: item.current_stock,
+        reservedStock: item.reserved_stock || 0,
         unit: item.unit || 'units',
         minStock: item.min_stock_alert,
         status: computeStatus(item.current_stock, item.min_stock_alert),

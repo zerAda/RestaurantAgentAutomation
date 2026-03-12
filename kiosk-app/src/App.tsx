@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import VerticalVideoFeed from "./components/VerticalVideoFeed";
 import FortuneWheelView from "./pages/FortuneWheelView";
 import CheckoutView from "./pages/CheckoutView";
@@ -17,13 +18,19 @@ function IdleTimer() {
   useEffect(() => {
     let timeoutId: any;
     let timeoutSec = 120; // Default fallback
+    let lastReset = 0;
 
     configService.getConfig().then(config => {
       if (config) timeoutSec = config.kiosk_idle_timeout_sec;
       resetTimer();
-    });
+    }).catch(err => console.error("Could not fetch config for IdleTimer:", err));
 
     const resetTimer = () => {
+      const now = Date.now();
+      // Throttle executions to once per second to prevent high CPU usage from rapid mousemove/touch events
+      if (now - lastReset < 1000) return;
+      lastReset = now;
+
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         clearCart();
@@ -33,7 +40,7 @@ function IdleTimer() {
 
     // Global reset events
     const events = ['mousemove', 'keydown', 'touchstart', 'click'];
-    events.forEach(e => window.addEventListener(e, resetTimer));
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
 
     return () => {
       clearTimeout(timeoutId);
@@ -59,11 +66,13 @@ function App() {
           </div>
 
           <div className="relative z-10 w-full h-full">
-            <Routes>
-              <Route path="/" element={<VerticalVideoFeed />} />
-              <Route path="/checkout" element={<CheckoutView />} />
-              <Route path="/wheel" element={<FortuneWheelView />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<VerticalVideoFeed />} />
+                <Route path="/checkout" element={<CheckoutView />} />
+                <Route path="/wheel" element={<FortuneWheelView />} />
+              </Routes>
+            </ErrorBoundary>
           </div>
 
         </div>

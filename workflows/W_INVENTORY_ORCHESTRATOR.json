@@ -1,0 +1,197 @@
+{
+  "name": "W_INVENTORY_ORCHESTRATOR",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inventory/orchestrate",
+        "options": {}
+      },
+      "name": "Webhook - Sync Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.body.action}}",
+              "operation": "equal",
+              "value2": "RESERVE"
+            }
+          ]
+        }
+      },
+      "name": "Action: RESERVE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $json.body.items.map(item => ({\n  json: {\n    id: item.id,\n    qty: item.qty,\n    variant: item.variant,\n    restaurant_id: $item(0).$node[\"Webhook - Sync Trigger\"].json.body.restaurant_id\n  }\n}));"
+      },
+      "name": "Loop Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        500,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STRAPI_URL }}/api/ingredients/{{$json.id}}",
+        "method": "PUT",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data\": {\n    \"reserved_stock\": \"={{$json.current_reserved + $json.qty}}\"\n  }\n}"
+      },
+      "name": "Atomic Reserve (Strapi)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        700,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.body.action}}",
+              "operation": "equal",
+              "value2": "COMMIT"
+            }
+          ]
+        }
+      },
+      "name": "Action: COMMIT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        300,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $json.body.items.map(item => ({\n  json: {\n    id: item.id,\n    qty: item.qty,\n    restaurant_id: $item(0).$node[\"Webhook - Sync Trigger\"].json.body.restaurant_id\n  }\n}));"
+      },
+      "name": "Loop Items (Commit)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        500,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STRAPI_URL }}/api/ingredients/{{$json.id}}",
+        "method": "PUT",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data\": {\n    \"current_stock\": \"={{$json.current_stock - $json.qty}}\",\n    \"reserved_stock\": \"={{$json.current_reserved - $json.qty}}\"\n  }\n}"
+      },
+      "name": "Atomic Commit (Strapi)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        700,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Sync Trigger": {
+      "main": [
+        [
+          {
+            "node": "Action: RESERVE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action: RESERVE?": {
+      "main": [
+        [
+          {
+            "node": "Loop Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Action: COMMIT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Items": {
+      "main": [
+        [
+          {
+            "node": "Atomic Reserve (Strapi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action: COMMIT?": {
+      "main": [
+        [
+          {
+            "node": "Loop Items (Commit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Items (Commit)": {
+      "main": [
+        [
+          {
+            "node": "Atomic Commit (Strapi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

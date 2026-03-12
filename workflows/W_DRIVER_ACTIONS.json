@@ -140,7 +140,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders/{{ $json.orderId }}?populate=driver",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders/{{ $json.orderId }}?populate=*",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [
@@ -161,7 +161,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const order = $json.data;\nconst attr = order?.attributes || order || {};\nconst phone = $node['Parse Action'].json.phone;\nconst orderId = $node['Parse Action'].json.orderId;\n\n// Race condition check\nconst isAvailable = attr.delivery_status === 'READY_FOR_DELIVERY' &&\n  (!attr.driver || !attr.driver?.data);\n\nreturn {\n  json: {\n    phone,\n    orderId,\n    isAvailable,\n    customerPhone: attr.customer_phone || '',\n    totalAmount: attr.total_amount || 0,\n    deliveryCommune: attr.delivery_commune || '',\n    deliveryWilaya: attr.delivery_wilaya || '',\n    deliveryAddress: attr.delivery_address || ''\n  }\n};"
+                "jsCode": "const order = $json.data;\nconst attr = order?.attributes || order || {};\nconst phone = $node['Parse Action'].json.phone;\nconst orderId = $node['Parse Action'].json.orderId;\n\n// Race condition check\nconst isAvailable = attr.delivery_status === 'READY_FOR_DELIVERY' &&\n  (!attr.driver || !attr.driver?.data);\n\nreturn {\n  json: {\n    phone,\n    orderId,\n    isAvailable,\n    customerChannel: attr.customer_channel || 'whatsapp',\n    customerUserId: attr.customer_userId || attr.customer_phone || '',\n    customerPhone: attr.customer_phone || '',\n    totalAmount: attr.total_amount || 0,\n    deliveryCommune: attr.delivery_commune || '',\n    deliveryWilaya: attr.delivery_wilaya || '',\n    deliveryAddress: attr.delivery_address || ''\n  }\n};"
             },
             "name": "Check Availability",
             "type": "n8n-nodes-base.code",
@@ -268,7 +268,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const d = $node['Prepare Claim Data'].json;\nconst address = [d.deliveryAddress, d.deliveryCommune, d.deliveryWilaya].filter(Boolean).join(', ');\nconst mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;\n\n// Activate driver if first delivery\nconst activateDriver = d.needsActivation;\n\nreturn {\n  json: {\n    phone: d.phone,\n    customerPhone: d.customerPhone,\n    otp: d.otp,\n    orderId: d.orderId,\n    driverId: d.driverId,\n    activateDriver,\n    totalAmount: d.totalAmount,\n    address,\n    mapsUrl,\n    customerMessage: `🛵 *Bonne nouvelle !*\\n\\nVotre commande est en route !\\n\\n📍 Livreur en chemin...\\n\\n🔐 *Code de vérification* : *${d.otp}*\\n\\nDonnez ce code au livreur à la réception.`,\n    driverMessage: `✅ *Commande acceptée !*\\n\\n📍 *Adresse* : ${address}\\n\\n🗺️ Itinéraire : ${mapsUrl}\\n\\n📞 Client : ${d.customerPhone}\\n\\nBonne route ! 🚀`\n  }\n};"
+                "jsCode": "const d = $node['Prepare Claim Data'].json;\nconst address = [d.deliveryAddress, d.deliveryCommune, d.deliveryWilaya].filter(Boolean).join(', ');\nconst mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;\n\n// Activate driver if first delivery\nconst activateDriver = d.needsActivation;\n\nconst customerText = `🛵 *Bonne nouvelle !*\\n\\nVotre commande est en route !\\n\\n📍 Livreur en chemin...\\n\\n🔐 *Code de vérification* : *${d.otp}*\\n\\nDonnez ce code au livreur à la réception.`;\nconst driverText = `✅ *Commande acceptée !*\\n\\n📍 *Adresse* : ${address}\\n\\n🗺️ Itinéraire : ${mapsUrl}\\n\\n📞 Client : ${d.customerPhone}\\n\\nBonne route ! 🚀`;\n\nreturn {\n  json: {\n    phone: d.phone,\n    customerPhone: d.customerPhone,\n    otp: d.otp,\n    orderId: d.orderId,\n    driverId: d.driverId,\n    activateDriver,\n    totalAmount: d.totalAmount,\n    address,\n    mapsUrl,\n    // Outbox Payloads\n    customer_outbox: {\n      dedupe_key: `order:${d.orderId}:customer:otp`,\n      channel: d.customerChannel || 'whatsapp',\n      user_id: d.customerUserId || d.customerPhone,\n      template: 'text',\n      payload: { \n        text: customerText \n      }\n    },\n    driver_outbox: {\n      dedupe_key: `order:${d.orderId}:driver:claim`,\n      channel: 'whatsapp', // Drivers currently on WA\n      user_id: d.phone,\n      template: 'interactive_button',\n      payload: {\n        text: driverText,\n        buttons: [\n          { id: `DELIVERED_${d.orderId}`, title: '✅ Livré' },\n          { id: `CALL_${d.customerPhone}`, title: '📞 Appeler' }\n        ]\n      }\n    }\n  }\n};"
             },
             "name": "Build Claim Messages",
             "type": "n8n-nodes-base.code",
@@ -280,41 +280,15 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
-                "method": "POST",
-                "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "messaging_product",
-                            "value": "whatsapp"
-                        },
-                        {
-                            "name": "to",
-                            "value": "={{ $json.customerPhone }}"
-                        },
-                        {
-                            "name": "type",
-                            "value": "text"
-                        },
-                        {
-                            "name": "text",
-                            "value": "={{ { body: $json.customerMessage } }}"
-                        }
-                    ]
-                },
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
-                        }
-                    ]
+                "operation": "executeQuery",
+                "query": "INSERT INTO outbound_messages(dedupe_key, channel, user_id, order_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6::jsonb, 'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.customer_outbox.dedupe_key, $json.customer_outbox.channel, $json.customer_outbox.user_id, $json.orderId, $json.customer_outbox.template, JSON.stringify($json.customer_outbox.payload)]}}"
                 }
             },
-            "name": "Send OTP to Customer",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "name": "Enqueue Customer OTP (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
             "position": [
                 2300,
                 -100
@@ -322,41 +296,15 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
-                "method": "POST",
-                "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "messaging_product",
-                            "value": "whatsapp"
-                        },
-                        {
-                            "name": "to",
-                            "value": "={{ $json.phone }}"
-                        },
-                        {
-                            "name": "type",
-                            "value": "interactive"
-                        },
-                        {
-                            "name": "interactive",
-                            "value": "={{ { type: 'button', body: { text: $json.driverMessage }, action: { buttons: [{ type: 'reply', reply: { id: `DELIVERED_${$json.orderId}`, title: '✅ Livré' } }, { type: 'reply', reply: { id: `CALL_${$json.customerPhone}`, title: '📞 Appeler' } }] } } }}"
-                        }
-                    ]
-                },
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
-                        }
-                    ]
+                "operation": "executeQuery",
+                "query": "INSERT INTO outbound_messages(dedupe_key, channel, user_id, order_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1, $2, $3, $4, $5, $6::jsonb, 'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.driver_outbox.dedupe_key, $json.driver_outbox.channel, $json.driver_outbox.user_id, $json.orderId, $json.driver_outbox.template, JSON.stringify($json.driver_outbox.payload)]}}"
                 }
             },
-            "name": "Send Confirmation to Driver",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "name": "Enqueue Driver Claim (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
             "position": [
                 2300,
                 100
@@ -414,41 +362,15 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
-                "method": "POST",
-                "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "messaging_product",
-                            "value": "whatsapp"
-                        },
-                        {
-                            "name": "to",
-                            "value": "={{ $node['Parse Action'].json.phone }}"
-                        },
-                        {
-                            "name": "type",
-                            "value": "text"
-                        },
-                        {
-                            "name": "text",
-                            "value": "={{ { body: '⚠️ *Commande déjà prise*\\n\\nCette commande a été réclamée par un autre livreur. Consultez les commandes disponibles.' } }}"
-                        }
-                    ]
-                },
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
-                        }
-                    ]
+                "operation": "executeQuery",
+                "query": "INSERT INTO outbound_messages(dedupe_key, channel, user_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1, $2, $3, 'text', $4::jsonb, 'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+                "additionalFields": {
+                    "queryParams": "={{[`order:${$node['Parse Action'].json.orderId}:driver:taken`, 'whatsapp', $node['Parse Action'].json.phone, JSON.stringify({ text: '⚠️ *Commande déjà prise*\\n\\nCette commande a été réclamée par un autre livreur. Consultez les commandes disponibles.' })]}}"
                 }
             },
-            "name": "Send Already Taken",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "name": "Enqueue Already Taken (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
             "position": [
                 1300,
                 200
@@ -486,41 +408,15 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
-                "method": "POST",
-                "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "messaging_product",
-                            "value": "whatsapp"
-                        },
-                        {
-                            "name": "to",
-                            "value": "={{ $node['Parse Action'].json.phone }}"
-                        },
-                        {
-                            "name": "type",
-                            "value": "text"
-                        },
-                        {
-                            "name": "text",
-                            "value": "={{ { body: '🙈 Commande ignorée.' } }}"
-                        }
-                    ]
-                },
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
-                        }
-                    ]
+                "operation": "executeQuery",
+                "query": "INSERT INTO outbound_messages(dedupe_key, channel, user_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1, $2, $3, 'text', $4::jsonb, 'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+                "additionalFields": {
+                    "queryParams": "={{[`order:${$node['Parse Action'].json.orderId}:driver:ignored`, 'whatsapp', $node['Parse Action'].json.phone, JSON.stringify({ text: '🙈 Commande ignorée.' })]}}"
                 }
             },
-            "name": "Send Ignore Confirmation",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "name": "Enqueue Ignore Confirmation (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
             "position": [
                 900,
                 400
@@ -528,41 +424,15 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
-                "method": "POST",
-                "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "messaging_product",
-                            "value": "whatsapp"
-                        },
-                        {
-                            "name": "to",
-                            "value": "={{ $node['Parse Action'].json.phone }}"
-                        },
-                        {
-                            "name": "type",
-                            "value": "text"
-                        },
-                        {
-                            "name": "text",
-                            "value": "={{ { body: '📝 *Livraison en cours*\\n\\nEnvoyez le code OTP à 6 chiffres que le client vous donnera pour confirmer la livraison.' } }}"
-                        }
-                    ]
-                },
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
-                        }
-                    ]
+                "operation": "executeQuery",
+                "query": "INSERT INTO outbound_messages(dedupe_key, channel, user_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1, $2, $3, 'text', $4::jsonb, 'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+                "additionalFields": {
+                    "queryParams": "={{[`order:${$node['Parse Action'].json.orderId}:driver:otp_prompt`, 'whatsapp', $node['Parse Action'].json.phone, JSON.stringify({ text: '📝 *Livraison en cours*\\n\\nEnvoyez le code OTP à 6 chiffres que le client vous donnera pour confirmer la livraison.' })]}}"
                 }
             },
-            "name": "Send OTP Prompt",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "name": "Enqueue OTP Prompt (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
             "position": [
                 700,
                 600
@@ -681,7 +551,7 @@
                 ],
                 [
                     {
-                        "node": "Send OTP Prompt",
+                        "node": "Enqueue OTP Prompt (DB)",
                         "type": "main",
                         "index": 0
                     }
@@ -728,7 +598,7 @@
                 ],
                 [
                     {
-                        "node": "Send Already Taken",
+                        "node": "Enqueue Already Taken (DB)",
                         "type": "main",
                         "index": 0
                     }
@@ -783,25 +653,25 @@
             "main": [
                 [
                     {
-                        "node": "Send OTP to Customer",
+                        "node": "Enqueue Customer OTP (DB)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Send OTP to Customer": {
+        "Enqueue Customer OTP (DB)": {
             "main": [
                 [
                     {
-                        "node": "Send Confirmation to Driver",
+                        "node": "Enqueue Driver Claim (DB)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Send Confirmation to Driver": {
+        "Enqueue Driver Claim (DB)": {
             "main": [
                 [
                     {
@@ -839,7 +709,7 @@
             "main": [
                 [
                     {
-                        "node": "Send Ignore Confirmation",
+                        "node": "Enqueue Ignore Confirmation (DB)",
                         "type": "main",
                         "index": 0
                     }
