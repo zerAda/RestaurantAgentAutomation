@@ -5,12 +5,23 @@ import { strapi } from '../services/strapiClient';
 import { Sparkles, X, Loader2, Send, Play, BarChart, Image as ImageIcon, Video, Layers, BrainCircuit, Activity, Target, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+interface ContentScene {
+    action: string;
+    text: string;
+}
+
+interface MetricsJson {
+    raw?: { page_view?: number; add_to_cart?: number; purchase?: number };
+    metrics?: { cartRate?: number; conversionRate?: number; funnel_heat?: number | string };
+    forecast_metadata?: { revenue_potential?: string };
+}
+
 interface FunnelInsight {
     id: number;
     attributes: {
         insight: string;
         recommendations: string;
-        metrics_json: Record<string, unknown>;
+        metrics_json: MetricsJson;
         createdAt: string;
     };
 }
@@ -41,8 +52,8 @@ interface ContentAsset {
         status: 'draft' | 'ready' | 'published' | 'failed' | 'retry';
         platforms_published: string[] | null;
         performance_json: {
-            tiktok?: { hook: string; scenes: any[]; viral_tag: string; };
-            insta?: { vibe: string; scenes: any[]; aesthetic_style: string; };
+            tiktok?: { hook: string; scenes: ContentScene[]; viral_tag: string; };
+            insta?: { vibe: string; scenes: ContentScene[]; aesthetic_style: string; };
             localized?: {
                 fr: { tiktok: string; insta: string; };
                 darija: { tiktok: string; insta: string; };
@@ -147,15 +158,15 @@ export function MarketingView({ lang }: { lang: Language }) {
                             <div className="flex justify-between items-end gap-2">
                                 <div className="h-24 w-full bg-white/5 rounded-lg relative overflow-hidden flex items-end">
                                     <div className="w-full bg-purple-500/40" style={{ height: '100%' }} />
-                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{(funnelInsight.attributes.metrics_json as any)?.raw?.page_view || 0} VIEWS</span>
+                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{funnelInsight.attributes.metrics_json?.raw?.page_view || 0} VIEWS</span>
                                 </div>
                                 <div className="h-24 w-full bg-white/5 rounded-lg relative overflow-hidden flex items-end">
-                                    <div className="w-full bg-brand-primary/40" style={{ height: `${(funnelInsight.attributes.metrics_json as any)?.metrics?.cartRate || 50}%` }} />
-                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{(funnelInsight.attributes.metrics_json as any)?.raw?.add_to_cart || 0} CART</span>
+                                    <div className="w-full bg-brand-primary/40" style={{ height: `${funnelInsight.attributes.metrics_json?.metrics?.cartRate || 50}%` }} />
+                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{funnelInsight.attributes.metrics_json?.raw?.add_to_cart || 0} CART</span>
                                 </div>
                                 <div className="h-24 w-full bg-white/5 rounded-lg relative overflow-hidden flex items-end">
-                                    <div className="w-full bg-success/40" style={{ height: `${(funnelInsight.attributes.metrics_json as any)?.metrics?.conversionRate * 10 || 20}%` }} />
-                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{(funnelInsight.attributes.metrics_json as any)?.raw?.purchase || 0} SALES</span>
+                                    <div className="w-full bg-success/40" style={{ height: `${(funnelInsight.attributes.metrics_json?.metrics?.conversionRate ?? 0) * 10 || 20}%` }} />
+                                    <span className="absolute bottom-2 inset-x-0 text-center text-[10px] font-black">{funnelInsight.attributes.metrics_json?.raw?.purchase || 0} SALES</span>
                                 </div>
                             </div>
                             
@@ -163,11 +174,11 @@ export function MarketingView({ lang }: { lang: Language }) {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-4 bg-brand-primary/10 rounded-xl border border-brand-primary/20">
                                     <div className="text-[10px] font-black text-brand-primary uppercase tracking-widest mb-1">Conversion Heat</div>
-                                    <div className="text-3xl font-black text-white italic">{(funnelInsight.attributes.metrics_json as any)?.metrics?.funnel_heat || '0.0'}<span className="text-xs">/10</span></div>
+                                    <div className="text-3xl font-black text-white italic">{funnelInsight.attributes.metrics_json?.metrics?.funnel_heat || '0.0'}<span className="text-xs">/10</span></div>
                                 </div>
                                 <div className="p-4 bg-purple-500/10 rounded-xl border border-purple-500/20">
                                     <div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">Forecast Potential</div>
-                                    <div className="text-xl font-black text-white uppercase italic">{(funnelInsight.attributes.metrics_json as any)?.forecast_metadata?.revenue_potential || 'High'}</div>
+                                    <div className="text-xl font-black text-white uppercase italic">{funnelInsight.attributes.metrics_json?.forecast_metadata?.revenue_potential || 'High'}</div>
                                 </div>
                             </div>
 
@@ -458,7 +469,7 @@ export function MarketingView({ lang }: { lang: Language }) {
                                                         Hook: "{selectedAsset.attributes.performance_json.tiktok.hook}"
                                                     </div>
                                                     <div className="space-y-2">
-                                                        {selectedAsset.attributes.performance_json.tiktok.scenes.map((scene: any, i: number) => (
+                                                        {selectedAsset.attributes.performance_json.tiktok.scenes.map((scene, i) => (
                                                             <div key={i} className="text-[11px] text-zinc-300 leading-relaxed border-l-2 border-brand-primary/30 pl-3 py-1">
                                                                 <span className="font-black text-brand-primary">SC{i+1}:</span> {scene.action} — <span className="italic text-white">"{scene.text}"</span>
                                                             </div>
@@ -478,7 +489,7 @@ export function MarketingView({ lang }: { lang: Language }) {
                                                         Vibe: "{selectedAsset.attributes.performance_json.insta.vibe}"
                                                     </div>
                                                     <div className="space-y-2">
-                                                        {selectedAsset.attributes.performance_json.insta.scenes.map((scene: any, i: number) => (
+                                                        {selectedAsset.attributes.performance_json.insta.scenes.map((scene, i) => (
                                                             <div key={i} className="text-[11px] text-zinc-300 leading-relaxed border-l-2 border-purple-500/30 pl-3 py-1">
                                                                 <span className="font-black text-purple-400">SC{i+1}:</span> {scene.action} — <span className="italic text-white">"{scene.text}"</span>
                                                             </div>

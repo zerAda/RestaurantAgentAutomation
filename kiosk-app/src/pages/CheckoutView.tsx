@@ -66,8 +66,8 @@ const CheckoutView: React.FC = () => {
             setOrderId(id ? `#${String(id).padStart(4, '0')}` : `#${Math.floor(Math.random() * 9000 + 1000)}`);
             clearCart();
             setStep('done');
-        } catch (err: any) {
-            setError(err.message || 'Transmission failed. Signal drift detected.');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Transmission failed. Signal drift detected.');
         } finally {
             setIsSubmitting(false);
         }

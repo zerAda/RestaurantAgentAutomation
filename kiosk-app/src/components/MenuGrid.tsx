@@ -1,5 +1,4 @@
 import type { Product } from '../services/menuService';
-import { cn } from "@/lib/utils";
 import { Plus, Tag } from "lucide-react";
 
 interface MenuGridProps {

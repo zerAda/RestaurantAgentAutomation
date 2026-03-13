@@ -90,7 +90,7 @@ const BarTooltip = ({ active, payload, label }: { active?: boolean; payload?: { 
 };
 
 // @ts-expect-error - feature readiness
-export function AnalyticsView({ lang }: { lang: Language }) {
+export function AnalyticsView({ lang: _lang }: { lang: Language }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [kpi, setKpi] = useState<KPIData>({ dailyRevenue: 0, activeOrders: 0, stockHealth: 0, avgPrepTime: 0, totalOrders: 0 });

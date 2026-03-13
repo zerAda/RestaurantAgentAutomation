@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { strapi } from '../services/strapiClient';
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { RefreshCw, BrainCircuit, Zap, Clock, ThumbsUp, ThumbsDown, MessageSquare, Activity, Cpu, ShieldCheck, Database, Layout } from 'lucide-react';
-import { SkeletonCard, SkeletonRow } from './SkeletonLoader';
+import { SkeletonRow } from './SkeletonLoader';
 import { AnimatedNumber } from './AnimatedNumber';
 import { cn } from '../lib/utils';
 

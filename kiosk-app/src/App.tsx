@@ -16,7 +16,7 @@ function IdleTimer() {
   const { clearCart } = useCart();
 
   useEffect(() => {
-    let timeoutId: any;
+    let timeoutId: ReturnType<typeof setTimeout>;
     let timeoutSec = 120; // Default fallback
     let lastReset = 0;
 

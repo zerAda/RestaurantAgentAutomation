@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { getTranslation, type Language } from '../utils/i18n';
 import { strapi } from '../services/strapiClient';
-import { Users, Diamond, Trophy, TrendingUp, Search, RefreshCw, Eye, EyeOff, ShieldCheck, Phone, User, CreditCard } from 'lucide-react';
+import { Users, Diamond, Trophy, TrendingUp, Search, RefreshCw, Eye, EyeOff, ShieldCheck, Phone, User, CreditCard, type LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface Customer {
@@ -230,7 +230,7 @@ export function CustomerView({ lang }: { lang: Language }) {
     );
 }
 
-function MetricSmall({ label, value, icon: Icon, color }: { label: string, value: string, icon: any, color: string }) {
+function MetricSmall({ label, value, icon: Icon, color }: { label: string; value: string; icon: LucideIcon; color: string }) {
     return (
         <div className="quantum-card p-6 flex items-center justify-between group overflow-hidden relative">
             <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.02] rounded-bl-full pointer-events-none" />
