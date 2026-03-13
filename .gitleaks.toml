@@ -66,7 +66,6 @@ paths = [
   '''docs/.*\.md$''',
   '''RUNBOOK\.md$''',
   '''TEST_REPORT\.md$''',
-  '''docker-compose\..*\.yml$''',
   '''agents/.*''',
   '''\.claude/.*''',
   '''README\.md$''',

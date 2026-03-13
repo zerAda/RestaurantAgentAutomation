@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Activity, Database, HardDrive, Cpu, Settings, ExternalLink, Zap } from 'lucide-react';
+import { strapi } from '../services/strapiClient';
 
 interface SystemStatus {
     status: string;
@@ -25,20 +26,21 @@ export const ControlPlaneView = () => {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || '';
-                const response = await fetch(`${STRAPI_URL}/api/control-plane/status`);
-                if (!response.ok) throw new Error('API unreachable');
-                const json = await response.json();
+                // FIX C5: use strapi.rawGet() so the Authorization: Bearer header is
+                // sent automatically (the controller requires users-permissions auth).
+                // The controller returns a raw ctx.send() payload, not a Strapi data wrapper.
+                const json = await strapi.rawGet<SystemStatus>('/api/control-plane/status');
                 setData(json);
-            } catch (err: any) {
-                setError(err.message);
+                setError(null);
+            } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : 'Erreur inconnue');
             } finally {
                 setLoading(false);
             }
         };
 
         fetchStatus();
-        const interval = setInterval(fetchStatus, 15000); // refresh every 15s
+        const interval = setInterval(fetchStatus, 15000);
         return () => clearInterval(interval);
     }, []);
 
@@ -73,16 +75,16 @@ export const ControlPlaneView = () => {
                 <StatusCard
                     title="Redis Outbox"
                     value={data.services.redis.status}
-                    subValue={`${data.services.redis.connections} connections`}
+                    subValue={data.services.redis.connections >= 0 ? `${data.services.redis.connections} connections` : 'connections unknown'}
                     icon={<Zap size={20} />}
                     status={data.services.redis.status === 'healthy' ? 'success' : 'warning'}
                 />
                 <StatusCard
                     title="n8n Hypervisor"
-                    value={`${data.services.n8n_hypervisor.active_executions} Active`}
-                    subValue={`${data.services.n8n_hypervisor.queued_executions} Queued`}
+                    value={data.services.n8n_hypervisor.status}
+                    subValue={`${data.services.n8n_hypervisor.active_executions} Active / ${data.services.n8n_hypervisor.queued_executions} Queued`}
                     icon={<Activity size={20} />}
-                    status="success"
+                    status={data.services.n8n_hypervisor.status === 'healthy' ? 'success' : 'warning'}
                 />
                 <StatusCard
                     title="System Memory"
@@ -143,7 +145,13 @@ export const ControlPlaneView = () => {
     );
 };
 
-const StatusCard = ({ title, value, subValue, icon, status }: any) => {
+const StatusCard = ({ title, value, subValue, icon, status }: {
+    title: string;
+    value: string;
+    subValue: string;
+    icon: React.ReactNode;
+    status: 'success' | 'warning' | 'danger';
+}) => {
     const colors = {
         success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
         warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',

@@ -99,6 +99,7 @@ services:
       - CORS_ORIGINS=https://admin.${DOMAIN_NAME},https://kiosk.${DOMAIN_NAME},https://cms.${DOMAIN_NAME}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - N8N_WEBHOOK_BASE=http://n8n-main:5678
       - STRAPI_SUPER_ADMIN_EMAIL=${STRAPI_SUPER_ADMIN_EMAIL:-admin@${DOMAIN_NAME}}
       - STRAPI_SUPER_ADMIN_PASSWORD=/run/secrets/strapi_admin_password
@@ -168,7 +169,7 @@ services:
         \n"
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
     entrypoint:
       - /bin/sh
       - -c
@@ -372,13 +373,14 @@ services:
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_BULL_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=336
       - EXECUTIONS_DATA_PRUNE_MAX_COUNT=50000
       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN:-}
       - LEGACY_SHARED_ALLOWED=${LEGACY_SHARED_ALLOWED:-false}
-      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-warn}
+      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-enforce}
       - META_APP_SECRET=${META_APP_SECRET:-}
       - META_REPLAY_WINDOW_SEC=${META_REPLAY_WINDOW_SEC:-600}
       - STRICT_AR_OUT=${STRICT_AR_OUT:-true}
@@ -511,10 +513,11 @@ services:
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_BULL_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - QUEUE_BULL_MAX_CONCURRENCY=${QUEUE_BULL_MAX_CONCURRENCY:-2}
       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN:-}
       - LEGACY_SHARED_ALLOWED=${LEGACY_SHARED_ALLOWED:-false}
-      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-warn}
+      - META_SIGNATURE_REQUIRED=${META_SIGNATURE_REQUIRED:-enforce}
       - META_APP_SECRET=${META_APP_SECRET:-}
       - META_REPLAY_WINDOW_SEC=${META_REPLAY_WINDOW_SEC:-600}
       - STRICT_AR_OUT=${STRICT_AR_OUT:-true}
@@ -586,6 +589,13 @@ services:
       - ./scripts/n8n-worker-entrypoint.sh:/opt/scripts/n8n-worker-entrypoint.sh:ro
   ollama:
     image: ollama/ollama:0.6.2
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 3G
+        reservations:
+          memory: 512M
     logging:
       driver: json-file
       options:
@@ -660,27 +670,29 @@ services:
       - ./db/init/02_create_strapi_db.sh:/docker-entrypoint-initdb.d/02_create_strapi_db.sh:ro
       - ./db/migrations:/docker-entrypoint-initdb.d/migrations:ro
   redis:
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --maxmemory
-      - 256mb
-      - --maxmemory-policy
-      - allkeys-lru
+    # Use entrypoint script to support optional password authentication.
+    # Set REDIS_PASSWORD in .env to enable auth (strongly recommended in production).
+    entrypoint: ["/bin/sh", "/etc/redis/entrypoint.sh"]
+    command: []
     deploy:
       resources:
         limits:
           cpus: "0.50"
           memory: 384M
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     healthcheck:
       interval: 10s
       retries: 10
       start_period: 10s
       test:
-        - CMD
-        - redis-cli
-        - ping
+        - CMD-SHELL
+        - |
+          if [ -n "$REDIS_PASSWORD" ]; then
+            redis-cli -a "$REDIS_PASSWORD" ping
+          else
+            redis-cli ping
+          fi
       timeout: 3s
     image: redis:7-alpine
     logging:
@@ -695,6 +707,7 @@ services:
       - no-new-privileges:true
     volumes:
       - redis_data:/data
+      - ./infra/redis/entrypoint.sh:/etc/redis/entrypoint.sh:ro
   traefik:
     command:
       - --providers.docker=true
@@ -743,7 +756,8 @@ services:
   whisper:
     expose:
       - "9000"
-    image: onerahmet/openai-whisper-asr-webservice:latest
+    # Pin to a specific version tag — never use :latest in production (supply-chain risk)
+    image: onerahmet/openai-whisper-asr-webservice:v1.2.0
     logging:
       driver: json-file
       options:

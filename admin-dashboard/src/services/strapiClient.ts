@@ -164,7 +164,13 @@ export const strapi = {
   delete: <T>(path: string) =>
     request<StrapiResponse<T>>(path, { method: 'DELETE' }),
 
+  // Raw request: returns the JSON body directly without StrapiResponse wrapper.
+  // Use for custom controllers that call ctx.send() with a non-standard shape.
+  rawGet: <T>(path: string, options?: RequestOptions) => request<T>(path, options),
+
   getCortexData: async (keys: string[]) => {
+    // SEC-001: token sent via Authorization header (already handled by request()),
+    // NOT as a query param (which would leak in server logs / browser history).
     return request<Record<string, unknown>>(`/api/realtime/cortex?keys=${keys.join(',')}`);
   }
 };

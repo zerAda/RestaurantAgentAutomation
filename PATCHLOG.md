@@ -1,5 +1,70 @@
 # PATCHLOG — RESTO BOT
 
+## v3.4.2-audit-hardening — Full-Stack Security & Reliability Audit Fixes (2026-03-13)
+
+### What (7 Critical + 6 Warning fixes from exhaustive audit)
+
+**Security fixes:**
+- **C1 – GITIGNORE**: Added `.env` to `.gitignore` — prevents accidental commit of production secrets
+- **C2 – META_SIG_ENFORCE**: Changed `META_SIGNATURE_REQUIRED` default from `warn` → `enforce` in docker-compose and `.env.example` — forged Meta webhooks now rejected
+- **C3 – REDIS_AUTH**: Added optional Redis password support via `infra/redis/entrypoint.sh`; propagated `REDIS_PASSWORD` env var to n8n-main, n8n-worker, cms, and CMS control-plane controller
+- **C4 – TOKEN_LEAK**: Fixed `strapiClient.getCortexData()` — removed `?token=` query param (token now sent via `Authorization: Bearer` header only, fixing OWASP A07)
+- **C5 – CTRL_PLANE_AUTH**: Fixed `ControlPlaneView.tsx` — replaced unauthenticated raw `fetch()` with `strapi.rawGet()` which includes `Authorization` header automatically
+- **W3 – STRAPI_PASSWORD**: Fixed `docker-entrypoint.sh` to read `STRAPI_SUPER_ADMIN_PASSWORD` from secret file when the env var points to a file path
+
+**Reliability fixes:**
+- **C6 – FAKE_MONITORING**: Replaced `Math.random()` fake data in `control-plane.ts` controller with real health checks — Redis via TCP `INFO clients` command, n8n via `/healthz` HTTP fetch
+- **C7 – KILL_SWITCH**: Implemented GodMode Kill Switch — now calls `PUT /api/platform-settings/:id` to toggle `ORDERS_ACCEPTANCE_ENABLED`, with bi-directional toggle, loading state, and error handling
+
+**Build fixes:**
+- **W7 – NPM_CI**: Changed `npm install` → `npm ci` in `admin-dashboard/Dockerfile` and `kiosk-app/Dockerfile` for reproducible builds locked to `package-lock.json`
+
+**Infrastructure fixes:**
+- **W1 – OLLAMA_LIMITS**: Added `deploy.resources.limits` (cpus: 1.5, memory: 3G) to Ollama — prevents OOM on VPS
+- **W2 – WHISPER_PIN**: Changed `whisper` image from `:latest` to `:v1.2.0` (supply-chain security)
+- **W10 – GITLEAKS**: Removed `docker-compose*.yml` from Gitleaks allowlist — compose files now scanned for secrets
+
+### Why
+Exhaustive full-stack audit performed 2026-03-13 identified critical vulnerabilities:
+unenforced Meta webhook validation (anyone could inject bot messages), JWT token leaked
+in server logs via URL query param, control plane dashboard non-functional (no auth header),
+and monitoring data was entirely fabricated (Math.random). The Kill Switch was cosmetic only.
+
+### Risk: LOW-MEDIUM
+- `META_SIGNATURE_REQUIRED=enforce`: If META_APP_SECRET is wrong → all inbound webhooks rejected.
+  Verify META_APP_SECRET is correct on VPS before restarting n8n.
+- Redis password: backward-compatible (empty REDIS_PASSWORD = no-auth mode). Activate by setting REDIS_PASSWORD.
+- Control plane changes: pure improvement, no behavior regression.
+- GodMode Kill Switch: requires `ORDERS_ACCEPTANCE_ENABLED` platform-setting entry in Strapi DB.
+- Ollama limits: may OOM-kill Ollama if model requires > 3G; adjust based on VPS RAM.
+
+### Rollback
+```bash
+# Revert META_SIGNATURE_REQUIRED to warn (if webhooks stop working)
+ssh deploy@72.60.190.192
+sed -i 's/META_SIGNATURE_REQUIRED=enforce/META_SIGNATURE_REQUIRED=warn/' /opt/resto/current/.env
+docker compose restart n8n-main n8n-worker
+
+# Revert Redis to no-password mode
+# Remove REDIS_PASSWORD from .env, restart redis + n8n
+```
+
+### Files Changed
+- `.gitignore` — added `.env`
+- `.gitleaks.toml` — removed docker-compose from allowlist
+- `.env.example` — added REDIS_PASSWORD, META_SIGNATURE_REQUIRED=enforce, META_APP_SECRET
+- `admin-dashboard/src/services/strapiClient.ts` — fix getCortexData, add rawGet method
+- `admin-dashboard/src/pages/ControlPlaneView.tsx` — use strapi.rawGet() with auth
+- `admin-dashboard/src/pages/GodMode.tsx` — implement Kill Switch with platform-settings API
+- `admin-dashboard/Dockerfile` — npm install → npm ci
+- `kiosk-app/Dockerfile` — npm install → npm ci
+- `inventory-cms/src/api/control-plane/controllers/control-plane.ts` — real Redis + n8n health
+- `inventory-cms/docker-entrypoint.sh` — fix STRAPI_SUPER_ADMIN_PASSWORD file reading
+- `docker-compose.hostinger.prod.yml` — Ollama limits, Whisper pin, Redis password, META enforce
+- `infra/redis/entrypoint.sh` — NEW: Redis startup with optional password
+
+---
+
 ## v3.4.1-p0-security — P0 Security & Reliability Fixes (2026-03-09)
 
 ### What

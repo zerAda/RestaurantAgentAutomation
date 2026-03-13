@@ -2,19 +2,6 @@
 # .gitignore - Resto Bot
 # =============================================================================
 
-# Credentials & Secrets (NEVER COMMIT)
-credentials.md
-CREDENTIALS.md
-credentials.local
-CREDENTIALS.local
-CREDENTIALS.txt
-*.credentials
-secrets/
-.env
-.env.*
-!.env.example
-
-# SSH Keys
 *.pem
 *.key
 id_rsa*
@@ -50,17 +37,21 @@ Desktop.ini
 *.log
 logs/
 
-# Backups
+# Backups & Data
 *.backup
 *.bak
+*.sql
 *.sql.gz
+shared/*.sql
 
-# Temp files
-*.tmp
-*.temp
-.cache/
+# Production Environment (NEVER commit secrets)
+.env
+vps.env
+.env.production
+.env.local
 
 # Build outputs
 dist/
 build/
 *.egg-info/
+node_modules/
