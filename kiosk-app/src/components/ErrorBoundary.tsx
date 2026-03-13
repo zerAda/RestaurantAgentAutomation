@@ -13,8 +13,8 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false
   };
 
-  public static getDerivedStateFromError(_error: Error): State {
-    // Update state so the next render will show the fallback UI.
+  public static getDerivedStateFromError(error: Error): State {
+    console.error('[ErrorBoundary] Caught:', error.message);
     return { hasError: true };
   }
 

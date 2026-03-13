@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Bell, X, ShoppingBag, AlertTriangle, Zap, TrendingUp, Package, History, CheckCheck, Loader2, Activity } from 'lucide-react';
+import { Bell, X, ShoppingBag, AlertTriangle, Zap, TrendingUp, Package, History, CheckCheck, Activity, type LucideIcon } from 'lucide-react';
 import { strapi } from '../services/strapiClient';
 import { useToast } from './ToastProvider';
 import { cn } from '../lib/utils';
+
+/* ── Strapi response types ── */
+interface StrapiOrder { id: number; total_cents: number; createdAt: string; }
+interface StrapiIngredient { id: number; name: string; current_stock: number; min_stock_alert: number; }
+interface StrapiWorkflowError { id: number; workflow_name: string; error_message?: string; createdAt: string; }
 
 /* ── Types ── */
 interface Notification {
@@ -14,7 +19,7 @@ interface Notification {
     read: boolean;
 }
 
-const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string; pulse?: boolean }> = {
+const TYPE_CONFIG: Record<string, { icon: LucideIcon; color: string; bg: string; pulse?: boolean }> = {
     order: { icon: ShoppingBag, color: 'text-brand-primary', bg: 'bg-brand-primary/10', pulse: true },
     stock: { icon: Package, color: 'text-warning', bg: 'bg-warning/10' },
     error: { icon: AlertTriangle, color: 'text-error', bg: 'bg-error/10' },
@@ -34,26 +39,24 @@ export function NotificationCenter() {
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
-    const [loading, setLoading] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const isFirstFetch = useRef(true);
     const knownIds = useRef<Set<string>>(new Set());
     const { addToast } = useToast();
 
     const fetchNotifications = useCallback(async () => {
-        setLoading(true);
         try {
             const now = new Date();
             const hourAgo = new Date(now.getTime() - 3600000).toISOString();
 
             const [ordersRes, stockRes, errorsRes] = await Promise.allSettled([
-                strapi.find<any>('orders', {
+                strapi.find<StrapiOrder>('orders', {
                     sort: ['createdAt:desc'],
                     pagination: { limit: 10 },
                     filters: { createdAt: { $gte: hourAgo } },
                 }),
-                strapi.find<any>('ingredients', { pagination: { limit: 200 } }),
-                strapi.find<any>('workflow-errors', {
+                strapi.find<StrapiIngredient>('ingredients', { pagination: { limit: 200 } }),
+                strapi.find<StrapiWorkflowError>('workflow-errors', {
                     sort: ['createdAt:desc'],
                     pagination: { limit: 5 },
                     filters: { createdAt: { $gte: hourAgo } },
@@ -63,7 +66,7 @@ export function NotificationCenter() {
             const items: Notification[] = [];
 
             if (ordersRes.status === 'fulfilled') {
-                const orders = (ordersRes.value.data as any[]) || [];
+                const orders = (Array.isArray(ordersRes.value.data) ? ordersRes.value.data : []) as StrapiOrder[];
                 orders.forEach(o => {
                     items.push({
                         id: `order-${o.id}`,
@@ -77,7 +80,7 @@ export function NotificationCenter() {
             }
 
             if (stockRes.status === 'fulfilled') {
-                const ingredients = (stockRes.value.data as any[]) || [];
+                const ingredients = (Array.isArray(stockRes.value.data) ? stockRes.value.data : []) as StrapiIngredient[];
                 ingredients
                     .filter(i => (i.current_stock || 0) <= (i.min_stock_alert || 10))
                     .forEach(i => {
@@ -93,7 +96,7 @@ export function NotificationCenter() {
             }
 
             if (errorsRes.status === 'fulfilled') {
-                const errors = (errorsRes.value.data as any[]) || [];
+                const errors = (Array.isArray(errorsRes.value.data) ? errorsRes.value.data : []) as StrapiWorkflowError[];
                 errors.forEach(e => {
                     items.push({
                         id: `error-${e.id}`,
@@ -124,10 +127,8 @@ export function NotificationCenter() {
                     }
                 });
             }
-        } catch (err) {
+        } catch {
             console.error('[NotificationCenter] telemetry fail');
-        } finally {
-            setLoading(false);
         }
     }, [seenIds, addToast]);
 

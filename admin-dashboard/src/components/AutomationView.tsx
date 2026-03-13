@@ -71,7 +71,7 @@ const WORKFLOWS: Workflow[] = [
 ];
 
 export function AutomationView({ lang }: { lang: Language }) {
-    const _t = (key: string) => getTranslation(key, lang);
+    const _t = (key: string) => getTranslation(key, lang); // eslint-disable-line @typescript-eslint/no-unused-vars
     const [selectedWf, setSelectedWf] = useState<Workflow | null>(null);
     const [payload, setPayload] = useState('');
     const [isTriggering, setIsTriggering] = useState(false);
