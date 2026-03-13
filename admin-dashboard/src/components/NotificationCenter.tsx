@@ -133,7 +133,7 @@ export function NotificationCenter() {
     }, [seenIds, addToast]);
 
     useEffect(() => {
-        void fetchNotifications();
+        void fetchNotifications(); // eslint-disable-line react-hooks/set-state-in-effect
         const interval = setInterval(fetchNotifications, 20000);
         return () => clearInterval(interval);
     }, [fetchNotifications]);
