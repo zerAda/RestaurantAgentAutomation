@@ -21,14 +21,14 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
         const cacheKey = `webhook:idempotency:${messageId}`;
 
         // Use in-memory cache if available (Strapi v4+)
-        const cached = await strapi.cache?.get(cacheKey);
+        const cached = await (strapi as any).cache?.get(cacheKey);
         if (cached) {
             strapi.log.warn(`[IdempotencyService] Duplicate webhook detected: ${messageId}. Ignoring.`);
             return { isDuplicate: true };
         }
 
         // Mark as processed with 5-minute TTL
-        await strapi.cache?.set(cacheKey, true, { ttl: 300 });
+        await (strapi as any).cache?.set(cacheKey, true, { ttl: 300 });
 
         return { isDuplicate: false };
     },
@@ -39,7 +39,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     async markProcessed(messageId: string): Promise<void> {
         if (!messageId) return;
         const cacheKey = `webhook:idempotency:${messageId}`;
-        await strapi.cache?.set(cacheKey, true, { ttl: 300 });
+        await (strapi as any).cache?.set(cacheKey, true, { ttl: 300 });
         strapi.log.info(`[IdempotencyService] Marked as processed: ${messageId}`);
     },
 });
