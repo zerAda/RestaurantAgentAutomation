@@ -74,6 +74,22 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     },
 
     async cortex(ctx: Context) {
+        // Secure the Cortex bridge via token query param
+        const token = ctx.query.token as string;
+        if (!token) {
+            return ctx.unauthorized('Missing token for cortex bridge');
+        }
+
+        try {
+            // Verify admin JWT
+            const decoded = await strapi.admin.services.token.decodeJwtToken(token);
+            if (!decoded || !decoded.isValid) {
+                return ctx.unauthorized('Invalid token for cortex bridge');
+            }
+        } catch (e) {
+            return ctx.unauthorized('Token verification failed');
+        }
+
         const queryKeys = ctx.query.keys as string;
         if (!queryKeys) {
             return ctx.badRequest('Missing keys parameter');

@@ -19,12 +19,27 @@ declare const strapi: any;
 
 const N8N_WEBHOOK = process.env.N8N_INTERNAL_WEBHOOK || 'http://n8n-main:5678';
 
+interface N8nResponse {
+  reply?: string;
+  message?: string;
+  response?: {
+    replyText?: string;
+  };
+  actions?: unknown[];
+}
+
 export default {
   /**
    * POST /api/agent/chat
    * Called by AIChatBubble on the Admin Dashboard and optionally by n8n AI agents.
    */
-  async chat(ctx: any) {
+  async chat(ctx: Context) {
+    const userEmail = ctx.state.user?.email as string | undefined;
+    if (!userEmail) {
+      strapi.log.warn('AI Chat: Unauthorized access attempt (missing session state)');
+      return ctx.unauthorized('You must be logged in to access the AI agent');
+    }
+
     const { message, sessionId, confirm, feedbackScore } = ctx.request.body?.data || {};
 
     if (!message || typeof message !== 'string') {
@@ -103,15 +118,19 @@ export default {
           sessionId: safeSessionId,
           confirm: confirm || false,
           context: 'admin-dashboard',
-          user: ctx.state?.user?.email || 'admin',
+          user: userEmail,
         }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
 
       if (res.ok) {
-        const data = await res.json();
-        n8nReply = data.reply || data.message || data.response || 'Traitement terminé.';
+        const data = (await res.json()) as N8nResponse; 
+        if (data?.response) {
+          n8nReply = data.response.replyText || '';
+        } else {
+          n8nReply = data.reply || data.message || 'Traitement terminé.';
+        }
         n8nActions = data.actions || [];
       } else {
         throw new Error(`n8n HTTP ${res.status}`);

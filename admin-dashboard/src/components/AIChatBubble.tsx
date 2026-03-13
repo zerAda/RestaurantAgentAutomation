@@ -90,7 +90,7 @@ export function AIChatBubble() {
             setMessages([{
                 id: 'welcome',
                 role: 'agent',
-                content: 'Quantum Connection Established. I am **Ralphé**, your Neural Copilot.\n\nI have real-time visibility across the entire DNS architecture:\n• 📊 **Relational Logic**: 28 Strapi Tables\n• ⚙️ **Process Orchestration**: 77 n8n Workflows\n• 🧠 **Cognitive Insight**: Funnel Analytics + AI Learning Context\n• 🎨 **Creative DNA**: Inception Prompts (Strategy/Image/Video)\n\nSystem is ready. Awaiting directive.',
+                content: 'Quantum Connection Established. I am **Ralphé**, your Neural Copilot.\n\nI have real-time visibility across the entire DNS architecture:\n• 📊 **Relational Logic**: 28 Strapi Tables\n• ⚙️ **Process Orchestration**: 90 n8n Workflows\n• 🧠 **Cognitive Insight**: Funnel Analytics + AI Learning Context\n• 🎨 **Creative DNA**: Inception Prompts (Strategy/Image/Video)\n\nSystem is ready. Awaiting directive.',
                 timestamp: new Date().toISOString(),
             }]);
         }

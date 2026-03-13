@@ -122,26 +122,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         setIsSubmitting(true);
         try {
-            const orderItems = items.map(item => ({
-                item_code: item.product.id,
-                label: item.product.name,
-                qty: item.quantity,
-                unit_price_cents: item.product.price,
-                line_total_cents: item.product.price * item.quantity,
-            }));
+            const orderItems = items.map(item => {
+                const extrasTotal = item.extras.reduce((s, e) => s + e.price, 0);
+                const unitPrice = item.product.price + item.size.price_modifier + extrasTotal;
+                
+                return {
+                    item_code: item.product.id,
+                    label: `${item.product.name} (${item.size.name})`,
+                    qty: item.quantity,
+                    unit_price_cents: unitPrice,
+                    line_total_cents: unitPrice * item.quantity,
+                };
+            });
 
             const serviceMode = orderType === 'dine_in' ? 'kiosk_sur_place' : 'kiosk_a_emporter';
 
-            const sessionId = `kiosk_${tableNumber || 'takeway'}_${Date.now()}`.toLowerCase();
+            const sessionId = `kiosk_${tableNumber || 'takeaway'}_${Date.now()}`.toLowerCase();
 
             const res = await strapi.post<{ id: number; documentId: string }>('/api/orders', {
                 channel: 'kiosk',
                 service_mode: serviceMode,
                 status: 'NEW',
+                // SECURITY (SEC-010): total_cents from frontend is UNTRUSTED. 
+                // The n8n OrderFinalizer and Chargily Webhook MUST recalculate/validate 
+                // this amount server-side before confirming payment.
                 total_cents: total,
                 table_number: tableNumber,
-                // E-01 FIX: kiosk_session_id is required by W_KIOSK_ORDER to merge
-                // items into an existing active table order instead of creating duplicates.
                 kiosk_session_id: sessionId,
                 order_type: orderType,
                 order_items: orderItems,

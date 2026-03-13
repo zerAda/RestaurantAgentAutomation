@@ -151,7 +151,10 @@
         "jsonBody": "={{\n  JSON.stringify({ to: $json.to, message: $json.message, channel: $json.channel, type: 'winback', customerId: $json.customerId })\n}}",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}" }]
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}" },
+            { "name": "X-Workflow-Secret", "value": "={{ $env.WEBHOOK_SHARED_TOKEN }}" }
+          ]
         }
       },
       "id": "send-winback-message",
