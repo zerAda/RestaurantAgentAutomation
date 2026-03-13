@@ -25,7 +25,7 @@ export default factories.createCoreController('api::inbound-message.inbound-mess
         const cacheKey = `idempotency:${type}:${sessionId.trim()}`;
 
         try {
-            const cached = await strapi.cache?.get(cacheKey);
+            const cached = await (strapi as any).cache?.get(cacheKey);
             if (cached) {
                 strapi.log.warn(`[Idempotency] Duplicate ${type} detected: ${sessionId}. Blocking.`);
                 ctx.body = { isDuplicate: true, sessionId, type };
@@ -34,7 +34,7 @@ export default factories.createCoreController('api::inbound-message.inbound-mess
 
             // TTL: 5 min for webhooks (WhatsApp retries), 24h for kiosk sessions
             const ttl = type === 'kiosk' ? 86400 : 300;
-            await strapi.cache?.set(cacheKey, true, { ttl });
+            await (strapi as any).cache?.set(cacheKey, true, { ttl });
 
             ctx.body = { isDuplicate: false, sessionId, type };
         } catch (err) {

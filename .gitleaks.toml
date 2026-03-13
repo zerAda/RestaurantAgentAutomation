@@ -81,6 +81,7 @@ regexes = [
   '''REPLACE_WITH_.*''',
   '''tobemodified''',
   '''\$\{[A-Z_]+:-?\}''',
+  '''\$\{[A-Z0-9_]+\}''',
   '''test-token-\w+''',
   '''YOUR_\w*TOKEN''',
   '''YOUR_\w*KEY''',

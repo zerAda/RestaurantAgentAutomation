@@ -11,7 +11,7 @@ export default {
     // Adds POST /api/agent/chat and GET /api/agent/tools endpoints
     try {
       // Register the agent-chat controller
-      strapi.controller('api::agent-chat.agent-chat', require('./extensions/agent-chat/controllers/agent-chat').default);
+      (strapi as any).controller('api::agent-chat.agent-chat', require('./extensions/agent-chat/controllers/agent-chat').default);
 
       // Register routes for the agent-chat extension
       // These will be handled by Strapi's router

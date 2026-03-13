@@ -8,7 +8,9 @@
  * Solution: Store processed message IDs in Strapi's cache with a TTL of 5 minutes.
  * n8n should call `POST /api/webhook-idempotency/check` before processing any message.
  */
-export default ({ strapi }) => ({
+import type { Core } from '@strapi/strapi';
+
+export default ({ strapi }: { strapi: Core.Strapi }) => ({
     /**
      * Check if a webhook message has already been processed.
      * Returns { isDuplicate: true } if the message_id was seen within the last 5 minutes.

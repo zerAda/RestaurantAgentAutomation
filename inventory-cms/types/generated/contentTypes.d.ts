@@ -2176,6 +2176,35 @@ export interface PluginUsersPermissionsUser
   };
 }
 
+// ── Custom content types added after initial generation ─────────────────────
+export interface ApiDeliveryConfigDeliveryConfig extends Struct.CollectionTypeSchema {
+  collectionName: 'delivery_configs';
+  info: { singularName: 'delivery-config'; pluralName: 'delivery-configs'; displayName: 'Delivery Config' };
+  options: { draftAndPublish: false };
+  attributes: { createdAt: Schema.Attribute.DateTime; updatedAt: Schema.Attribute.DateTime; publishedAt: Schema.Attribute.DateTime };
+}
+
+export interface ApiDispatchLogDispatchLog extends Struct.CollectionTypeSchema {
+  collectionName: 'dispatch_logs';
+  info: { singularName: 'dispatch-log'; pluralName: 'dispatch-logs'; displayName: 'Dispatch Log' };
+  options: { draftAndPublish: false };
+  attributes: { createdAt: Schema.Attribute.DateTime; updatedAt: Schema.Attribute.DateTime; publishedAt: Schema.Attribute.DateTime };
+}
+
+export interface ApiPlatformSettingPlatformSetting extends Struct.CollectionTypeSchema {
+  collectionName: 'platform_settings';
+  info: { singularName: 'platform-setting'; pluralName: 'platform-settings'; displayName: 'Platform Setting' };
+  options: { draftAndPublish: true };
+  attributes: { key: Schema.Attribute.String; value: Schema.Attribute.Text; createdAt: Schema.Attribute.DateTime; updatedAt: Schema.Attribute.DateTime; publishedAt: Schema.Attribute.DateTime };
+}
+
+export interface ApiScheduledPostScheduledPost extends Struct.CollectionTypeSchema {
+  collectionName: 'scheduled_posts';
+  info: { singularName: 'scheduled-post'; pluralName: 'scheduled-posts'; displayName: 'Scheduled Post' };
+  options: { draftAndPublish: false };
+  attributes: { createdAt: Schema.Attribute.DateTime; updatedAt: Schema.Attribute.DateTime; publishedAt: Schema.Attribute.DateTime };
+}
+
 declare module '@strapi/strapi' {
   export module Public {
     export interface ContentTypeSchemas {
@@ -2187,6 +2216,10 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::delivery-config.delivery-config': ApiDeliveryConfigDeliveryConfig;
+      'api::dispatch-log.dispatch-log': ApiDispatchLogDispatchLog;
+      'api::platform-setting.platform-setting': ApiPlatformSettingPlatformSetting;
+      'api::scheduled-post.scheduled-post': ApiScheduledPostScheduledPost;
       'api::ad-campaign.ad-campaign': ApiAdCampaignAdCampaign;
       'api::ai-learning.ai-learning': ApiAiLearningAiLearning;
       'api::cart.cart': ApiCartCart;
