@@ -1,5 +1,51 @@
 # TEST_REPORT — RESTO BOT
 
+## v3.4.3 — Platform Connectivity Fixes (2026-03-14)
+
+### Environment
+- VPS: 72.60.190.192 (Hostinger, 2 CPU, 8GB RAM)
+- All 10 production containers running
+
+### Smoke Tests (live VPS)
+
+| Test | Command | Result |
+|------|---------|--------|
+| Products (kiosk) | `GET https://api.srv1258231.hstgr.cloud/v1/strapi/api/products` | **200** — 6 products |
+| CMS health | `GET http://cms:1337/_health` (internal) | **204** |
+| Auth (users-permissions) | `POST http://cms:1337/api/auth/local` | **200** — JWT issued |
+| n8n-main health | `docker ps` | **Up 42 min (healthy)** |
+| n8n-worker health | `docker ps` | **Up 42 min (healthy)** |
+| N8N_RUNNERS_ENABLED | `printenv N8N_RUNNERS_ENABLED` | **false** ✓ |
+| Orders API (admin) | `GET /api/orders?pagination[pageSize]=50` | **200** |
+| Admin bundle auth patch | grep `api/auth/local` in bundle | **Present** ✓ |
+| Admin bundle identifier | grep `identifier:e` in bundle | **Present** ✓ |
+
+### Container Status (final)
+```
+current-n8n-worker-1:    Up 42 min (healthy)
+current-n8n-main-1:      Up 42 min (healthy)
+current-postgres-1:      Up 11 hr (healthy)
+current-gateway-1:       Up 35 hr (healthy)
+current-cms-1:           Up 29 min (healthy)
+current-traefik-1:       Up 35 hr
+current-redis-1:         Up 35 hr (healthy)
+current-admin-dashboard-1: Up 35 hr (healthy)
+current-kiosk-app-1:     Up 35 hr (healthy)
+current-ollama-1:        Up 5 days
+```
+
+### Load Average
+- Peak during CMS crash loop: 28.0
+- End of session: 9.8 (still elevated due to n8n task-runner processes)
+- Expected baseline: ~3-5 (all services idle)
+
+### Remaining Issues
+- n8n task-runner: `N8N_RUNNERS_ENABLED=false` set but processes still spawn in n8n 2.9.4
+- VPS swap not configured (requires sudo)
+- Admin dashboard container: JS bundle patched in-container (not persistent across recreation)
+- CMS route files: injected via docker cp (not persistent across image recreation)
+- Gateway nginx.conf: resolver directive added locally, takes effect on next container recreation
+
 ## v3.3.5 — VPS Deploy + n8n 2.x Migration + CMS Bootstrap (2026-03-01)
 
 ### CI Pipeline (commit `1377ad5`) — GREEN
