@@ -1,5 +1,61 @@
 # PATCHLOG — RESTO BOT
 
+## v3.4.3-platform-connectivity — Full Platform Connectivity Fix (2026-03-14)
+
+### What (4 P0 production fixes + VPS stabilization)
+
+**P0-1 — Admin Dashboard Auto-Logout Fix**
+- **Root cause**: `authService.ts` was calling `/admin/login` (Strapi admin API) which returns an admin JWT — but that JWT was then used on `/api/*` content endpoints (Users-Permissions API) which only accept users-permissions JWTs → 401 → instant logout
+- **Fix**: Changed to `/api/auth/local` (users-permissions API) with correct payload parsing (`payload.jwt`, `payload.user` instead of `payload.data.token`)
+- **Also**: Fetches `/api/users/me?populate=role` after login to populate RBAC data
+- **Files**: `admin-dashboard/src/services/authService.ts`
+- **Rollback**: Revert commit `65e84d7` (but this would break login again)
+
+**P0-2 — Kiosk Products (Public Role Permissions)**
+- **Root cause**: Public role (id=2) had 0 product permissions — kiosk showed empty menu
+- **Fix**: SQL — added `api::product.product.find` + `findOne` to public role via `up_permissions` + `up_permissions_role_lnk`
+- **Files**: VPS PostgreSQL `strapi` database (runtime SQL, no file change)
+- **Risk**: Low — permissions are additive
+
+**P0-3 — Authenticated Role Permissions (Dashboard Data)**
+- **Root cause**: Authenticated role (id=1) only had 8 permissions — missing orders/customers/ingredients → dashboard showed empty data and got 403
+- **Fix**: Added 23 new permissions: orders (CRUD), ingredients (CRUD), customers (find/findOne/update), drivers (find/findOne/update), payments (find/findOne), funnel-events (find/findOne), delivery-assignments (find/findOne), feedback (find/findOne)
+- **Files**: VPS PostgreSQL `strapi` database (runtime SQL)
+- **Risk**: Low — permissions are additive
+
+**P0-4 — CMS Route Files Permission Fix (EACCES)**
+- **Root cause**: Previously injected dist route files (delivery-assignment, ingredient, payment, product, customer, driver, funnel-event, order, etc.) were owned by UID 1002 (VPS deploy user) with mode 600 → Strapi process (UID 1001/strapi) could not read them → EACCES crash loop
+- **Fix**: Created fresh route/controller/service JS files on VPS host with mode 644, then `docker cp` into container; mode 644 = world-readable regardless of UID ownership
+- **Files**: `/app/dist/src/api/*/routes/*.js`, `/controllers/*.js`, `/services/*.js` in `current-cms-1` container
+- **Risk**: Medium — these files don't survive container recreation; permanent fix = rebuild CMS image
+
+**P0-5 — n8n Task-Runner CPU (N8N_RUNNERS_ENABLED=false)**
+- **Root cause**: n8n 2.x spawns `@n8n/task-runner` subprocesses consuming ~60% CPU on 2-core VPS
+- **Fix**: Added `N8N_RUNNERS_ENABLED=false` to both n8n-main and n8n-worker `environment:` sections in compose file (env var in `.env` is not auto-passed to containers)
+- **Files**: `docker-compose.hostinger.prod.yml` (lines 377, 518)
+- **Note**: The variable is set but task-runner processes still start on n8n 2.9.4; load IS decreasing (peak 28 → 9.6). Further investigation needed.
+
+**P0-6 — Gateway Nginx DNS Cache Fix**
+- **Root cause**: After CMS container restarts, its Docker IP changed from 172.19.0.4 to 172.19.0.6; nginx cached the old IP → `connect() failed (111: Connection refused)` → 502 on all `/v1/strapi/*` routes
+- **Fix**: `nginx -s reload` in gateway container to refresh DNS resolution
+- **Permanent fix**: Add `resolver 127.0.0.11 valid=10s;` to nginx config (Docker's internal DNS)
+
+### Why
+User reported: admin dashboard auto-logout, kiosk no products, Strapi too slow. Root cause analysis on VPS revealed permission/config issues across all 4 P0 items.
+
+### Risk
+- Admin auth: Low — code fix committed, CI passed
+- Permissions: Low — additive SQL, no data loss
+- CMS route files: Medium — runtime hack, needs proper rebuild
+- n8n runners: Low — env var change, rollback by removing line from compose
+
+### Rollback
+- `git revert 65e84d7` for authService.ts
+- Remove `N8N_RUNNERS_ENABLED=false` from compose env sections
+- CMS: `docker restart current-cms-1` with old image (loses route injection)
+
+---
+
 ## v3.4.2-audit-hardening — Full-Stack Security & Reliability Audit Fixes (2026-03-13)
 
 ### What (7 Critical + 6 Warning fixes from exhaustive audit)
