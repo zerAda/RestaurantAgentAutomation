@@ -14,28 +14,37 @@ const store = sessionStorage;
 export const authService = {
     login: async (email: string, password: string): Promise<boolean> => {
         try {
-            // Secure Architecture: Authenticate against the dedicated Admin API, not the public user API.
-            const res = await fetch(`${STRAPI_URL}/admin/login`, {
+            // Users-Permissions API: authenticates against /api/auth/local which issues
+            // a JWT compatible with all /api/* content endpoints.
+            const res = await fetch(`${STRAPI_URL}/api/auth/local`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ identifier: email, password }),
             });
 
             if (!res.ok) return false;
 
             const payload = await res.json();
-            // Strapi Admin API returns { data: { token: '...', user: { ... } } }
-            if (payload?.data?.token) {
+            // Users-Permissions API returns { jwt: '...', user: { ... } }
+            if (payload?.jwt) {
                 // F-02 FIX: Use sessionStorage instead of localStorage to prevent
                 // XSS token theft. sessionStorage is tab-isolated and wiped on close.
-                store.setItem(TOKEN_KEY, payload.data.token);
-                store.setItem(USER_KEY, JSON.stringify(payload.data.user));
+                store.setItem(TOKEN_KEY, payload.jwt);
+                // Fetch user with role populated so RBAC checks work in the UI
+                let user = payload.user;
+                try {
+                    const meRes = await fetch(`${STRAPI_URL}/api/users/me?populate=role`, {
+                        headers: { Authorization: `Bearer ${payload.jwt}` },
+                    });
+                    if (meRes.ok) user = await meRes.json();
+                } catch { /* fall back to basic user from login response */ }
+                store.setItem(USER_KEY, JSON.stringify(user));
                 store.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + TOKEN_LIFESPAN_MS));
                 return true;
             }
             return false;
         } catch {
-            console.error('[AuthService] Admin Login failed — is Strapi reachable?');
+            console.error('[AuthService] Login failed — is Strapi reachable?');
             return false;
         }
     },
