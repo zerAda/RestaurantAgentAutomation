@@ -69,10 +69,9 @@
             "type": "json",
             "description": "Operating hours per day {\"monday\": {\"open\": \"10:00\", \"close\": \"22:00\"}, ...}"
         },
-        "restaurant": {
-            "type": "relation",
-            "relation": "manyToOne",
-            "target": "api::restaurant.restaurant"
+        "restaurant_id": {
+            "type": "string",
+            "description": "Reference to the restaurant (string ID, no relation to avoid missing target)"
         }
     }
 }
