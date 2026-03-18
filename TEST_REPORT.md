@@ -1,5 +1,50 @@
 # TEST_REPORT — RESTO BOT
 
+## Phase 1 — CMS Stability & Base Upgrade (2026-03-18)
+
+### Static Checks (Node.js Base Images)
+
+| Check | Command | Result |
+|-------|---------|--------|
+| admin-dashboard Dockerfile | `grep "FROM node:20" project/admin-dashboard/Dockerfile` | PENDING |
+| kiosk-app Dockerfile | `grep "FROM node:20" project/kiosk-app/Dockerfile` | PENDING |
+| inventory-cms Dockerfile | `grep "FROM node:20" project/inventory-cms/Dockerfile` | PENDING |
+
+### CMS Route Smoke Test (post-rebuild)
+
+| Test | Command | Result |
+|------|---------|--------|
+| All 15 CMS routes return 200 | `bash project/scripts/smoke-cms-routes.sh` | PENDING |
+| Admin login + kiosk products | `bash project/scripts/smoke-post-rebuild.sh` | PENDING |
+
+*Results to be filled in after Plan 02 rebuild executes.*
+
+---
+
+## v3.4.4 — Workflow Sync + Demo Seed (2026-03-14)
+
+### Smoke Tests
+
+| Test | Result |
+|------|--------|
+| n8n workflow count | **90** (was 78, +12 imported) |
+| Duplicate workflows | **0** (1 duplicate deleted) |
+| Products API via gateway | **200** — 16 products, 3 brands |
+| Burger Palace products | **7** items ✓ |
+| Tacos House products | **6** items ✓ |
+| Al-Hana Group franchise | **3** items ✓ |
+| Strapi auth `/api/auth/local` | **200** — JWT issued ✓ |
+| Kiosk app HTTP | **200** — URL: api.*/v1/strapi ✓ |
+| Admin dashboard bundle auth | `/api/auth/local` in bundle ✓ |
+| Gateway products route | **200** — 16 products total |
+
+### n8n Workflows Imported (12)
+W_ADMIN_AI_AGENT, W_CONTENT_AUDITOR, W_CORTEX_REGISTRY, W_FUNNEL_ANALYZER,
+W_GROWTH_AGENT, W_INCEPTION_PROTOCOL, W_INVENTORY_ORCHESTRATOR, W_LOGISTICS_PRO,
+W_LOYALTY_ENGINE, W_ORDER_FINALIZER, W_RALPHE_OMNISCIENT, W_REVENUE_INTELLIGENCE
+
+---
+
 ## v3.4.3 — Platform Connectivity Fixes (2026-03-14)
 
 ### Environment

@@ -1,5 +1,92 @@
 # PATCHLOG — RESTO BOT
 
+## v3.4.6 — Phase 1: CMS Stability & Base Upgrade (2026-03-18)
+
+### What
+- Eliminate the docker-cp runtime injection hack: all 42 Strapi content type routes now exist in TypeScript source under inventory-cms/src/api/ and survive any container rebuild
+- Verify Node.js 20-alpine base image is in place for all services (admin-dashboard, kiosk-app, inventory-cms Dockerfiles)
+- Clean CMS image rebuild with --no-cache to prove routes are baked in (not injected at runtime)
+- Add smoke test scripts: scripts/smoke-cms-routes.sh and scripts/smoke-post-rebuild.sh
+
+### Why
+P0 blocker: prior approach injected compiled JS into a running container via docker cp. Any container restart or rebuild lost all 15 custom routes, causing CMS and dependent services to fail silently.
+
+### Risk
+- CMS rebuild takes 15-30 min on VPS (2 CPU); npm ci downloads ~500MB of packages
+- ENOSPC risk on 119GB VPS — disk pre-check required (minimum 10GB free)
+- Requires nginx -s reload after CMS restart to flush DNS cache
+
+### Rollback
+If rebuilt CMS container fails health check:
+  docker compose stop cms
+  docker tag current-cms:previous current-cms:rollback-20260318
+  docker compose up -d cms  (uses previous image if not pruned)
+  docker exec current-gateway-1 nginx -s reload
+If rebuild fails mid-build: previous running container is unaffected; docker compose does not replace it until successful build + up -d.
+
+---
+
+## v3.4.5-cors-fix (2026-03-14)
+
+### What
+- Fixed kiosk showing no products (CORS blocked by browser)
+- Fixed admin dashboard instant logout (CMS IP allowlist)
+
+### Root Causes & Fixes
+
+**P0-1 — Kiosk CORS (double header + CORP)**
+- Root cause 1: Strapi 5 sends its own `Access-Control-Allow-Origin` header + nginx adds a 2nd → browser rejects duplicate
+- Root cause 2: Strapi 5 sends `Cross-Origin-Resource-Policy: same-origin` → browser blocks cross-subdomain fetch()
+- Fix: `proxy_hide_header Access-Control-Allow-Origin/Credentials/Cross-Origin-Resource-Policy/Cross-Origin-Opener-Policy` in nginx strapi locations, then add single correct header with `cross-origin` CORP
+- Files: `infra/gateway/nginx.conf` (both `/v1/strapi/` and `/v1/strapi/api/orders` locations)
+
+**P0-2 — Admin Dashboard Instant Logout**
+- Root cause: Admin dashboard JS calls `https://cms.srv1258231.hstgr.cloud` directly from browser. The CMS has Traefik IP allowlist → user's browser IP blocked → all API calls return 401/403 → auto-logout
+- Fix step 1: Added `/v1/portal/` nginx location that proxies all CRUD to CMS with CORS for admin.* origin
+- Fix step 2: `/v1/admin*` paths blocked by Traefik `resto-api-internal` router (priority 100, BasicAuth+IP). Used `/v1/portal/` instead.
+- Fix step 3: Patched admin bundle: all 5 occurrences of `https://cms.srv1258231.hstgr.cloud` → `https://api.srv1258231.hstgr.cloud/v1/portal`
+- Files: `infra/gateway/nginx.conf` (new `/v1/portal/` location), admin bundle patch in container
+
+### Tests Passed
+- Kiosk: `Access-Control-Allow-Origin: kiosk.*` (single), `Cross-Origin-Resource-Policy: cross-origin` ✓
+- Admin portal OPTIONS: 204 + correct CORS headers ✓
+- Admin login via `/v1/portal/api/auth/local`: JWT issued ✓
+- Admin data via `/v1/portal/api/products`: 3 items returned ✓
+
+### Rollback
+- nginx: revert PATCHLOG v3.4.5 changes to nginx.conf, SCP + reload
+- Admin bundle: `docker cp` old bundle back (saved at /tmp/admin-bundle.js on VPS)
+
+---
+
+## v3.4.4-workflow-sync-demo (2026-03-14)
+
+### What
+- Synced 12 missing workflows to n8n (total: 78 → 90 active)
+- Seeded Strapi with 2 distinct restaurant brands + franchise data
+- Created DEMO_PO.md for PO/VX presentation
+
+### Fixes Applied
+**F1 — n8n Workflow Import (12 missing workflows)**
+- Root cause: Files never copied to VPS + import via `wget --post-file` failed (files not mounted in container, curl absent in n8n image)
+- Fix: `docker cp` into container + Node.js HTTP client (`require('http')`) to call `POST /api/v1/workflows` from inside container
+- Missing settings field patched: `settings: wf.settings || {}` for 6 workflows lacking the field
+- Removed 1 duplicate (W_ADMIN_AI_AGENT imported twice)
+- Result: 90 workflows total (was 78)
+- Workflows added: W_ADMIN_AI_AGENT, W_CONTENT_AUDITOR, W_CORTEX_REGISTRY, W_FUNNEL_ANALYZER, W_GROWTH_AGENT, W_INCEPTION_PROTOCOL, W_INVENTORY_ORCHESTRATOR, W_LOGISTICS_PRO, W_LOYALTY_ENGINE, W_ORDER_FINALIZER, W_RALPHE_OMNISCIENT, W_REVENUE_INTELLIGENCE
+
+**F2 — Strapi Demo Data (Multi-Restaurant)**
+- Added `restaurant_brand` VARCHAR column to `products` table
+- Labeled 6 existing products: Burger Palace (4) + Tacos House (2)
+- Seeded 10 new products: Burger Palace (3 more), Tacos House (4 more), Al-Hana Group franchise (3)
+- Total: 16 products across 3 brands
+
+### Risk: Low
+- All changes are additive (new workflows, new DB column, new products)
+- Rollback: `DELETE FROM products WHERE id > 6; ALTER TABLE products DROP COLUMN restaurant_brand;`
+
+---
+
 ## v3.4.3-platform-connectivity — Full Platform Connectivity Fix (2026-03-14)
 
 ### What (4 P0 production fixes + VPS stabilization)
