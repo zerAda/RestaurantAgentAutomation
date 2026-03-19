@@ -6,18 +6,31 @@
 
 | Check | Command | Result |
 |-------|---------|--------|
-| admin-dashboard Dockerfile | `grep "FROM node:20" project/admin-dashboard/Dockerfile` | PENDING |
-| kiosk-app Dockerfile | `grep "FROM node:20" project/kiosk-app/Dockerfile` | PENDING |
-| inventory-cms Dockerfile | `grep "FROM node:20" project/inventory-cms/Dockerfile` | PENDING |
+| admin-dashboard Dockerfile | `grep "FROM node:20" project/admin-dashboard/Dockerfile` | PASS — `FROM node:20-alpine AS build` |
+| kiosk-app Dockerfile | `grep "FROM node:20" project/kiosk-app/Dockerfile` | PASS — `FROM node:20-alpine AS build` |
+| inventory-cms Dockerfile | `grep "FROM node:20" project/inventory-cms/Dockerfile` | PASS — `FROM node:20-alpine AS build` (×2: build + prod stage) |
 
-### CMS Route Smoke Test (post-rebuild)
+### CMS Route Smoke Test (post-rebuild) — 2026-03-19
 
 | Test | Command | Result |
 |------|---------|--------|
-| All 15 CMS routes return 200 | `bash project/scripts/smoke-cms-routes.sh` | PENDING |
-| Admin login + kiosk products | `bash project/scripts/smoke-post-rebuild.sh` | PENDING |
+| New CMS image built from TS source | `docker compose build cms --no-cache` | PASS — image `44cf772ff9b2` (3.36GB, 2026-03-18) |
+| All 15 CMS routes return 200 | `bash scripts/smoke-cms-routes.sh` | BLOCKED — see note |
+| Admin login + kiosk products | `bash scripts/smoke-post-rebuild.sh` | BLOCKED — see note |
+| INFRA-01: admin-dashboard node:20-alpine | `grep "FROM node:20" admin-dashboard/Dockerfile` | PASS — `FROM node:20-alpine AS build` |
+| INFRA-01: kiosk-app node:20-alpine | `grep "FROM node:20" kiosk-app/Dockerfile` | PASS — `FROM node:20-alpine AS build` |
+| INFRA-02: inventory-cms node:20-alpine (×2) | `grep "FROM node:20" inventory-cms/Dockerfile` | PASS — `FROM node:20-alpine AS build` (×2: build + prod stage) |
+| CMS container healthy (old image) | `docker inspect current-cms-1` | PASS — `Up, healthy` (image `19101238eeb3`) |
 
-*Results to be filled in after Plan 02 rebuild executes.*
+**BLOCKED note:** New image (`44cf772ff9b2`) fails to start due to Node.js 20.20.1 regression — `ERR_UNSUPPORTED_DIR_IMPORT` on `lodash/fp` in `@strapi/core/dist/Strapi.mjs`. Root cause: `node:20-alpine` resolved to v20.20.1 which tightened ESM directory import resolution vs v20.20.0 (which worked). Fix: `inventory-cms/Dockerfile` updated to pin `node:20.20.0-alpine`. Rebuild required on VPS to complete CMS-02/CMS-03 verification.
+
+### Phase 1 Summary
+- INFRA-01: PASS (admin-dashboard, kiosk-app Dockerfiles use node:20-alpine)
+- INFRA-02: PASS (inventory-cms Dockerfile uses node:20-alpine, both stages — pinned to 20.20.0 to fix regression)
+- INFRA-03: DEFERRED (requires CMS route smoke to pass first)
+- CMS-01: PASS (all TS source files verified present in new image dist/)
+- CMS-02: PARTIAL — clean rebuild completed, but image fails to start due to Node.js 20.20.1 regression
+- CMS-03: DEFERRED (requires working CMS image — unblock by rebuilding with node:20.20.0-alpine)
 
 ---
 
