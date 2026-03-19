@@ -195,7 +195,7 @@ log "Step 9: Health check"
 MAX_WAIT=60
 ELAPSED=0
 while [[ $ELAPSED -lt $MAX_WAIT ]]; do
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:1337/_health 2>/dev/null || echo "000")
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:1337/_health 2>/dev/null)
   if [[ "$HTTP" == "204" ]]; then
     log "CMS health: 204 OK"
     break
