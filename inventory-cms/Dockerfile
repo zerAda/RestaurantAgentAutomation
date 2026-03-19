@@ -12,6 +12,7 @@ COPY package.json package-lock.json ./
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 60000 && \
     npm config set fetch-retry-maxtimeout 300000 && \
+    npm config set fetch-timeout 600000 && \
     npm ci --legacy-peer-deps
 
 COPY . .
@@ -43,6 +44,7 @@ COPY package.json package-lock.json ./
 RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 60000 && \
     npm config set fetch-retry-maxtimeout 300000 && \
+    npm config set fetch-timeout 600000 && \
     npm ci --omit=dev --legacy-peer-deps
 
 # Remove build tools after npm ci (keep runtime-only packages)
