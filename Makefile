@@ -6,12 +6,19 @@
 # =============================================================================
 
 .PHONY: help lint test-unit test-battery test-harness smoke security up down build migrate backup preflight ci \
-       setup preflight-prod deploy status logs rollback
+       setup preflight-prod deploy status logs rollback \
+       vps-deploy vps-pull vps-rebuild vps-status vps-logs vps-ssh runner-setup
 
 .DEFAULT_GOAL := help
 
 # Config
 COMPOSE_PROD := docker-compose.hostinger.prod.yml
+
+# VPS remote config
+VPS_HOST  := 72.60.190.192
+VPS_USER  := deploy
+VPS_PATH  := /opt/resto
+VPS_SSH   := ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 $(VPS_USER)@$(VPS_HOST)
 
 # Colors
 GREEN  := \033[0;32m
@@ -173,3 +180,37 @@ rollback: ## Rollback: stop and restart with previous images
 	@echo ""
 	@echo "$(GREEN)== Rollback: Complete ==$(NC)"
 	@$(MAKE) status
+
+# ---------------------------------------------------------------------------
+# VPS Remote Operations  (git-based CD)
+# ---------------------------------------------------------------------------
+vps-deploy: ## Deploy to VPS via git pull + rebuild changed services
+	@echo "$(GREEN)== VPS Deploy: git pull + rebuild ==$(NC)"
+	$(VPS_SSH) "bash $(VPS_PATH)/repo/scripts/git-deploy.sh"
+
+vps-deploy-service: ## Rebuild + redeploy a single service: make vps-deploy-service SERVICE=cms
+	@test -n "$(SERVICE)" || (echo "Usage: make vps-deploy-service SERVICE=cms" && exit 1)
+	@echo "$(GREEN)== VPS Deploy: $(SERVICE) only ==$(NC)"
+	$(VPS_SSH) "bash $(VPS_PATH)/repo/scripts/git-deploy.sh --service $(SERVICE)"
+
+vps-pull: ## Sync latest git commits to VPS without rebuilding (config/script updates only)
+	@echo "$(YELLOW)== VPS Pull: syncing code (no rebuild) ==$(NC)"
+	$(VPS_SSH) "bash $(VPS_PATH)/repo/scripts/git-deploy.sh --no-rebuild"
+
+vps-rebuild: ## Rebuild a service on VPS in-place: make vps-rebuild SERVICE=cms
+	@test -n "$(SERVICE)" || (echo "Usage: make vps-rebuild SERVICE=cms" && exit 1)
+	@echo "$(YELLOW)== VPS Rebuild: $(SERVICE) ==$(NC)"
+	$(VPS_SSH) "/opt/resto/rebuild.sh $(SERVICE) --no-cache"
+
+vps-status: ## Show VPS container status and health
+	$(VPS_SSH) "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'"
+
+vps-logs: ## Tail VPS logs (set SERVICE=cms for specific service, default: all critical)
+	$(VPS_SSH) "docker compose -f $(VPS_PATH)/current/docker-compose.hostinger.prod.yml -p current logs --tail=50 $(or $(SERVICE), cms gateway n8n-main)"
+
+vps-ssh: ## Open SSH session to VPS
+	ssh -o StrictHostKeyChecking=no $(VPS_USER)@$(VPS_HOST)
+
+runner-setup: ## Install GitHub Actions self-hosted runner on VPS (requires TOKEN=<runner-token>)
+	@test -n "$(TOKEN)" || (echo "Usage: make runner-setup TOKEN=<runner-token>" && echo "Get token: https://github.com/zerAda/RestaurantAgentAutomation/settings/actions/runners/new" && exit 1)
+	$(VPS_SSH) "bash $(VPS_PATH)/current/scripts/runner-setup.sh --token $(TOKEN)"
