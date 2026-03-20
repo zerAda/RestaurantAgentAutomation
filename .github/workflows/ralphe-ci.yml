@@ -371,7 +371,7 @@ jobs:
     name: Integration Tests (PG 16)
     runs-on: ubuntu-latest
     needs: [integrity-gate]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/release/')
     timeout-minutes: 15
 
     services:
@@ -502,7 +502,7 @@ jobs:
     name: Docker Build (${{ matrix.image.name }})
     runs-on: ubuntu-latest
     needs: [integrity-gate, lint-validate]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/release/')
     timeout-minutes: 20
 
     strategy:
@@ -658,7 +658,7 @@ jobs:
     name: Test Harness (Full Stack)
     runs-on: ubuntu-latest
     needs: [integrity-gate, integration-tests]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/release/')
     timeout-minutes: 30
 
     steps:
