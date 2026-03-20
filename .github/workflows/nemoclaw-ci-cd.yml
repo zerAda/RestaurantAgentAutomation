@@ -27,6 +27,7 @@ jobs:
           source: "nemoclaw/docker-compose.yml"
           target: "/opt/nemoclaw"
           strip_components: 1
+          overwrite: true
 
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@master

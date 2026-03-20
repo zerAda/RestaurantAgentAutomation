@@ -705,6 +705,9 @@ jobs:
     timeout-minutes: 2
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
