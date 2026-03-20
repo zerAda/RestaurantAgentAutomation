@@ -23,7 +23,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [main, develop, "release/*"]
+    branches: [master, develop, "release/*"]
   pull_request:
     branches: [main, develop]
 

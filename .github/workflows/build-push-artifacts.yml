@@ -8,7 +8,7 @@ name: Build and Push Artifacts (GHCR)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 env:
