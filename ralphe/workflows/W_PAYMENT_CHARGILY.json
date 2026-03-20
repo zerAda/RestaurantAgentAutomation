@@ -1,0 +1,213 @@
+{
+    "name": "W_PAYMENT_CHARGILY",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "create-payment",
+                "options": {}
+            },
+            "name": "Create Payment Request",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "collection": "orders",
+                "id": "={{ $json.body.order_id }}",
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id || $json.body.restaurant_id }}"
+                    }
+                },
+                "options": {
+                    "populate": "order_items"
+                }
+            },
+            "name": "Fetch & Validate Order - TENANT ISOLATED",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ],
+            "notes": "SECURITY FIX (SEC-006): Prevent price spoofing by fetching real order from database. Tenant isolation enforced via restaurant_id filter."
+        },
+        {
+            "parameters": {
+                "jsCode": "// SECURITY: Recalculate order total from database instead of trusting user input\nconst order = $json.data?.attributes || $json;\nconst items = order.order_items?.data || order.order_items || [];\n\nif (!order.id && !order.order_id) {\n  throw new Error('SEC-006: Order not found or access denied (tenant isolation)');\n}\n\n// Recalculate total from order items (NEVER trust user input)\nlet calculatedTotal = 0;\nif (items && items.length > 0) {\n  calculatedTotal = items.reduce((sum, item) => {\n    const itemPrice = item.attributes?.unit_price || item.unit_price || 0;\n    const itemQty = item.attributes?.quantity || item.quantity || 0;\n    return sum + (itemPrice * itemQty);\n  }, 0);\n} else {\n  // Fallback to order.total_amount if order_items not populated\n  calculatedTotal = order.total_amount || 0;\n}\n\n// Add delivery fee if exists\nconst deliveryFee = order.delivery_fee || 0;\nconst finalTotal = Math.round(calculatedTotal + deliveryFee);\n\nif (finalTotal <= 0) {\n  throw new Error('SEC-006: Invalid order total (calculated: ' + finalTotal + ' DA)');\n}\n\nconst originalRequest = $node['Create Payment Request'].json.body;\n\nreturn {\n  json: {\n    order_id: order.id || originalRequest.order_id,\n    restaurant_id: order.restaurant_id || originalRequest.restaurant_id,\n    tenant_context: $node['Create Payment Request'].json.tenant_context || { restaurant_id: order.restaurant_id },\n    // SECURITY: Use recalculated amount, NOT user-provided amount\n    validated_amount: finalTotal,\n    user_provided_amount: originalRequest.amount || 0,\n    customer_phone: order.customer_phone || originalRequest.phone || '',\n    _security: {\n      price_spoofing_prevented: true,\n      amount_source: 'database_recalculated',\n      validation_timestamp: new Date().toISOString()\n    }\n  }\n};"
+            },
+            "name": "Recalculate Total (Anti-Price Spoofing)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ],
+            "notes": "SECURITY FIX (SEC-006): Recalculate total from order items. Prevents attackers from sending amount=1 DA for expensive orders."
+        },
+        {
+            "parameters": {
+                "url": "https://pay.chargily.net/api/v2/checkouts",
+                "method": "POST",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "amount",
+                            "value": "={{ $json.validated_amount }}"
+                        },
+                        {
+                            "name": "currency",
+                            "value": "dzd"
+                        },
+                        {
+                            "name": "success_url",
+                            "value": "={{ $json.system_config?.app_public_url || $env.APP_URL }}/payment/success?order_id={{ $json.order_id }}"
+                        },
+                        {
+                            "name": "failure_url",
+                            "value": "={{ $json.system_config?.app_public_url || $env.APP_URL }}/payment/failed?order_id={{ $json.order_id }}"
+                        },
+                        {
+                            "name": "webhook_endpoint",
+                            "value": "={{ $json.system_config?.n8n_webhook_base_url || $env.N8N_WEBHOOK_URL }}/webhook/chargily-callback"
+                        },
+                        {
+                            "name": "description",
+                            "value": "Commande #{{ $json.order_id }}"
+                        },
+                        {
+                            "name": "metadata",
+                            "value": "={{ { order_id: $json.order_id, restaurant_id: $json.restaurant_id, customer_phone: $json.customer_phone } }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $json.system_config?.chargily_secret_key || $env.CHARGILY_SECRET_KEY }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "name": "Chargily Create Checkout",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                400,
+                300
+            ],
+            "notes": "SECURITY: Now uses validated_amount from database recalculation, not user input"
+        },
+        {
+            "parameters": {
+                "operation": "create",
+                "collection": "payments",
+                "fields": {
+                    "order": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.order_id }}",
+                    "restaurant_id": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.restaurant_id }}",
+                    "tenant_id": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.tenant_context?.tenant_id }}",
+                    "method": "chargily",
+                    "status": "awaiting_payment",
+                    "amount": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.validated_amount }}",
+                    "external_id": "={{ $json.id }}",
+                    "payment_url": "={{ $json.checkout_url }}"
+                },
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $node['Recalculate Total (Anti-Price Spoofing)'].json.tenant_context?.restaurant_id }}"
+                    }
+                }
+            },
+            "name": "Save Payment Record",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return {\n  json: {\n    success: true,\n    payment_url: $node['Chargily Create Checkout'].json.checkout_url,\n    message: 'Cliquez pour payer 💳',\n    amount: $node['Recalculate Total (Anti-Price Spoofing)'].json.validated_amount,\n    _security_note: 'Amount validated from database'\n  }\n};"
+            },
+            "name": "Return URL",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                800,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Create Payment Request": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch & Validate Order - TENANT ISOLATED",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch & Validate Order - TENANT ISOLATED": {
+            "main": [
+                [
+                    {
+                        "node": "Recalculate Total (Anti-Price Spoofing)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Recalculate Total (Anti-Price Spoofing)": {
+            "main": [
+                [
+                    {
+                        "node": "Chargily Create Checkout",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Chargily Create Checkout": {
+            "main": [
+                [
+                    {
+                        "node": "Save Payment Record",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Payment Record": {
+            "main": [
+                [
+                    {
+                        "node": "Return URL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

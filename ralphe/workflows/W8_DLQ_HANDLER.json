@@ -1,0 +1,286 @@
+{
+  "name": "W8 - DLQ Handler (Dead Letter Queue)",
+  "active": true,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  id,\n  conversation_key,\n  msg_id,\n  channel,\n  payload_json,\n  error_message,\n  retry_count,\n  created_at,\n  last_retry_at\nFROM outbound_messages\nWHERE status = 'DLQ'\n  AND (last_retry_at IS NULL OR last_retry_at < NOW() - INTERVAL '1 hour')\nORDER BY created_at ASC\nLIMIT 50;"
+      },
+      "id": "fetch-dlq-messages",
+      "name": "Fetch DLQ Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [250, 0],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const messages = $input.all();\nconst dlqCount = messages.length;\n\n// Check alert threshold\nconst alertThreshold = Number($env.DLQ_ALERT_THRESHOLD || 10);\nconst shouldAlert = dlqCount >= alertThreshold;\n\n// Log DLQ status\nconst summary = {\n  dlqCount,\n  alertThreshold,\n  shouldAlert,\n  checkedAt: new Date().toISOString(),\n  messages: messages.map(m => ({\n    id: m.json.id,\n    channel: m.json.channel,\n    msg_id: m.json.msg_id,\n    error: m.json.error_message,\n    retries: m.json.retry_count,\n    age: m.json.created_at\n  }))\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "analyze-dlq",
+      "name": "Analyze DLQ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.shouldAlert}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "should-alert-check",
+      "name": "Should Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_events (\n  event_type,\n  severity,\n  payload_json\n) VALUES (\n  'DLQ_THRESHOLD_EXCEEDED',\n  'HIGH',\n  $1::jsonb\n);",
+        "additionalFields": {
+          "queryParams": "={{[JSON.stringify({dlq_count: $json.dlqCount, threshold: $json.alertThreshold, checked_at: $json.checkedAt})]}}"
+        }
+      },
+      "id": "log-alert",
+      "name": "Log Alert Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1000, -100],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Check if external alert webhook is configured\nconst alertUrl = ($env.ALERT_WEBHOOK_URL || '').toString().trim();\nconst alertEnabled = ($env.ALERT_SLO_ENABLED || 'true').toString().toLowerCase() === 'true';\n\nif (!alertUrl || !alertEnabled) {\n  return [{ json: { ...$json, alertSent: false, reason: 'no_webhook_configured' } }];\n}\n\nreturn [{ json: { ...$json, alertUrl, alertEnabled: true } }];"
+      },
+      "id": "check-webhook",
+      "name": "Check Webhook Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.alertUrl}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "has-webhook",
+      "name": "Has Webhook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1500, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.alertUrl}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=🚨 *DLQ Alert*: {{$json.dlqCount}} messages in Dead Letter Queue (threshold: {{$json.alertThreshold}})"
+            },
+            {
+              "name": "channel",
+              "value": "resto-alerts"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "send-alert",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1750, -200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// No action needed - DLQ count is below threshold\nreturn [{ json: { ...$json, status: 'ok', message: 'DLQ count within threshold' } }];"
+      },
+      "id": "no-alert-needed",
+      "name": "No Alert Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Final summary\nreturn [{ json: { status: 'completed', ...($json || {}) } }];"
+      },
+      "id": "end",
+      "name": "End",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 0]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch DLQ Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch DLQ Messages": {
+      "main": [
+        [
+          {
+            "node": "Analyze DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze DLQ": {
+      "main": [
+        [
+          {
+            "node": "Should Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Alert?": {
+      "main": [
+        [
+          {
+            "node": "Log Alert Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Alert Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Alert Event": {
+      "main": [
+        [
+          {
+            "node": "Check Webhook Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Webhook Config": {
+      "main": [
+        [
+          {
+            "node": "Has Webhook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Webhook?": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert": {
+      "main": [
+        [
+          {
+            "node": "End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Alert Needed": {
+      "main": [
+        [
+          {
+            "node": "End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

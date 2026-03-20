@@ -1,0 +1,1952 @@
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/config/.env.example /mnt/data/resto_n8n_pack_v3.0_SILICON/config/.env.example
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/config/.env.example	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/config/.env.example	2026-01-21 16:47:09.760388116 +0000
+@@ -13,13 +13,16 @@
+ # Timezone
+ TZ=Europe/Paris
+ 
++# Reverse proxy trusted IPs (Traefik will trust X-Forwarded-For only from these IPs)
++TRAEFIK_TRUSTED_IPS=127.0.0.1/32  # TODO: set to your load balancer / reverse proxy public IPs
++
+ # Allowlist (CIDR list, comma-separated)
+-ADMIN_ALLOWED_IPS=1.2.3.4/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
++ADMIN_ALLOWED_IPS=127.0.0.1/32  # TODO: replace by your public IPs /32 in prod
+ 
+ # Versions
+ N8N_VERSION=1.80.0
+ 
+-# Shared token for inbound webhooks (header x-webhook-token / bearer / query token)
++# Legacy shared token for inbound webhooks (fallback only). Prefer api_clients table + per-tenant token.
+ WEBHOOK_SHARED_TOKEN=REPLACE_WITH_LONG_RANDOM_TOKEN
+ 
+ # Queue concurrency
+@@ -44,3 +47,11 @@
+ # After importing workflows, generate and set:
+ # CORE_WORKFLOW_ID=<n8n workflow id>
+ CORE_WORKFLOW_ID=
++
++# Audio URL allowlist (comma-separated domains). Empty => block all audio STT.
++ALLOWED_AUDIO_DOMAINS=cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com
++
++# Outbox retry/backoff
++OUTBOX_MAX_ATTEMPTS=7
++OUTBOX_BASE_DELAY_SEC=30
++OUTBOX_MAX_DELAY_SEC=3600
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/bootstrap.sql /mnt/data/resto_n8n_pack_v3.0_SILICON/db/bootstrap.sql
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/bootstrap.sql	2026-01-21 15:10:56.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/db/bootstrap.sql	2026-01-21 16:39:20.132334379 +0000
+@@ -21,6 +21,52 @@
+   created_at      timestamptz NOT NULL DEFAULT now()
+ );
+ 
++
++-- API clients (P0-AUTH-MULTITENANT)
++-- Stores hashed tokens mapped to tenant/restaurant + scopes.
++CREATE TABLE IF NOT EXISTS api_clients (
++  client_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++  client_name     text NOT NULL,
++  token_hash      text NOT NULL UNIQUE, -- sha256 hex
++  tenant_id       uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
++  restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
++  scopes          jsonb NOT NULL DEFAULT '[]'::jsonb,
++  is_active       boolean NOT NULL DEFAULT true,
++  last_used_at    timestamptz NULL,
++  created_at      timestamptz NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS idx_api_clients_active_hash
++  ON api_clients (is_active, token_hash);
++
++-- Outbox pattern (P0-OUTBOX-RETRY)
++CREATE TABLE IF NOT EXISTS outbound_messages (
++  outbound_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++  dedupe_key          text NOT NULL UNIQUE,
++  tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
++  restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
++  conversation_key    text NULL,
++  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
++  user_id             text NOT NULL,
++  order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
++  template            text NOT NULL DEFAULT 'reply',
++  payload_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
++  status              text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SENT','DLQ')),
++  attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
++  next_retry_at       timestamptz NOT NULL DEFAULT now(),
++  provider_message_id text NULL,
++  last_error          text NULL,
++  created_at          timestamptz NOT NULL DEFAULT now(),
++  updated_at          timestamptz NOT NULL DEFAULT now(),
++  sent_at             timestamptz NULL
++);
++
++CREATE INDEX IF NOT EXISTS idx_outbound_due
++  ON outbound_messages (status, next_retry_at);
++
++CREATE INDEX IF NOT EXISTS idx_outbound_rest_channel
++  ON outbound_messages (restaurant_id, channel, created_at DESC);
++
+ -- RBAC mapping per channel
+ CREATE TABLE IF NOT EXISTS restaurant_users (
+   id              bigserial PRIMARY KEY,
+@@ -201,20 +247,40 @@
+   v_user text;
+   v_mode text;
+   v_order uuid;
++  v_stage text;
++  v_last_order text;
+ BEGIN
+-  SELECT tenant_id, restaurant_id, channel, user_id
+-    INTO v_tenant, v_restaurant, v_channel, v_user
++  -- Lock state row to prevent concurrent double orders
++  SELECT tenant_id, restaurant_id, channel, user_id,
++         COALESCE(state_json->>'stage','') AS stage,
++         COALESCE(state_json->>'last_order_id','') AS last_order_id
++    INTO v_tenant, v_restaurant, v_channel, v_user, v_stage, v_last_order
+   FROM conversation_state
+-  WHERE conversation_key = p_conversation_key;
++  WHERE conversation_key = p_conversation_key
++  FOR UPDATE;
+ 
+   IF v_restaurant IS NULL THEN
+     RAISE EXCEPTION 'Unknown conversation_key %', p_conversation_key;
+   END IF;
+ 
+-  SELECT COALESCE(cart_json->>'serviceMode', (SELECT state_json->>'serviceMode' FROM conversation_state WHERE conversation_key=p_conversation_key), 'a_emporter')
+-    INTO v_mode
+-  FROM carts
+-  WHERE conversation_key = p_conversation_key;
++  -- Idempotency: if already placed, return existing order
++  IF v_stage = 'PLACED' AND v_last_order <> '' THEN
++    RETURN QUERY
++      SELECT
++        v_last_order::uuid,
++        COALESCE((SELECT total_cents FROM orders WHERE order_id=v_last_order::uuid), 0),
++        (SELECT string_agg(label || ' x' || qty, ', ')
++           FROM order_items
++          WHERE order_id=v_last_order::uuid);
++    RETURN;
++  END IF;
++
++  SELECT COALESCE(
++           (SELECT cart_json->>'serviceMode' FROM carts WHERE conversation_key=p_conversation_key),
++           (SELECT state_json->>'serviceMode' FROM conversation_state WHERE conversation_key=p_conversation_key),
++           'a_emporter'
++         )
++    INTO v_mode;
+ 
+   INSERT INTO orders (tenant_id, restaurant_id, channel, user_id, service_mode, status)
+   VALUES (v_tenant, v_restaurant, v_channel, v_user, v_mode, 'NEW')
+@@ -252,20 +318,18 @@
+       ON mi.restaurant_id = v_restaurant
+      AND mi.item_code = l.item_code
+      AND mi.active = true
+-  ),
+-  ins AS (
+-    INSERT INTO order_items(order_id, item_code, label, qty, unit_price_cents, options_json, line_total_cents)
+-    SELECT
+-      v_order,
+-      item_code,
+-      label,
+-      qty,
+-      (base_cents + opt_cents) AS unit_price_cents,
+-      options_json,
+-      (base_cents + opt_cents) * qty AS line_total_cents
+-    FROM priced
+-    RETURNING line_total_cents
+   )
++  INSERT INTO order_items(order_id, item_code, label, qty, unit_price_cents, options_json, line_total_cents)
++  SELECT
++    v_order,
++    item_code,
++    label,
++    qty,
++    (base_cents + opt_cents) AS unit_price_cents,
++    options_json,
++    (base_cents + opt_cents) * qty AS line_total_cents
++  FROM priced;
++
+   UPDATE orders
+      SET total_cents = COALESCE((SELECT SUM(line_total_cents) FROM order_items WHERE order_id=v_order),0),
+          updated_at = now()
+@@ -275,6 +339,15 @@
+   UPDATE carts SET cart_json='{"items":[]}'::jsonb, updated_at=now()
+    WHERE conversation_key = p_conversation_key;
+ 
++  -- Persist durable state lock (PLACED)
++  UPDATE conversation_state
++     SET state_json = jsonb_set(
++           jsonb_set(state_json, '{stage}', to_jsonb('PLACED'::text), true),
++           '{last_order_id}', to_jsonb(v_order::text), true
++         ),
++         updated_at = now()
++   WHERE conversation_key = p_conversation_key;
++
+   RETURN QUERY
+     SELECT
+       v_order,
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/migrations/2026-01-21_p0_prod_patches.sql /mnt/data/resto_n8n_pack_v3.0_SILICON/db/migrations/2026-01-21_p0_prod_patches.sql
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/migrations/2026-01-21_p0_prod_patches.sql	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/db/migrations/2026-01-21_p0_prod_patches.sql	2026-01-21 16:39:48.929474920 +0000
+@@ -0,0 +1,177 @@
++-- P0 production patches (2026-01-21)
++-- Idempotent migration: API clients (multi-tenant), Outbox, create_order idempotency/PLACED lock.
++CREATE EXTENSION IF NOT EXISTS pgcrypto;
++
++-- API clients
++CREATE TABLE IF NOT EXISTS api_clients (
++  client_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++  client_name     text NOT NULL,
++  token_hash      text NOT NULL UNIQUE, -- sha256 hex
++  tenant_id       uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
++  restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
++  scopes          jsonb NOT NULL DEFAULT '[]'::jsonb,
++  is_active       boolean NOT NULL DEFAULT true,
++  last_used_at    timestamptz NULL,
++  created_at      timestamptz NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS idx_api_clients_active_hash
++  ON api_clients (is_active, token_hash);
++
++-- Outbox
++CREATE TABLE IF NOT EXISTS outbound_messages (
++  outbound_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++  dedupe_key          text NOT NULL UNIQUE,
++  tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
++  restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
++  conversation_key    text NULL,
++  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
++  user_id             text NOT NULL,
++  order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
++  template            text NOT NULL DEFAULT 'reply',
++  payload_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
++  status              text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SENT','DLQ')),
++  attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
++  next_retry_at       timestamptz NOT NULL DEFAULT now(),
++  provider_message_id text NULL,
++  last_error          text NULL,
++  created_at          timestamptz NOT NULL DEFAULT now(),
++  updated_at          timestamptz NOT NULL DEFAULT now(),
++  sent_at             timestamptz NULL
++);
++
++CREATE INDEX IF NOT EXISTS idx_outbound_due
++  ON outbound_messages (status, next_retry_at);
++
++CREATE INDEX IF NOT EXISTS idx_outbound_rest_channel
++  ON outbound_messages (restaurant_id, channel, created_at DESC);
++
++-- Replace create_order with idempotent PLACED lock
++CREATE OR REPLACE FUNCTION create_order(p_conversation_key text)
++RETURNS TABLE(order_id uuid, total_cents int, summary text)
++LANGUAGE plpgsql
++AS $$
++DECLARE
++  v_tenant uuid;
++  v_restaurant uuid;
++  v_channel text;
++  v_user text;
++  v_mode text;
++  v_order uuid;
++  v_stage text;
++  v_last_order text;
++BEGIN
++  -- Lock state row to prevent concurrent double orders
++  SELECT tenant_id, restaurant_id, channel, user_id,
++         COALESCE(state_json->>'stage','') AS stage,
++         COALESCE(state_json->>'last_order_id','') AS last_order_id
++    INTO v_tenant, v_restaurant, v_channel, v_user, v_stage, v_last_order
++  FROM conversation_state
++  WHERE conversation_key = p_conversation_key
++  FOR UPDATE;
++
++  IF v_restaurant IS NULL THEN
++    RAISE EXCEPTION 'Unknown conversation_key %', p_conversation_key;
++  END IF;
++
++  -- Idempotency: if already placed, return existing order
++  IF v_stage = 'PLACED' AND v_last_order <> '' THEN
++    RETURN QUERY
++      SELECT
++        v_last_order::uuid,
++        COALESCE((SELECT total_cents FROM orders WHERE order_id=v_last_order::uuid), 0),
++        (SELECT string_agg(label || ' x' || qty, ', ')
++           FROM order_items
++          WHERE order_id=v_last_order::uuid);
++    RETURN;
++  END IF;
++
++  SELECT COALESCE(
++           (SELECT cart_json->>'serviceMode' FROM carts WHERE conversation_key=p_conversation_key),
++           (SELECT state_json->>'serviceMode' FROM conversation_state WHERE conversation_key=p_conversation_key),
++           'a_emporter'
++         )
++    INTO v_mode;
++
++  INSERT INTO orders (tenant_id, restaurant_id, channel, user_id, service_mode, status)
++  VALUES (v_tenant, v_restaurant, v_channel, v_user, v_mode, 'NEW')
++  RETURNING orders.order_id INTO v_order;
++
++  -- Insert items
++  WITH cart AS (
++    SELECT cart_json
++    FROM carts
++    WHERE conversation_key = p_conversation_key
++  ),
++  lines AS (
++    SELECT
++      (elem->>'item')::text AS item_code,
++      GREATEST(1, LEAST(20, COALESCE((elem->>'qty')::int, 1))) AS qty,
++      COALESCE(elem->'options','[]'::jsonb) AS options_json
++    FROM cart, LATERAL jsonb_array_elements(COALESCE(cart_json->'items','[]'::jsonb)) elem
++  ),
++  priced AS (
++    SELECT
++      l.item_code,
++      l.qty,
++      l.options_json,
++      mi.label,
++      mi.price_cents AS base_cents,
++      COALESCE((
++        SELECT SUM(mo.price_delta_cents)
++        FROM jsonb_array_elements_text(l.options_json) oc(option_code)
++        JOIN menu_item_options mo
++          ON mo.restaurant_id = v_restaurant
++         AND mo.option_code = oc.option_code
++      ),0) AS opt_cents
++    FROM lines l
++    JOIN menu_items mi
++      ON mi.restaurant_id = v_restaurant
++     AND mi.item_code = l.item_code
++     AND mi.active = true
++  )
++  INSERT INTO order_items(order_id, item_code, label, qty, unit_price_cents, options_json, line_total_cents)
++  SELECT
++    v_order,
++    item_code,
++    label,
++    qty,
++    (base_cents + opt_cents) AS unit_price_cents,
++    options_json,
++    (base_cents + opt_cents) * qty AS line_total_cents
++  FROM priced;
++
++  UPDATE orders
++     SET total_cents = COALESCE((SELECT SUM(line_total_cents) FROM order_items WHERE order_id=v_order),0),
++         updated_at = now()
++   WHERE order_id = v_order;
++
++  -- Clear cart after placing order
++  UPDATE carts SET cart_json='{"items":[]}'::jsonb, updated_at=now()
++   WHERE conversation_key = p_conversation_key;
++
++  -- Persist durable state lock (PLACED)
++  UPDATE conversation_state
++     SET state_json = jsonb_set(
++           jsonb_set(state_json, '{stage}', to_jsonb('PLACED'::text), true),
++           '{last_order_id}', to_jsonb(v_order::text), true
++         ),
++         updated_at = now()
++   WHERE conversation_key = p_conversation_key;
++
++  RETURN QUERY
++    SELECT
++      v_order,
++      (SELECT total_cents FROM orders WHERE order_id=v_order),
++      (SELECT string_agg(label || ' x' || qty, ', ')
++         FROM order_items
++        WHERE order_id=v_order);
++
++END;
++$$;
++
++-- Optional: seed a legacy api_client if you want to migrate off WEBHOOK_SHARED_TOKEN
++-- Example:
++-- INSERT INTO api_clients(client_name, token_hash, tenant_id, restaurant_id, scopes)
++-- VALUES ('legacy', '<sha256_hex>', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', '["legacy_shared"]'::jsonb)
++-- ON CONFLICT DO NOTHING;
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docker-compose.hostinger.prod.yml /mnt/data/resto_n8n_pack_v3.0_SILICON/docker-compose.hostinger.prod.yml
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docker-compose.hostinger.prod.yml	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docker-compose.hostinger.prod.yml	2026-01-21 16:46:44.433605665 +0000
+@@ -15,6 +15,8 @@
+       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+       - "--entrypoints.websecure.address=:443"
++      - "--entrypoints.web.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS}"
++      - "--entrypoints.websecure.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS}"
+ 
+       - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
+       - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+@@ -102,6 +104,8 @@
+       - "traefik.http.middlewares.api-public-ratelimit.ratelimit.burst=40"
+       - "traefik.http.middlewares.api-public-headers.headers.browserXSSFilter=true"
+       - "traefik.http.middlewares.api-public-headers.headers.contentTypeNosniff=true"
++      - "traefik.http.middlewares.api-public-headers.headers.frameDeny=true"
++      - "traefik.http.middlewares.api-public-headers.headers.referrerPolicy=no-referrer"
+       - "traefik.http.middlewares.api-public-headers.headers.forceSTSHeader=true"
+       - "traefik.http.middlewares.api-public-headers.headers.stsSeconds=31536000"
+       - "traefik.http.middlewares.api-public-headers.headers.stsIncludeSubdomains=true"
+@@ -138,6 +142,8 @@
+       - "traefik.http.middlewares.console-auth.basicauth.usersfile=/run/secrets/traefik_usersfile"
+       - "traefik.http.middlewares.console-headers.headers.browserXSSFilter=true"
+       - "traefik.http.middlewares.console-headers.headers.contentTypeNosniff=true"
++      - "traefik.http.middlewares.console-headers.headers.frameDeny=true"
++      - "traefik.http.middlewares.console-headers.headers.referrerPolicy=no-referrer"
+       - "traefik.http.middlewares.console-headers.headers.forceSTSHeader=true"
+       - "traefik.http.middlewares.console-headers.headers.stsSeconds=31536000"
+       - "traefik.http.middlewares.console-headers.headers.stsIncludeSubdomains=true"
+@@ -191,6 +197,10 @@
+       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN}
+       - RATE_LIMIT_PER_30S=${RATE_LIMIT_PER_30S:-6}
+       - MENU_CACHE_TTL_SEC=${MENU_CACHE_TTL_SEC:-300}
++      - ALLOWED_AUDIO_DOMAINS=${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
++      - OUTBOX_MAX_ATTEMPTS=${OUTBOX_MAX_ATTEMPTS:-7}
++      - OUTBOX_BASE_DELAY_SEC=${OUTBOX_BASE_DELAY_SEC:-30}
++      - OUTBOX_MAX_DELAY_SEC=${OUTBOX_MAX_DELAY_SEC:-3600}
+ 
+       - WA_SEND_URL=${WA_SEND_URL:-http://mock-api:8080/send/wa}
+       - WA_API_TOKEN=${WA_API_TOKEN:-dev}
+@@ -244,6 +254,10 @@
+       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN}
+       - RATE_LIMIT_PER_30S=${RATE_LIMIT_PER_30S:-6}
+       - MENU_CACHE_TTL_SEC=${MENU_CACHE_TTL_SEC:-300}
++      - ALLOWED_AUDIO_DOMAINS=${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
++      - OUTBOX_MAX_ATTEMPTS=${OUTBOX_MAX_ATTEMPTS:-7}
++      - OUTBOX_BASE_DELAY_SEC=${OUTBOX_BASE_DELAY_SEC:-30}
++      - OUTBOX_MAX_DELAY_SEC=${OUTBOX_MAX_DELAY_SEC:-3600}
+ 
+       - WA_SEND_URL=${WA_SEND_URL:-http://mock-api:8080/send/wa}
+       - WA_API_TOKEN=${WA_API_TOKEN:-dev}
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/API_CONVENTIONS.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/API_CONVENTIONS.md
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/API_CONVENTIONS.md	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/API_CONVENTIONS.md	2026-01-21 16:49:53.748987655 +0000
+@@ -9,13 +9,17 @@
+ - Les changements non rétro-compatibles créent `/v2/...`
+ 
+ ## Auth (inbound)
+-Les endpoints inbound attendent un token partagé (simple et robuste pour MVP/prod) :
+-- Header : `x-webhook-token: <WEBHOOK_SHARED_TOKEN>`
+-- ou `Authorization: Bearer <WEBHOOK_SHARED_TOKEN>`
+-- ou query param `?token=<WEBHOOK_SHARED_TOKEN>` (fallback)
++**P0 (prod)** : auth multi-tenant par token **par client** (table `api_clients`) :
++- Header : `x-api-token: <TOKEN>`
++- ou `Authorization: Bearer <TOKEN>`
++- ou query param `?token=<TOKEN>` (fallback)
+ 
+-> Pour une intégration directe Meta (WhatsApp/IG), ajouter ensuite validation signature (`X-Hub-Signature-256`) et GET verify_token.
+-> La gateway est déjà prête pour introduire ça sans casser les clients.
++Règles :
++- Le body ne doit **jamais** fournir `tenantId/restaurantId` (ignorés si token valide).
++- Les tokens sont stockés **hashés (sha256)** en DB.
++- Les tentatives invalides sont journalisées dans `security_events`.
++
++> Fallback legacy (compat) : `WEBHOOK_SHARED_TOKEN` reste supporté si la table `api_clients` n’est pas encore utilisée.
+ 
+ ## Endpoints publics
+ ### Inbound
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/CHANGELOG.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/CHANGELOG.md
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/CHANGELOG.md	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/CHANGELOG.md	2026-01-21 16:49:53.752873388 +0000
+@@ -1,5 +1,15 @@
+ # CHANGELOG
+ 
++## 3.0.1 - 2026-01-21 (P0 patches)
++### Added
++- Multi-tenant inbound auth via `api_clients` (hashed tokens) + security_events logging.
++- SSRF protections for STT audioUrl (https-only + allowlist).
++- Outbox pattern (`outbound_messages`) + retry worker in W8.
++- Backup/restore scripts + DB migration script.
++### Changed
++- `create_order` now enforces PLACED state to prevent double orders.
++- Traefik hardened with trusted IPs + security headers.
++
+ ## 3.0.0 - 2026-01-21
+ ### Added
+ - Gateway (Nginx) exposing stable `/v1/...` API and hiding n8n behind it.
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/PROD_CHECKLIST.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/PROD_CHECKLIST.md
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/PROD_CHECKLIST.md	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/PROD_CHECKLIST.md	2026-01-21 16:49:53.751720404 +0000
+@@ -1,7 +1,7 @@
+ # PROD_CHECKLIST (v3.0)
+ 
+ ## Avant mise en prod
+-- [ ] `.env` rempli (DOMAIN_NAME, SSL_EMAIL, ADMIN_ALLOWED_IPS, WEBHOOK_SHARED_TOKEN)
++- [ ] `.env` rempli (DOMAIN_NAME, SSL_EMAIL, ADMIN_ALLOWED_IPS, TRAEFIK_TRUSTED_IPS, ALLOWED_AUDIO_DOMAINS)
+ - [ ] secrets présents (`secrets/postgres_password`, `secrets/n8n_encryption_key`, `secrets/traefik_usersfile`)
+ - [ ] DNS OK pour `console` et `api`
+ - [ ] `docker compose up -d` sans erreurs
+@@ -13,3 +13,17 @@
+ - [ ] Activer pruning (déjà activé)
+ - [ ] Sauvegardes Postgres (pg_dump quotidien)
+ - [ ] Monitoring (Traefik dashboard local, logs)
++
++
++## Sécurité P0
++- [ ] `api_clients` configuré (≥ 1 token par tenant/restaurant)
++- [ ] `WEBHOOK_SHARED_TOKEN` supprimé ou gardé uniquement en fallback (temporaire)
++- [ ] `ALLOWED_AUDIO_DOMAINS` non vide (sinon STT audio bloqué)
++
++## Fiabilité P0
++- [ ] Outbox activée (W8_OPS branche outbox)
++- [ ] `outbound_messages` : PENDING/RETRY/SENT/DLQ surveillés
++
++## Backup/Restore P0
++- [ ] Backup quotidien (cron) via `./scripts/backup_postgres.sh`
++- [ ] Restore drill validé (préprod) via `./scripts/restore_postgres.sh`
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/RUNBOOK_HOSTINGER.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/RUNBOOK_HOSTINGER.md
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/RUNBOOK_HOSTINGER.md	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/RUNBOOK_HOSTINGER.md	2026-01-21 16:49:53.750115678 +0000
+@@ -34,11 +34,27 @@
+ ```
+ 
+ ## 4) Deploy
++
++### 4.1) Démarrer la stack
+ ```bash
+ docker compose -f docker-compose.hostinger.prod.yml pull
+ docker compose -f docker-compose.hostinger.prod.yml up -d
+ ```
+ 
++### 4.2) Appliquer les migrations DB (si DB existante)
++```bash
++./scripts/db_migrate.sh db/migrations/2026-01-21_p0_prod_patches.sql
++```
++
++### 4.3) Backups (à activer dès J1)
++```bash
++# Backup manuel
++./scripts/backup_postgres.sh
++
++# Restore drill (sur preprod)
++CONFIRM_RESTORE=YES ./scripts/restore_postgres.sh ./backups/n8n_<date>.sql.gz
++```
++
+ ## 5) Import workflows
+ - Ouvre `https://console.<domain>` (depuis IP allowlist)
+ - Importe W1..W8
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/patches/unified.patch /mnt/data/resto_n8n_pack_v3.0_SILICON/patches/unified.patch
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/patches/unified.patch	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/patches/unified.patch	2026-01-21 16:51:10.665126839 +0000
+@@ -0,0 +1,526 @@
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/config/.env.example /mnt/data/resto_n8n_pack_v3.0_SILICON/config/.env.example
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/config/.env.example	2026-01-21 15:15:28.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/config/.env.example	2026-01-21 16:47:09.760388116 +0000
++@@ -13,13 +13,16 @@
++ # Timezone
++ TZ=Europe/Paris
++ 
+++# Reverse proxy trusted IPs (Traefik will trust X-Forwarded-For only from these IPs)
+++TRAEFIK_TRUSTED_IPS=127.0.0.1/32  # TODO: set to your load balancer / reverse proxy public IPs
+++
++ # Allowlist (CIDR list, comma-separated)
++-ADMIN_ALLOWED_IPS=1.2.3.4/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+++ADMIN_ALLOWED_IPS=127.0.0.1/32  # TODO: replace by your public IPs /32 in prod
++ 
++ # Versions
++ N8N_VERSION=1.80.0
++ 
++-# Shared token for inbound webhooks (header x-webhook-token / bearer / query token)
+++# Legacy shared token for inbound webhooks (fallback only). Prefer api_clients table + per-tenant token.
++ WEBHOOK_SHARED_TOKEN=REPLACE_WITH_LONG_RANDOM_TOKEN
++ 
++ # Queue concurrency
++@@ -44,3 +47,11 @@
++ # After importing workflows, generate and set:
++ # CORE_WORKFLOW_ID=<n8n workflow id>
++ CORE_WORKFLOW_ID=
+++
+++# Audio URL allowlist (comma-separated domains). Empty => block all audio STT.
+++ALLOWED_AUDIO_DOMAINS=cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com
+++
+++# Outbox retry/backoff
+++OUTBOX_MAX_ATTEMPTS=7
+++OUTBOX_BASE_DELAY_SEC=30
+++OUTBOX_MAX_DELAY_SEC=3600
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/bootstrap.sql /mnt/data/resto_n8n_pack_v3.0_SILICON/db/bootstrap.sql
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/bootstrap.sql	2026-01-21 15:10:56.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/db/bootstrap.sql	2026-01-21 16:39:20.132334379 +0000
++@@ -21,6 +21,52 @@
++   created_at      timestamptz NOT NULL DEFAULT now()
++ );
++ 
+++
+++-- API clients (P0-AUTH-MULTITENANT)
+++-- Stores hashed tokens mapped to tenant/restaurant + scopes.
+++CREATE TABLE IF NOT EXISTS api_clients (
+++  client_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+++  client_name     text NOT NULL,
+++  token_hash      text NOT NULL UNIQUE, -- sha256 hex
+++  tenant_id       uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+++  restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
+++  scopes          jsonb NOT NULL DEFAULT '[]'::jsonb,
+++  is_active       boolean NOT NULL DEFAULT true,
+++  last_used_at    timestamptz NULL,
+++  created_at      timestamptz NOT NULL DEFAULT now()
+++);
+++
+++CREATE INDEX IF NOT EXISTS idx_api_clients_active_hash
+++  ON api_clients (is_active, token_hash);
+++
+++-- Outbox pattern (P0-OUTBOX-RETRY)
+++CREATE TABLE IF NOT EXISTS outbound_messages (
+++  outbound_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+++  dedupe_key          text NOT NULL UNIQUE,
+++  tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+++  restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
+++  conversation_key    text NULL,
+++  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+++  user_id             text NOT NULL,
+++  order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
+++  template            text NOT NULL DEFAULT 'reply',
+++  payload_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
+++  status              text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SENT','DLQ')),
+++  attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+++  next_retry_at       timestamptz NOT NULL DEFAULT now(),
+++  provider_message_id text NULL,
+++  last_error          text NULL,
+++  created_at          timestamptz NOT NULL DEFAULT now(),
+++  updated_at          timestamptz NOT NULL DEFAULT now(),
+++  sent_at             timestamptz NULL
+++);
+++
+++CREATE INDEX IF NOT EXISTS idx_outbound_due
+++  ON outbound_messages (status, next_retry_at);
+++
+++CREATE INDEX IF NOT EXISTS idx_outbound_rest_channel
+++  ON outbound_messages (restaurant_id, channel, created_at DESC);
+++
++ -- RBAC mapping per channel
++ CREATE TABLE IF NOT EXISTS restaurant_users (
++   id              bigserial PRIMARY KEY,
++@@ -201,20 +247,40 @@
++   v_user text;
++   v_mode text;
++   v_order uuid;
+++  v_stage text;
+++  v_last_order text;
++ BEGIN
++-  SELECT tenant_id, restaurant_id, channel, user_id
++-    INTO v_tenant, v_restaurant, v_channel, v_user
+++  -- Lock state row to prevent concurrent double orders
+++  SELECT tenant_id, restaurant_id, channel, user_id,
+++         COALESCE(state_json->>'stage','') AS stage,
+++         COALESCE(state_json->>'last_order_id','') AS last_order_id
+++    INTO v_tenant, v_restaurant, v_channel, v_user, v_stage, v_last_order
++   FROM conversation_state
++-  WHERE conversation_key = p_conversation_key;
+++  WHERE conversation_key = p_conversation_key
+++  FOR UPDATE;
++ 
++   IF v_restaurant IS NULL THEN
++     RAISE EXCEPTION 'Unknown conversation_key %', p_conversation_key;
++   END IF;
++ 
++-  SELECT COALESCE(cart_json->>'serviceMode', (SELECT state_json->>'serviceMode' FROM conversation_state WHERE conversation_key=p_conversation_key), 'a_emporter')
++-    INTO v_mode
++-  FROM carts
++-  WHERE conversation_key = p_conversation_key;
+++  -- Idempotency: if already placed, return existing order
+++  IF v_stage = 'PLACED' AND v_last_order <> '' THEN
+++    RETURN QUERY
+++      SELECT
+++        v_last_order::uuid,
+++        COALESCE((SELECT total_cents FROM orders WHERE order_id=v_last_order::uuid), 0),
+++        (SELECT string_agg(label || ' x' || qty, ', ')
+++           FROM order_items
+++          WHERE order_id=v_last_order::uuid);
+++    RETURN;
+++  END IF;
+++
+++  SELECT COALESCE(
+++           (SELECT cart_json->>'serviceMode' FROM carts WHERE conversation_key=p_conversation_key),
+++           (SELECT state_json->>'serviceMode' FROM conversation_state WHERE conversation_key=p_conversation_key),
+++           'a_emporter'
+++         )
+++    INTO v_mode;
++ 
++   INSERT INTO orders (tenant_id, restaurant_id, channel, user_id, service_mode, status)
++   VALUES (v_tenant, v_restaurant, v_channel, v_user, v_mode, 'NEW')
++@@ -252,20 +318,18 @@
++       ON mi.restaurant_id = v_restaurant
++      AND mi.item_code = l.item_code
++      AND mi.active = true
++-  ),
++-  ins AS (
++-    INSERT INTO order_items(order_id, item_code, label, qty, unit_price_cents, options_json, line_total_cents)
++-    SELECT
++-      v_order,
++-      item_code,
++-      label,
++-      qty,
++-      (base_cents + opt_cents) AS unit_price_cents,
++-      options_json,
++-      (base_cents + opt_cents) * qty AS line_total_cents
++-    FROM priced
++-    RETURNING line_total_cents
++   )
+++  INSERT INTO order_items(order_id, item_code, label, qty, unit_price_cents, options_json, line_total_cents)
+++  SELECT
+++    v_order,
+++    item_code,
+++    label,
+++    qty,
+++    (base_cents + opt_cents) AS unit_price_cents,
+++    options_json,
+++    (base_cents + opt_cents) * qty AS line_total_cents
+++  FROM priced;
+++
++   UPDATE orders
++      SET total_cents = COALESCE((SELECT SUM(line_total_cents) FROM order_items WHERE order_id=v_order),0),
++          updated_at = now()
++@@ -275,6 +339,15 @@
++   UPDATE carts SET cart_json='{"items":[]}'::jsonb, updated_at=now()
++    WHERE conversation_key = p_conversation_key;
++ 
+++  -- Persist durable state lock (PLACED)
+++  UPDATE conversation_state
+++     SET state_json = jsonb_set(
+++           jsonb_set(state_json, '{stage}', to_jsonb('PLACED'::text), true),
+++           '{last_order_id}', to_jsonb(v_order::text), true
+++         ),
+++         updated_at = now()
+++   WHERE conversation_key = p_conversation_key;
+++
++   RETURN QUERY
++     SELECT
++       v_order,
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/migrations/2026-01-21_p0_prod_patches.sql /mnt/data/resto_n8n_pack_v3.0_SILICON/db/migrations/2026-01-21_p0_prod_patches.sql
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/db/migrations/2026-01-21_p0_prod_patches.sql	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/db/migrations/2026-01-21_p0_prod_patches.sql	2026-01-21 16:39:48.929474920 +0000
++@@ -0,0 +1,177 @@
+++-- P0 production patches (2026-01-21)
+++-- Idempotent migration: API clients (multi-tenant), Outbox, create_order idempotency/PLACED lock.
+++CREATE EXTENSION IF NOT EXISTS pgcrypto;
+++
+++-- API clients
+++CREATE TABLE IF NOT EXISTS api_clients (
+++  client_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+++  client_name     text NOT NULL,
+++  token_hash      text NOT NULL UNIQUE, -- sha256 hex
+++  tenant_id       uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+++  restaurant_id   uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
+++  scopes          jsonb NOT NULL DEFAULT '[]'::jsonb,
+++  is_active       boolean NOT NULL DEFAULT true,
+++  last_used_at    timestamptz NULL,
+++  created_at      timestamptz NOT NULL DEFAULT now()
+++);
+++
+++CREATE INDEX IF NOT EXISTS idx_api_clients_active_hash
+++  ON api_clients (is_active, token_hash);
+++
+++-- Outbox
+++CREATE TABLE IF NOT EXISTS outbound_messages (
+++  outbound_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+++  dedupe_key          text NOT NULL UNIQUE,
+++  tenant_id           uuid NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+++  restaurant_id       uuid NOT NULL REFERENCES restaurants(restaurant_id) ON DELETE CASCADE,
+++  conversation_key    text NULL,
+++  channel             text NOT NULL CHECK (channel IN ('whatsapp','instagram','messenger')),
+++  user_id             text NOT NULL,
+++  order_id            uuid NULL REFERENCES orders(order_id) ON DELETE SET NULL,
+++  template            text NOT NULL DEFAULT 'reply',
+++  payload_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
+++  status              text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SENT','DLQ')),
+++  attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+++  next_retry_at       timestamptz NOT NULL DEFAULT now(),
+++  provider_message_id text NULL,
+++  last_error          text NULL,
+++  created_at          timestamptz NOT NULL DEFAULT now(),
+++  updated_at          timestamptz NOT NULL DEFAULT now(),
+++  sent_at             timestamptz NULL
+++);
+++
+++CREATE INDEX IF NOT EXISTS idx_outbound_due
+++  ON outbound_messages (status, next_retry_at);
+++
+++CREATE INDEX IF NOT EXISTS idx_outbound_rest_channel
+++  ON outbound_messages (restaurant_id, channel, created_at DESC);
+++
+++-- Replace create_order with idempotent PLACED lock
+++CREATE OR REPLACE FUNCTION create_order(p_conversation_key text)
+++RETURNS TABLE(order_id uuid, total_cents int, summary text)
+++LANGUAGE plpgsql
+++AS $$
+++DECLARE
+++  v_tenant uuid;
+++  v_restaurant uuid;
+++  v_channel text;
+++  v_user text;
+++  v_mode text;
+++  v_order uuid;
+++  v_stage text;
+++  v_last_order text;
+++BEGIN
+++  -- Lock state row to prevent concurrent double orders
+++  SELECT tenant_id, restaurant_id, channel, user_id,
+++         COALESCE(state_json->>'stage','') AS stage,
+++         COALESCE(state_json->>'last_order_id','') AS last_order_id
+++    INTO v_tenant, v_restaurant, v_channel, v_user, v_stage, v_last_order
+++  FROM conversation_state
+++  WHERE conversation_key = p_conversation_key
+++  FOR UPDATE;
+++
+++  IF v_restaurant IS NULL THEN
+++    RAISE EXCEPTION 'Unknown conversation_key %', p_conversation_key;
+++  END IF;
+++
+++  -- Idempotency: if already placed, return existing order
+++  IF v_stage = 'PLACED' AND v_last_order <> '' THEN
+++    RETURN QUERY
+++      SELECT
+++        v_last_order::uuid,
+++        COALESCE((SELECT total_cents FROM orders WHERE order_id=v_last_order::uuid), 0),
+++        (SELECT string_agg(label || ' x' || qty, ', ')
+++           FROM order_items
+++          WHERE order_id=v_last_order::uuid);
+++    RETURN;
+++  END IF;
+++
+++  SELECT COALESCE(
+++           (SELECT cart_json->>'serviceMode' FROM carts WHERE conversation_key=p_conversation_key),
+++           (SELECT state_json->>'serviceMode' FROM conversation_state WHERE conversation_key=p_conversation_key),
+++           'a_emporter'
+++         )
+++    INTO v_mode;
+++
+++  INSERT INTO orders (tenant_id, restaurant_id, channel, user_id, service_mode, status)
+++  VALUES (v_tenant, v_restaurant, v_channel, v_user, v_mode, 'NEW')
+++  RETURNING orders.order_id INTO v_order;
+++
+++  -- Insert items
+++  WITH cart AS (
+++    SELECT cart_json
+++    FROM carts
+++    WHERE conversation_key = p_conversation_key
+++  ),
+++  lines AS (
+++    SELECT
+++      (elem->>'item')::text AS item_code,
+++      GREATEST(1, LEAST(20, COALESCE((elem->>'qty')::int, 1))) AS qty,
+++      COALESCE(elem->'options','[]'::jsonb) AS options_json
+++    FROM cart, LATERAL jsonb_array_elements(COALESCE(cart_json->'items','[]'::jsonb)) elem
+++  ),
+++  priced AS (
+++    SELECT
+++      l.item_code,
+++      l.qty,
+++      l.options_json,
+++      mi.label,
+++      mi.price_cents AS base_cents,
+++      COALESCE((
+++        SELECT SUM(mo.price_delta_cents)
+++        FROM jsonb_array_elements_text(l.options_json) oc(option_code)
+++        JOIN menu_item_options mo
+++          ON mo.restaurant_id = v_restaurant
+++         AND mo.option_code = oc.option_code
+++      ),0) AS opt_cents
+++    FROM lines l
+++    JOIN menu_items mi
+++      ON mi.restaurant_id = v_restaurant
+++     AND mi.item_code = l.item_code
+++     AND mi.active = true
+++  )
+++  INSERT INTO order_items(order_id, item_code, label, qty, unit_price_cents, options_json, line_total_cents)
+++  SELECT
+++    v_order,
+++    item_code,
+++    label,
+++    qty,
+++    (base_cents + opt_cents) AS unit_price_cents,
+++    options_json,
+++    (base_cents + opt_cents) * qty AS line_total_cents
+++  FROM priced;
+++
+++  UPDATE orders
+++     SET total_cents = COALESCE((SELECT SUM(line_total_cents) FROM order_items WHERE order_id=v_order),0),
+++         updated_at = now()
+++   WHERE order_id = v_order;
+++
+++  -- Clear cart after placing order
+++  UPDATE carts SET cart_json='{"items":[]}'::jsonb, updated_at=now()
+++   WHERE conversation_key = p_conversation_key;
+++
+++  -- Persist durable state lock (PLACED)
+++  UPDATE conversation_state
+++     SET state_json = jsonb_set(
+++           jsonb_set(state_json, '{stage}', to_jsonb('PLACED'::text), true),
+++           '{last_order_id}', to_jsonb(v_order::text), true
+++         ),
+++         updated_at = now()
+++   WHERE conversation_key = p_conversation_key;
+++
+++  RETURN QUERY
+++    SELECT
+++      v_order,
+++      (SELECT total_cents FROM orders WHERE order_id=v_order),
+++      (SELECT string_agg(label || ' x' || qty, ', ')
+++         FROM order_items
+++        WHERE order_id=v_order);
+++
+++END;
+++$$;
+++
+++-- Optional: seed a legacy api_client if you want to migrate off WEBHOOK_SHARED_TOKEN
+++-- Example:
+++-- INSERT INTO api_clients(client_name, token_hash, tenant_id, restaurant_id, scopes)
+++-- VALUES ('legacy', '<sha256_hex>', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', '["legacy_shared"]'::jsonb)
+++-- ON CONFLICT DO NOTHING;
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docker-compose.hostinger.prod.yml /mnt/data/resto_n8n_pack_v3.0_SILICON/docker-compose.hostinger.prod.yml
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docker-compose.hostinger.prod.yml	2026-01-21 15:15:28.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docker-compose.hostinger.prod.yml	2026-01-21 16:46:44.433605665 +0000
++@@ -15,6 +15,8 @@
++       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
++       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
++       - "--entrypoints.websecure.address=:443"
+++      - "--entrypoints.web.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS}"
+++      - "--entrypoints.websecure.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS}"
++ 
++       - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
++       - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
++@@ -102,6 +104,8 @@
++       - "traefik.http.middlewares.api-public-ratelimit.ratelimit.burst=40"
++       - "traefik.http.middlewares.api-public-headers.headers.browserXSSFilter=true"
++       - "traefik.http.middlewares.api-public-headers.headers.contentTypeNosniff=true"
+++      - "traefik.http.middlewares.api-public-headers.headers.frameDeny=true"
+++      - "traefik.http.middlewares.api-public-headers.headers.referrerPolicy=no-referrer"
++       - "traefik.http.middlewares.api-public-headers.headers.forceSTSHeader=true"
++       - "traefik.http.middlewares.api-public-headers.headers.stsSeconds=31536000"
++       - "traefik.http.middlewares.api-public-headers.headers.stsIncludeSubdomains=true"
++@@ -138,6 +142,8 @@
++       - "traefik.http.middlewares.console-auth.basicauth.usersfile=/run/secrets/traefik_usersfile"
++       - "traefik.http.middlewares.console-headers.headers.browserXSSFilter=true"
++       - "traefik.http.middlewares.console-headers.headers.contentTypeNosniff=true"
+++      - "traefik.http.middlewares.console-headers.headers.frameDeny=true"
+++      - "traefik.http.middlewares.console-headers.headers.referrerPolicy=no-referrer"
++       - "traefik.http.middlewares.console-headers.headers.forceSTSHeader=true"
++       - "traefik.http.middlewares.console-headers.headers.stsSeconds=31536000"
++       - "traefik.http.middlewares.console-headers.headers.stsIncludeSubdomains=true"
++@@ -191,6 +197,10 @@
++       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN}
++       - RATE_LIMIT_PER_30S=${RATE_LIMIT_PER_30S:-6}
++       - MENU_CACHE_TTL_SEC=${MENU_CACHE_TTL_SEC:-300}
+++      - ALLOWED_AUDIO_DOMAINS=${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
+++      - OUTBOX_MAX_ATTEMPTS=${OUTBOX_MAX_ATTEMPTS:-7}
+++      - OUTBOX_BASE_DELAY_SEC=${OUTBOX_BASE_DELAY_SEC:-30}
+++      - OUTBOX_MAX_DELAY_SEC=${OUTBOX_MAX_DELAY_SEC:-3600}
++ 
++       - WA_SEND_URL=${WA_SEND_URL:-http://mock-api:8080/send/wa}
++       - WA_API_TOKEN=${WA_API_TOKEN:-dev}
++@@ -244,6 +254,10 @@
++       - WEBHOOK_SHARED_TOKEN=${WEBHOOK_SHARED_TOKEN}
++       - RATE_LIMIT_PER_30S=${RATE_LIMIT_PER_30S:-6}
++       - MENU_CACHE_TTL_SEC=${MENU_CACHE_TTL_SEC:-300}
+++      - ALLOWED_AUDIO_DOMAINS=${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
+++      - OUTBOX_MAX_ATTEMPTS=${OUTBOX_MAX_ATTEMPTS:-7}
+++      - OUTBOX_BASE_DELAY_SEC=${OUTBOX_BASE_DELAY_SEC:-30}
+++      - OUTBOX_MAX_DELAY_SEC=${OUTBOX_MAX_DELAY_SEC:-3600}
++ 
++       - WA_SEND_URL=${WA_SEND_URL:-http://mock-api:8080/send/wa}
++       - WA_API_TOKEN=${WA_API_TOKEN:-dev}
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/API_CONVENTIONS.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/API_CONVENTIONS.md
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/API_CONVENTIONS.md	2026-01-21 15:15:28.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/API_CONVENTIONS.md	2026-01-21 16:49:53.748987655 +0000
++@@ -9,13 +9,17 @@
++ - Les changements non rétro-compatibles créent `/v2/...`
++ 
++ ## Auth (inbound)
++-Les endpoints inbound attendent un token partagé (simple et robuste pour MVP/prod) :
++-- Header : `x-webhook-token: <WEBHOOK_SHARED_TOKEN>`
++-- ou `Authorization: Bearer <WEBHOOK_SHARED_TOKEN>`
++-- ou query param `?token=<WEBHOOK_SHARED_TOKEN>` (fallback)
+++**P0 (prod)** : auth multi-tenant par token **par client** (table `api_clients`) :
+++- Header : `x-api-token: <TOKEN>`
+++- ou `Authorization: Bearer <TOKEN>`
+++- ou query param `?token=<TOKEN>` (fallback)
++ 
++-> Pour une intégration directe Meta (WhatsApp/IG), ajouter ensuite validation signature (`X-Hub-Signature-256`) et GET verify_token.
++-> La gateway est déjà prête pour introduire ça sans casser les clients.
+++Règles :
+++- Le body ne doit **jamais** fournir `tenantId/restaurantId` (ignorés si token valide).
+++- Les tokens sont stockés **hashés (sha256)** en DB.
+++- Les tentatives invalides sont journalisées dans `security_events`.
+++
+++> Fallback legacy (compat) : `WEBHOOK_SHARED_TOKEN` reste supporté si la table `api_clients` n’est pas encore utilisée.
++ 
++ ## Endpoints publics
++ ### Inbound
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/CHANGELOG.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/CHANGELOG.md
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/CHANGELOG.md	2026-01-21 15:15:28.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/CHANGELOG.md	2026-01-21 16:49:53.752873388 +0000
++@@ -1,5 +1,15 @@
++ # CHANGELOG
++ 
+++## 3.0.1 - 2026-01-21 (P0 patches)
+++### Added
+++- Multi-tenant inbound auth via `api_clients` (hashed tokens) + security_events logging.
+++- SSRF protections for STT audioUrl (https-only + allowlist).
+++- Outbox pattern (`outbound_messages`) + retry worker in W8.
+++- Backup/restore scripts + DB migration script.
+++### Changed
+++- `create_order` now enforces PLACED state to prevent double orders.
+++- Traefik hardened with trusted IPs + security headers.
+++
++ ## 3.0.0 - 2026-01-21
++ ### Added
++ - Gateway (Nginx) exposing stable `/v1/...` API and hiding n8n behind it.
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/PROD_CHECKLIST.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/PROD_CHECKLIST.md
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/PROD_CHECKLIST.md	2026-01-21 15:15:28.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/PROD_CHECKLIST.md	2026-01-21 16:49:53.751720404 +0000
++@@ -1,7 +1,7 @@
++ # PROD_CHECKLIST (v3.0)
++ 
++ ## Avant mise en prod
++-- [ ] `.env` rempli (DOMAIN_NAME, SSL_EMAIL, ADMIN_ALLOWED_IPS, WEBHOOK_SHARED_TOKEN)
+++- [ ] `.env` rempli (DOMAIN_NAME, SSL_EMAIL, ADMIN_ALLOWED_IPS, TRAEFIK_TRUSTED_IPS, ALLOWED_AUDIO_DOMAINS)
++ - [ ] secrets présents (`secrets/postgres_password`, `secrets/n8n_encryption_key`, `secrets/traefik_usersfile`)
++ - [ ] DNS OK pour `console` et `api`
++ - [ ] `docker compose up -d` sans erreurs
++@@ -13,3 +13,17 @@
++ - [ ] Activer pruning (déjà activé)
++ - [ ] Sauvegardes Postgres (pg_dump quotidien)
++ - [ ] Monitoring (Traefik dashboard local, logs)
+++
+++
+++## Sécurité P0
+++- [ ] `api_clients` configuré (≥ 1 token par tenant/restaurant)
+++- [ ] `WEBHOOK_SHARED_TOKEN` supprimé ou gardé uniquement en fallback (temporaire)
+++- [ ] `ALLOWED_AUDIO_DOMAINS` non vide (sinon STT audio bloqué)
+++
+++## Fiabilité P0
+++- [ ] Outbox activée (W8_OPS branche outbox)
+++- [ ] `outbound_messages` : PENDING/RETRY/SENT/DLQ surveillés
+++
+++## Backup/Restore P0
+++- [ ] Backup quotidien (cron) via `./scripts/backup_postgres.sh`
+++- [ ] Restore drill validé (préprod) via `./scripts/restore_postgres.sh`
++diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/RUNBOOK_HOSTINGER.md /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/RUNBOOK_HOSTINGER.md
++--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/docs/RUNBOOK_HOSTINGER.md	2026-01-21 15:15:28.000000000 +0000
+++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/docs/RUNBOOK_HOSTINGER.md	2026-01-21 16:49:53.750115678 +0000
++@@ -34,11 +34,27 @@
++ ```
++ 
++ ## 4) Deploy
+++
+++### 4.1) Démarrer la stack
++ ```bash
++ docker compose -f docker-compose.hostinger.prod.yml pull
++ docker compose -f docker-compose.hostinger.prod.yml up -d
++ ```
++ 
+++### 4.2) Appliquer les migrations DB (si DB existante)
+++```bash
+++./scripts/db_migrate.sh db/migrations/2026-01-21_p0_prod_patches.sql
+++```
+++
+++### 4.3) Backups (à activer dès J1)
+++```bash
+++# Backup manuel
+++./scripts/backup_postgres.sh
+++
+++# Restore drill (sur preprod)
+++CONFIRM_RESTORE=YES ./scripts/restore_postgres.sh ./backups/n8n_<date>.sql.gz
+++```
+++
++ ## 5) Import workflows
++ - Ouvre `https://console.<domain>` (depuis IP allowlist)
++ - Importe W1..W8
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/backup_postgres.sh /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/backup_postgres.sh
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/backup_postgres.sh	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/backup_postgres.sh	2026-01-21 16:48:19.324229667 +0000
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.hostinger.prod.yml}"
++BACKUP_DIR="${BACKUP_DIR:-./backups}"
++RETENTION_COUNT="${RETENTION_COUNT:-14}"
++
++mkdir -p "$BACKUP_DIR"
++
++ts="$(date +%F_%H%M%S)"
++file="$BACKUP_DIR/n8n_${ts}.sql.gz"
++
++echo "== Backup Postgres (pg_dump) =="
++echo "Compose: $COMPOSE_FILE"
++echo "Output:  $file"
++
++# Ensure DB is up
++docker compose -f "$COMPOSE_FILE" up -d postgres
++
++# Dump + gzip (no secrets printed)
++docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "pg_dump -U n8n -d n8n" | gzip > "$file"
++
++echo "✅ Backup created: $file"
++
++echo "== Rotation: keep last $RETENTION_COUNT backups =="
++ls -1t "$BACKUP_DIR"/n8n_*.sql.gz 2>/dev/null | tail -n +"$((RETENTION_COUNT+1))" | xargs -r rm -f
++echo "✅ Rotation done"
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/db_migrate.sh /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/db_migrate.sh
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/db_migrate.sh	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/db_migrate.sh	2026-01-21 16:40:00.359955245 +0000
+@@ -0,0 +1,22 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.hostinger.prod.yml}"
++MIGRATION_FILE="${1:-db/migrations/2026-01-21_p0_prod_patches.sql}"
++
++if [[ ! -f "$MIGRATION_FILE" ]]; then
++  echo "❌ Migration file not found: $MIGRATION_FILE"
++  exit 1
++fi
++
++echo "== Applying DB migration =="
++echo "Compose: $COMPOSE_FILE"
++echo "Migration: $MIGRATION_FILE"
++
++# Ensure postgres is up
++docker compose -f "$COMPOSE_FILE" up -d postgres
++
++echo "== Running psql inside postgres container (idempotent) =="
++docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U n8n -d n8n < /dev/stdin" < "$MIGRATION_FILE"
++
++echo "✅ Migration applied"
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/preflight.sh /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/preflight.sh
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/preflight.sh	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/preflight.sh	2026-01-21 16:47:44.391450236 +0000
+@@ -2,9 +2,17 @@
+ set -euo pipefail
+ 
+ echo "== RESTO BOT v3.0 - Preflight =="
++
+ REQ_VARS=(
+-  DOMAIN_NAME SSL_EMAIL CONSOLE_SUBDOMAIN API_SUBDOMAIN ADMIN_ALLOWED_IPS
+-  N8N_VERSION WEBHOOK_SHARED_TOKEN
++  DOMAIN_NAME SSL_EMAIL CONSOLE_SUBDOMAIN API_SUBDOMAIN
++  ADMIN_ALLOWED_IPS TRAEFIK_TRUSTED_IPS
++  N8N_VERSION
++)
++
++OPT_VARS=(
++  WEBHOOK_SHARED_TOKEN
++  ALLOWED_AUDIO_DOMAINS
++  OUTBOX_MAX_ATTEMPTS OUTBOX_BASE_DELAY_SEC OUTBOX_MAX_DELAY_SEC
+ )
+ 
+ missing=0
+@@ -15,6 +23,28 @@
+   fi
+ done
+ 
++for v in "${OPT_VARS[@]}"; do
++  if [[ -z "${!v:-}" ]]; then
++    echo "⚠️  Optional env not set: $v"
++  fi
++done
++
++# Hard safety checks for allowlists in prod
++bad_cidr_regex='(^|,|\s)(0\.0\.0\.0/0|::/0)(,|\s|$)'
++if [[ "${ADMIN_ALLOWED_IPS:-}" =~ $bad_cidr_regex ]]; then
++  echo "❌ ADMIN_ALLOWED_IPS must not contain 0.0.0.0/0 or ::/0"
++  missing=1
++fi
++if [[ "${ADMIN_ALLOWED_IPS:-}" =~ (10\.0\.0\.0/8|192\.168\.0\.0/16|172\.16\.0\.0/12) ]]; then
++  echo "❌ ADMIN_ALLOWED_IPS must not include private ranges in prod. Use ONLY public /32 IPs."
++  missing=1
++fi
++
++if [[ "${TRAEFIK_TRUSTED_IPS:-}" =~ $bad_cidr_regex ]]; then
++  echo "❌ TRAEFIK_TRUSTED_IPS must not contain 0.0.0.0/0 or ::/0"
++  missing=1
++fi
++
+ # Secrets (file-based)
+ REQ_FILES=(
+   ./secrets/postgres_password
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/restore_postgres.sh /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/restore_postgres.sh
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/restore_postgres.sh	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/restore_postgres.sh	2026-01-21 16:48:19.325601078 +0000
+@@ -0,0 +1,35 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.hostinger.prod.yml}"
++BACKUP_FILE="${1:-}"
++
++if [[ -z "$BACKUP_FILE" || ! -f "$BACKUP_FILE" ]]; then
++  echo "Usage: $0 <backup_file.sql.gz>"
++  exit 1
++fi
++
++if [[ "${CONFIRM_RESTORE:-}" != "YES" ]]; then
++  echo "❌ Refusing to restore without CONFIRM_RESTORE=YES"
++  echo "Example: CONFIRM_RESTORE=YES $0 $BACKUP_FILE"
++  exit 1
++fi
++
++echo "== Restore Postgres =="
++echo "Compose: $COMPOSE_FILE"
++echo "Backup:  $BACKUP_FILE"
++
++echo "== Stopping n8n services (to avoid writes during restore) =="
++docker compose -f "$COMPOSE_FILE" stop n8n-main n8n-worker gateway traefik || true
++
++echo "== Ensuring postgres is up =="
++docker compose -f "$COMPOSE_FILE" up -d postgres
++
++echo "== Restoring (drop + recreate schema inside DB) =="
++# Use psql; assumes backup contains SQL for schema+data (from pg_dump)
++gunzip -c "$BACKUP_FILE" | docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U n8n -d n8n"
++
++echo "== Starting stack back =="
++docker compose -f "$COMPOSE_FILE" up -d
++
++echo "✅ Restore done"
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/smoke.sh /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/smoke.sh
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/scripts/smoke.sh	2026-01-21 15:15:28.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/scripts/smoke.sh	2026-01-21 16:50:40.769027190 +0000
+@@ -2,17 +2,35 @@
+ set -euo pipefail
+ 
+ : "${DOMAIN_NAME:?missing}"
+-: "${WEBHOOK_SHARED_TOKEN:?missing}"
+ 
+ API="https://api.${DOMAIN_NAME}"
++TOKEN="${SMOKE_TOKEN:-${WEBHOOK_SHARED_TOKEN:-}}"
+ 
+ echo "== Smoke tests =="
++
+ curl -fsS "${API}/healthz" >/dev/null && echo "✅ healthz"
+ 
+-curl -fsS -X POST "${API}/v1/inbound/whatsapp" \
+-  -H "Content-Type: application/json" \
+-  -H "x-webhook-token: ${WEBHOOK_SHARED_TOKEN}" \
+-  -d '{"text":"test","from":"smoke","msgId":"smoke-1"}' >/dev/null \
+-  && echo "✅ inbound whatsapp"
++if [[ -z "$TOKEN" ]]; then
++  echo "⚠️  No SMOKE_TOKEN/WEBHOOK_SHARED_TOKEN set. Skipping inbound auth smoke."
++  exit 0
++fi
++
++echo "== Inbound valid token =="
++curl -fsS -X POST "${API}/v1/inbound/whatsapp"   -H "Content-Type: application/json"   -H "x-api-token: ${TOKEN}"   -d '{"text":"test","from":"smoke","msgId":"smoke-1"}' >/dev/null   && echo "✅ inbound whatsapp (valid token)"
++
++echo "== Inbound invalid token (should be dropped + logged) =="
++curl -fsS -X POST "${API}/v1/inbound/whatsapp"   -H "Content-Type: application/json"   -H "x-api-token: invalid-token"   -d '{"text":"test","from":"smoke","msgId":"smoke-2"}' >/dev/null   && echo "✅ inbound whatsapp (invalid token accepted by gateway)"
++
++echo "== SSRF audioUrl blocked (should be logged) =="
++curl -fsS -X POST "${API}/v1/inbound/whatsapp"   -H "Content-Type: application/json"   -H "x-api-token: ${TOKEN}"   -d '{"audioUrl":"http://127.0.0.1/evil.ogg","from":"smoke","msgId":"smoke-3"}' >/dev/null   && echo "✅ inbound whatsapp (audioUrl sent)"
++
++echo "== DB checks (optional) =="
++if command -v docker >/dev/null 2>&1; then
++  set +e
++  docker compose -f docker-compose.hostinger.prod.yml exec -T postgres sh -lc     "psql -U n8n -d n8n -c "SELECT event_type, COUNT(*) FROM security_events WHERE created_at > now() - interval '10 minutes' GROUP BY event_type ORDER BY 2 DESC;""     && echo "✅ security_events aggregated (last 10 min)"
++  set -e
++else
++  echo "ℹ️  docker not found: skipping DB checks"
++fi
+ 
+ echo "Done."
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W1_IN_WA.json /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W1_IN_WA.json
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W1_IN_WA.json	2026-01-21 15:10:56.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W1_IN_WA.json	2026-01-21 16:42:28.255590283 +0000
+@@ -25,7 +25,7 @@
+     {
+       "parameters": {
+         "language": "javascript",
+-        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\nconst expected = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst tokenValid = !!expected && (token === expected);\nconst tokenConfigured = !!expected;\n// Hard fail if server misconfigured\nif (!tokenConfigured) {\n  return [{ json: { ok:false, code:'SEC_MISCONFIG', message:'WEBHOOK_SHARED_TOKEN manquant', tokenConfigured:false, tokenValid:false } }];\n}\nif (!tokenValid) {\n  return [{ json: { ok:false, code:'SEC_DENY', message:'Token invalide', tokenConfigured:true, tokenValid:false } }];\n}\n\n// Canonical IDs (UUID). Defaults point to seeded demo tenant/restaurant.\nconst tenantId = (body.tenantId || body.tenant_id || '00000000-0000-0000-0000-000000000001').toString();\nconst restaurantId = (body.restaurantId || body.restaurant_id || '00000000-0000-0000-0000-000000000000').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst channel = 'whatsapp';\nconst conversationKey = tenantId + ':' + restaurantId + ':' + channel + ':' + userId;\n\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel,\n    tenantId,\n    restaurantId,\n    userId,\n    conversationKey,\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _sec: {\n      tokenConfigured,\n      tokenValid,\n      textHash\n    },\n    raw: body\n  }\n}];"
++        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'whatsapp',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];"
+       },
+       "id": "57c1bc81-2ffe-4ec4-bb34-c90c01c8da25",
+       "name": "B0 - Parse & Canonicalize",
+@@ -41,7 +41,7 @@
+         "conditions": {
+           "boolean": [
+             {
+-              "value1": "={{$json._sec.tokenValid}}",
++              "value1": "={{$json._auth.authOk}}",
+               "operation": "isTrue"
+             }
+           ]
+@@ -238,6 +238,54 @@
+         520,
+         0
+       ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
++        "additionalFields": {
++          "queryParams": "={{[$json._auth.tokenHash]}}"
++        }
++      },
++      "id": "6954cbb3-8346-4255-b5c7-5aa8aa9e81e5",
++      "name": "B0 - Resolve Client (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        280,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\n\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  // scopes may be returned as array or string\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (legacyOk) {\n  // Legacy fallback to keep backward compatibility (MVP)\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nconst authOk = authMode !== 'deny';\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
++      },
++      "id": "80046a7e-854b-4e57-b467-6f04fdc9f0ad",
++      "name": "B0 - Apply Auth Context",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        480,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_INVALID_TOKEN','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
++        "additionalFields": {
++          "queryParams": "={{[null, null, null, $json.channel, $json.userId, $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint]}}"
++        }
++      },
++      "id": "75fff6ee-5c2d-4e41-af59-f32d155f11e8",
++      "name": "B0 - Log Deny (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        520,
++        80
++      ]
+     }
+   ],
+   "connections": {
+@@ -256,7 +304,7 @@
+       "main": [
+         [
+           {
+-            "node": "B0 - Token OK?",
++            "node": "B0 - Resolve Client (DB)",
+             "type": "main",
+             "index": 0
+           }
+@@ -274,7 +322,7 @@
+         ],
+         [
+           {
+-            "node": "END - Drop/Done",
++            "node": "B0 - Log Deny (DB)",
+             "type": "main",
+             "index": 0
+           }
+@@ -405,6 +453,39 @@
+       "main": [
+         [
+           {
++            "node": "END - Drop/Done",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Resolve Client (DB)": {
++      "main": [
++        [
++          {
++            "node": "B0 - Apply Auth Context",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Apply Auth Context": {
++      "main": [
++        [
++          {
++            "node": "B0 - Token OK?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Log Deny (DB)": {
++      "main": [
++        [
++          {
+             "node": "END - Drop/Done",
+             "type": "main",
+             "index": 0
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W2_IN_IG.json /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W2_IN_IG.json
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W2_IN_IG.json	2026-01-21 15:10:56.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W2_IN_IG.json	2026-01-21 16:42:28.258408119 +0000
+@@ -25,7 +25,7 @@
+     {
+       "parameters": {
+         "language": "javascript",
+-        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\nconst expected = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst tokenValid = !!expected && (token === expected);\nconst tokenConfigured = !!expected;\n// Hard fail if server misconfigured\nif (!tokenConfigured) {\n  return [{ json: { ok:false, code:'SEC_MISCONFIG', message:'WEBHOOK_SHARED_TOKEN manquant', tokenConfigured:false, tokenValid:false } }];\n}\nif (!tokenValid) {\n  return [{ json: { ok:false, code:'SEC_DENY', message:'Token invalide', tokenConfigured:true, tokenValid:false } }];\n}\n\n// Canonical IDs (UUID). Defaults point to seeded demo tenant/restaurant.\nconst tenantId = (body.tenantId || body.tenant_id || '00000000-0000-0000-0000-000000000001').toString();\nconst restaurantId = (body.restaurantId || body.restaurant_id || '00000000-0000-0000-0000-000000000000').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst channel = 'instagram';\nconst conversationKey = tenantId + ':' + restaurantId + ':' + channel + ':' + userId;\n\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel,\n    tenantId,\n    restaurantId,\n    userId,\n    conversationKey,\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _sec: {\n      tokenConfigured,\n      tokenValid,\n      textHash\n    },\n    raw: body\n  }\n}];"
++        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'instagram',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];"
+       },
+       "id": "c6dd375c-ebed-4897-a874-cd4ca958e753",
+       "name": "B0 - Parse & Canonicalize",
+@@ -41,7 +41,7 @@
+         "conditions": {
+           "boolean": [
+             {
+-              "value1": "={{$json._sec.tokenValid}}",
++              "value1": "={{$json._auth.authOk}}",
+               "operation": "isTrue"
+             }
+           ]
+@@ -238,6 +238,54 @@
+         520,
+         0
+       ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
++        "additionalFields": {
++          "queryParams": "={{[$json._auth.tokenHash]}}"
++        }
++      },
++      "id": "81e69149-a1b3-4813-a0c2-dbc42a1f12a1",
++      "name": "B0 - Resolve Client (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        280,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\n\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  // scopes may be returned as array or string\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (legacyOk) {\n  // Legacy fallback to keep backward compatibility (MVP)\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nconst authOk = authMode !== 'deny';\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
++      },
++      "id": "1d94ff21-11e5-4aff-b5f9-946d84ab576b",
++      "name": "B0 - Apply Auth Context",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        480,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_INVALID_TOKEN','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
++        "additionalFields": {
++          "queryParams": "={{[null, null, null, $json.channel, $json.userId, $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint]}}"
++        }
++      },
++      "id": "a1f32ee6-1585-49b9-b2d1-7dc9d82c252c",
++      "name": "B0 - Log Deny (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        520,
++        80
++      ]
+     }
+   ],
+   "connections": {
+@@ -256,7 +304,7 @@
+       "main": [
+         [
+           {
+-            "node": "B0 - Token OK?",
++            "node": "B0 - Resolve Client (DB)",
+             "type": "main",
+             "index": 0
+           }
+@@ -274,7 +322,7 @@
+         ],
+         [
+           {
+-            "node": "END - Drop/Done",
++            "node": "B0 - Log Deny (DB)",
+             "type": "main",
+             "index": 0
+           }
+@@ -405,6 +453,39 @@
+       "main": [
+         [
+           {
++            "node": "END - Drop/Done",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Resolve Client (DB)": {
++      "main": [
++        [
++          {
++            "node": "B0 - Apply Auth Context",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Apply Auth Context": {
++      "main": [
++        [
++          {
++            "node": "B0 - Token OK?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Log Deny (DB)": {
++      "main": [
++        [
++          {
+             "node": "END - Drop/Done",
+             "type": "main",
+             "index": 0
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W3_IN_MSG.json /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W3_IN_MSG.json
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W3_IN_MSG.json	2026-01-21 15:10:56.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W3_IN_MSG.json	2026-01-21 16:42:28.260829649 +0000
+@@ -25,7 +25,7 @@
+     {
+       "parameters": {
+         "language": "javascript",
+-        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\nconst expected = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst tokenValid = !!expected && (token === expected);\nconst tokenConfigured = !!expected;\n// Hard fail if server misconfigured\nif (!tokenConfigured) {\n  return [{ json: { ok:false, code:'SEC_MISCONFIG', message:'WEBHOOK_SHARED_TOKEN manquant', tokenConfigured:false, tokenValid:false } }];\n}\nif (!tokenValid) {\n  return [{ json: { ok:false, code:'SEC_DENY', message:'Token invalide', tokenConfigured:true, tokenValid:false } }];\n}\n\n// Canonical IDs (UUID). Defaults point to seeded demo tenant/restaurant.\nconst tenantId = (body.tenantId || body.tenant_id || '00000000-0000-0000-0000-000000000001').toString();\nconst restaurantId = (body.restaurantId || body.restaurant_id || '00000000-0000-0000-0000-000000000000').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst channel = 'messenger';\nconst conversationKey = tenantId + ':' + restaurantId + ':' + channel + ':' + userId;\n\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel,\n    tenantId,\n    restaurantId,\n    userId,\n    conversationKey,\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _sec: {\n      tokenConfigured,\n      tokenValid,\n      textHash\n    },\n    raw: body\n  }\n}];"
++        "jsCode": "const crypto = require('crypto');\nconst body = $json.body ?? $json;\nconst headers = ($json.headers ?? $json?.headers ?? {});\nconst qs = ($json.query || $json.qs || {});\nconst auth = (headers['authorization'] || headers['Authorization'] || '').toString();\nconst bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\nconst token = (\n  headers['x-api-token'] || headers['X-Api-Token'] ||\n  headers['x-webhook-token'] || headers['X-Webhook-Token'] ||\n  qs['token'] || qs['access_token'] ||\n  bearer ||\n  ''\n).toString();\n\nconst shared = ($env.WEBHOOK_SHARED_TOKEN || '').toString();\nconst legacySharedConfigured = !!shared;\nconst legacySharedValid = !!token && legacySharedConfigured && (token === shared);\n\n// Hints from body (NEVER trusted)\nconst tenantHint = (body.tenantId || body.tenant_id || '').toString();\nconst restaurantHint = (body.restaurantId || body.restaurant_id || '').toString();\n\nconst userId = (body.userId || body.from || body.sender || 'unknown-user').toString();\nconst msgId = (body.msgId || body.messageId || body.message?.id || crypto.randomUUID()).toString();\n\nconst text = (body.text || body.message?.text || body.message?.body || '').toString();\nconst buttonId = (body.buttonId || body.interactive?.button_reply?.id || body.message?.buttonId || '').toString();\nconst audioUrl = (body.audioUrl || body.audio?.url || body.message?.audio?.url || '').toString();\nconst mime = (body.audio?.mime || body.message?.audio?.mime || 'audio/ogg').toString();\n\nlet type = 'text';\nif (buttonId) type = 'button';\nif (audioUrl) type = 'audio';\n\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\nconst textHash = crypto.createHash('sha256').update((text || buttonId || '').toString()).digest('hex');\n\nreturn [{\n  json: {\n    channel: 'messenger',\n    userId,\n    // tenantId/restaurantId are resolved from api_clients (P0-AUTH-MULTITENANT)\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    roleHint: body.roleHint || 'customer',\n    message: {\n      type,\n      text: text.trim(),\n      buttonId: buttonId.trim(),\n      audio: audioUrl ? { url: audioUrl, mime } : null\n    },\n    metadata: {\n      msgId,\n      timestamp: new Date().toISOString(),\n      ip: headers['x-forwarded-for'] || headers['X-Forwarded-For'] || '',\n      userAgent: headers['user-agent'] || headers['User-Agent'] || '',\n      testMode: !!body.testMode\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash,\n      legacySharedConfigured,\n      legacySharedValid,\n      tenantHint,\n      restaurantHint\n    },\n    _sec: {\n      textHash\n    },\n    raw: body\n  }\n}];"
+       },
+       "id": "9271cba1-3265-41cf-8818-9996067fd826",
+       "name": "B0 - Parse & Canonicalize",
+@@ -41,7 +41,7 @@
+         "conditions": {
+           "boolean": [
+             {
+-              "value1": "={{$json._sec.tokenValid}}",
++              "value1": "={{$json._auth.authOk}}",
+               "operation": "isTrue"
+             }
+           ]
+@@ -238,6 +238,54 @@
+         520,
+         0
+       ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "WITH c AS (  SELECT client_id, client_name, tenant_id, restaurant_id, scopes  FROM api_clients  WHERE is_active=true AND token_hash = $1  LIMIT 1) SELECT   (SELECT client_id FROM c) AS client_id,   (SELECT client_name FROM c) AS client_name,   (SELECT tenant_id FROM c) AS tenant_id,   (SELECT restaurant_id FROM c) AS restaurant_id,   COALESCE((SELECT scopes FROM c), '[]'::jsonb) AS scopes,   EXISTS(SELECT 1 FROM c) AS matched;",
++        "additionalFields": {
++          "queryParams": "={{[$json._auth.tokenHash]}}"
++        }
++      },
++      "id": "a54a2257-f0cb-45c9-a875-37708b5f5a91",
++      "name": "B0 - Resolve Client (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        280,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\n\nlet tenantId = '';\nlet restaurantId = '';\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  // scopes may be returned as array or string\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (legacyOk) {\n  // Legacy fallback to keep backward compatibility (MVP)\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nconst authOk = authMode !== 'deny';\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
++      },
++      "id": "0aba4d61-8e1b-4f65-b17b-a02515c8685f",
++      "name": "B0 - Apply Auth Context",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        480,
++        -120
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json) VALUES ($1,$2,$3,$4,$5,'AUTH_INVALID_TOKEN','HIGH', jsonb_build_object('token_hash',$6,'ip',$7,'ua',$8,'tenant_hint',$9,'restaurant_hint',$10)) RETURNING 1;",
++        "additionalFields": {
++          "queryParams": "={{[null, null, null, $json.channel, $json.userId, $json._auth.tokenHash, $json.metadata.ip, $json.metadata.userAgent, $json._auth.tenantHint, $json._auth.restaurantHint]}}"
++        }
++      },
++      "id": "ca8bb2e8-270c-4020-ab57-cc94f9ae2c53",
++      "name": "B0 - Log Deny (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        520,
++        80
++      ]
+     }
+   ],
+   "connections": {
+@@ -256,7 +304,7 @@
+       "main": [
+         [
+           {
+-            "node": "B0 - Token OK?",
++            "node": "B0 - Resolve Client (DB)",
+             "type": "main",
+             "index": 0
+           }
+@@ -274,7 +322,7 @@
+         ],
+         [
+           {
+-            "node": "END - Drop/Done",
++            "node": "B0 - Log Deny (DB)",
+             "type": "main",
+             "index": 0
+           }
+@@ -405,6 +453,39 @@
+       "main": [
+         [
+           {
++            "node": "END - Drop/Done",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Resolve Client (DB)": {
++      "main": [
++        [
++          {
++            "node": "B0 - Apply Auth Context",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Apply Auth Context": {
++      "main": [
++        [
++          {
++            "node": "B0 - Token OK?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "B0 - Log Deny (DB)": {
++      "main": [
++        [
++          {
+             "node": "END - Drop/Done",
+             "type": "main",
+             "index": 0
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W4_CORE.json /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W4_CORE.json
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W4_CORE.json	2026-01-21 15:05:40.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W4_CORE.json	2026-01-21 16:44:48.153628720 +0000
+@@ -66,7 +66,7 @@
+     {
+       "parameters": {
+         "language": "javascript",
+-        "jsCode": "const e = $json;\nif (e.message?.type !== 'audio' || !e.message?.audio?.url) {\n  return [{json: {...e, userText: (e.message?.type === 'button') ? e.message.buttonId : e.message.text }}];\n}\n\nconst sttUrl = ($env.STT_API_URL || '').toString();\nif (!sttUrl) {\n  return [{json: {...e, userText: '', stt: {ok:false, reason:'STT_API_URL not set'} }}];\n}\n\ntry {\n  const sttRes = await $httpRequest({\n    method: 'POST',\n    url: sttUrl,\n    body: { audioUrl: e.message.audio.url, mime: e.message.audio.mime || 'audio/ogg' },\n    json: true,\n    timeout: 60000\n  });\n\n  const transcript = (sttRes.text || sttRes.transcript || '').toString().trim();\n  const confidence = Number(sttRes.confidence ?? 0);\n\n  // Log voice interaction (best-effort)\n  e.stt = { ok:true, transcript, confidence, provider: sttRes.provider || 'stt' };\n  e.userText = transcript;\n\n  return [{json: e}];\n} catch (err) {\n  return [{json: {...e, userText: '', stt: {ok:false, error: (err && err.message) ? err.message : 'stt_failed'} }}];\n}"
++        "jsCode": "const e = $json;\n\nfunction isIpLiteral(host) {\n  return /^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host);\n}\nfunction isPrivateIp(ip) {\n  const parts = ip.split('.').map(x => Number(x));\n  if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return true;\n  const [a,b] = parts;\n  if (a === 10) return true;\n  if (a === 127) return true;\n  if (a === 0) return true;\n  if (a === 169 && b === 254) return true;\n  if (a === 192 && b === 168) return true;\n  if (a === 172 && b >= 16 && b <= 31) return true;\n  return false;\n}\nfunction normalizeAllowlist(v) {\n  return (v || '').toString()\n    .split(',')\n    .map(s => s.trim().toLowerCase())\n    .filter(Boolean);\n}\nfunction hostAllowed(host, allow) {\n  const h = host.toLowerCase();\n  // exact match or subdomain match\n  return allow.some(a => h === a || h.endsWith('.' + a));\n}\nfunction validateAudioUrl(u) {\n  try {\n    const url = new URL(u);\n    if (url.protocol !== 'https:') return { ok:false, reason:'https_only' };\n    if (url.username || url.password) return { ok:false, reason:'no_credentials' };\n    const host = url.hostname || '';\n    if (!host) return { ok:false, reason:'missing_host' };\n    if (host === 'localhost' || host.endsWith('.local')) return { ok:false, reason:'localhost_blocked' };\n    if (isIpLiteral(host) && isPrivateIp(host)) return { ok:false, reason:'private_ip_blocked' };\n\n    const allow = normalizeAllowlist($env.ALLOWED_AUDIO_DOMAINS || '');\n    if (!allow.length) return { ok:false, reason:'allowlist_empty' };\n    if (!hostAllowed(host, allow)) return { ok:false, reason:'domain_not_allowed', host, allow };\n    return { ok:true, host };\n  } catch (err) {\n    return { ok:false, reason:'invalid_url' };\n  }\n}\n\nif (e.message?.type !== 'audio' || !e.message?.audio?.url) {\n  return [{json: {...e, userText: (e.message?.type === 'button') ? e.message.buttonId : e.message.text }}];\n}\n\nconst sttUrl = ($env.STT_API_URL || '').toString();\nif (!sttUrl) {\n  return [{json: {...e, userText: '', stt: {ok:false, reason:'STT_API_URL not set'} }}];\n}\n\nconst audioUrl = e.message.audio.url.toString();\nconst v = validateAudioUrl(audioUrl);\nif (!v.ok) {\n  return [{\n    json: {\n      ...e,\n      userText: '',\n      stt: { ok:false, reason:'AUDIO_URL_BLOCKED', details: v },\n      _sec: { ...(e._sec||{}), audioUrlBlocked:true, audioBlockReason: v.reason, audioHost: v.host || '' }\n    }\n  }];\n}\n\ntry {\n  const sttRes = await $httpRequest({\n    method: 'POST',\n    url: sttUrl,\n    body: { audioUrl, mime: e.message.audio.mime || 'audio/ogg' },\n    json: true,\n    timeout: 60000\n  });\n\n  const transcript = (sttRes.text || sttRes.transcript || '').toString().trim();\n  const confidence = Number(sttRes.confidence ?? 0);\n\n  e.stt = { ok:true, transcript, confidence, provider: sttRes.provider || 'stt' };\n  e.userText = transcript;\n\n  return [{json: e}];\n} catch (err) {\n  return [{json: {...e, userText: '', stt: {ok:false, error: (err && err.message) ? err.message : 'stt_failed'} }}];\n}\n"
+       },
+       "id": "3245f83b-5ca2-440a-8e4a-f51849433a47",
+       "name": "C3 - Voice STT (optional)",
+@@ -193,7 +193,7 @@
+     {
+       "parameters": {
+         "language": "javascript",
+-        "jsCode": "const e = $json;\nconst resp = e.response || { replyText: 'OK', buttons: [] };\n\nconst out = {\n  channel: e.channel,\n  restaurantId: e.restaurantId,\n  userId: e.userId,\n  replyText: resp.replyText || '',\n  buttons: Array.isArray(resp.buttons) ? resp.buttons : [],\n  attachments: Array.isArray(resp.attachments) ? resp.attachments : [],\n  actions: e.actions || { sendToKitchen:false },\n  debug: {\n    traceId: e.metadata?.msgId || '',\n    intent: e.intent || '',\n    riskFlags: e.debug?.riskFlags || []\n  }\n};\nreturn [{json: out}];"
++        "jsCode": "const e = $json;\nconst resp = e.response || { replyText: 'OK', buttons: [] };\n\nconst out = {\n  channel: e.channel,\n  tenantId: e.tenantId || '',\n  restaurantId: e.restaurantId,\n  conversationKey: e.conversationKey || '',\n  userId: e.userId,\n  orderId: e.debug?.orderId || null,\n  replyText: resp.replyText || '',\n  buttons: Array.isArray(resp.buttons) ? resp.buttons : [],\n  attachments: Array.isArray(resp.attachments) ? resp.attachments : [],\n  actions: e.actions || { sendToKitchen:false },\n  debug: {\n    traceId: e.metadata?.msgId || '',\n    intent: e.intent || '',\n    riskFlags: e.debug?.riskFlags || []\n  }\n};\nreturn [{json: out}];\n"
+       },
+       "id": "561fff75-d491-4d33-8295-4d8e5b56425c",
+       "name": "C11 - Finalize Response (default)",
+@@ -207,10 +207,10 @@
+     {
+       "parameters": {
+         "language": "javascript",
+-        "jsCode": "const out = $json;\nconst ch = (out.channel || '').toString();\n\nconst cfg = {\n  whatsapp: { url: $env.WA_SEND_URL, token: $env.WA_API_TOKEN },\n  instagram:{ url: $env.IG_SEND_URL, token: $env.IG_API_TOKEN },\n  messenger:{ url: $env.MSG_SEND_URL, token: $env.MSG_API_TOKEN }\n};\n\nconst url = (cfg[ch]?.url || '').toString();\nif (!url) {\n  return [{json:{...out, _send:{ok:false, reason:'send_url_missing'}}}];\n}\n\nconst token = (cfg[ch]?.token || '').toString();\nconst body = {\n  channel: ch,\n  to: out.userId,\n  restaurantId: out.restaurantId,\n  text: out.replyText,\n  buttons: out.buttons || [],\n  attachments: out.attachments || [],\n  meta: { intent: out.debug?.intent || '' }\n};\n\ntry {\n  const res = await $httpRequest({\n    method:'POST',\n    url,\n    headers: token ? {Authorization:'Bearer '+token} : {},\n    body,\n    json:true,\n    timeout: 30000\n  });\n  return [{json:{...out, _send:{ok:true, providerResponse: res}}}];\n} catch (err) {\n  return [{json:{...out, _send:{ok:false, error: err?.message || 'send_failed'}}}];\n}"
++        "jsCode": "const crypto = require('crypto');\nconst out = $json;\n\nconst ch = (out.channel || '').toString();\nconst orderId = out.orderId ? out.orderId.toString() : '';\nconst traceId = (out.debug?.traceId || '').toString();\n\nconst dedupeKey = orderId\n  ? `order:${orderId}:${ch}:reply`\n  : `msg:${ch}:${traceId || crypto.randomUUID()}`;\n\nconst payload = {\n  channel: ch,\n  to: out.userId,\n  restaurantId: out.restaurantId,\n  text: out.replyText,\n  buttons: out.buttons || [],\n  attachments: out.attachments || [],\n  meta: { intent: out.debug?.intent || '' }\n};\n\nreturn [{\n  json: {\n    ...out,\n    outbox_dedupe_key: dedupeKey,\n    outbox_template: 'reply',\n    outbox_payload: payload\n  }\n}];\n"
+       },
+       "id": "42e4a69d-d415-45d9-81e3-23c68d422d9b",
+-      "name": "C12 - Dispatch Send (direct)",
++      "name": "C12 - Enqueue Outbox (P0)",
+       "type": "n8n-nodes-base.code",
+       "typeVersion": 2,
+       "position": [
+@@ -266,6 +266,74 @@
+         "language": "javascript",
+         "jsCode": "const sd = this.getWorkflowStaticData('global');\nconst rid = ($json.restaurant_id || $json.restaurantId || '').toString();\nif (rid) {\n  sd[`menu:${rid}`] = { ts: Date.now(), items: ($json.items||[]), options: ($json.options||[]) };\n}\nreturn [{ json: { ...$json, _menuCache: 'SET' } }];\n"
+       }
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO outbound_messages(dedupe_key, tenant_id, restaurant_id, conversation_key, channel, user_id, order_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
++        "additionalFields": {
++          "queryParams": "={{[$json.outbox_dedupe_key, $json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json.orderId, $json.outbox_template, $json.outbox_payload]}}"
++        }
++      },
++      "id": "4c47eb41-69d2-48e4-a924-0f95623bbd65",
++      "name": "C12b - Outbox Enqueue (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        1260,
++        420
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const e = $json;\nreturn [{\n  json: {\n    ...e,\n    _send: {\n      ok: true,\n      queued: true,\n      outboundId: e.outbound_id || e.outboundid || e.outbound_id,\n      status: e.status || 'PENDING'\n    }\n  }\n}];"
++      },
++      "id": "91548ca5-94ad-4c09-8dc5-a2c6208636cd",
++      "name": "C12c - Outbox Result",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        1460,
++        420
++      ]
++    },
++    {
++      "parameters": {
++        "conditions": {
++          "boolean": [
++            {
++              "value1": "={{$json._sec.audioUrlBlocked}}",
++              "operation": "isTrue"
++            }
++          ]
++        }
++      },
++      "id": "8b05a0d1-3841-4d30-91e8-93fa578e3d23",
++      "name": "C3x - AudioUrl Blocked?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2,
++      "position": [
++        420,
++        160
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "INSERT INTO security_events(tenant_id, restaurant_id, conversation_key, channel, user_id, event_type, severity, payload_json)\nVALUES ($1,$2,$3,$4,$5,'SSRF_AUDIOURL_BLOCKED','HIGH',\njsonb_build_object('reason',$6,'host',$7,'audio_url',$8,'trace_id',$9))\nRETURNING 1;",
++        "additionalFields": {
++          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json._sec.audioBlockReason, $json._sec.audioHost, $json.message.audio.url, $json.metadata.msgId]}}"
++        }
++      },
++      "id": "ed8e840f-3f4c-4908-9d31-b230ff847d9f",
++      "name": "C3y - Log SSRF Block (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        640,
++        80
++      ]
+     }
+   ],
+   "connections": {
+@@ -317,7 +385,7 @@
+       "main": [
+         [
+           {
+-            "node": "C3b - Menu Cache Get",
++            "node": "C3x - AudioUrl Blocked?",
+             "type": "main",
+             "index": 0
+           }
+@@ -412,7 +480,7 @@
+       "main": [
+         [
+           {
+-            "node": "C12 - Dispatch Send (direct)",
++            "node": "C12 - Enqueue Outbox (P0)",
+             "type": "main",
+             "index": 0
+           }
+@@ -456,6 +524,57 @@
+             "type": "main",
+             "index": 0
+           }
++        ]
++      ]
++    },
++    "C12 - Enqueue Outbox (P0)": {
++      "main": [
++        [
++          {
++            "node": "C12b - Outbox Enqueue (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "C12b - Outbox Enqueue (DB)": {
++      "main": [
++        [
++          {
++            "node": "C12c - Outbox Result",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "C3x - AudioUrl Blocked?": {
++      "main": [
++        [
++          {
++            "node": "C3y - Log SSRF Block (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "C3b - Menu Cache Get",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "C3y - Log SSRF Block (DB)": {
++      "main": [
++        [
++          {
++            "node": "C3b - Menu Cache Get",
++            "type": "main",
++            "index": 0
++          }
+         ]
+       ]
+     }
+diff -ruN /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W8_OPS.json /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W8_OPS.json
+--- /mnt/data/resto_n8n_pack_v3.0_SILICON_ORIG/workflows/W8_OPS.json	2026-01-21 15:05:40.000000000 +0000
++++ /mnt/data/resto_n8n_pack_v3.0_SILICON/workflows/W8_OPS.json	2026-01-21 16:46:01.668891153 +0000
+@@ -127,6 +127,72 @@
+         -1700,
+         200
+       ]
++    },
++    {
++      "parameters": {
++        "rule": {
++          "interval": [
++            {
++              "field": "minutes",
++              "value": 1
++            }
++          ]
++        }
++      },
++      "id": "962294af-aadb-462e-8cef-1604beabf400",
++      "name": "O1 - Every 1 min",
++      "type": "n8n-nodes-base.scheduleTrigger",
++      "typeVersion": 1,
++      "position": [
++        -360,
++        260
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "WITH picked AS (\n  SELECT outbound_id\n  FROM outbound_messages\n  WHERE status IN ('PENDING','RETRY')\n    AND next_retry_at <= now()\n  ORDER BY next_retry_at ASC\n  LIMIT 20\n  FOR UPDATE SKIP LOCKED\n)\nUPDATE outbound_messages m\n   SET status='RETRY',\n       updated_at=now()\n  FROM picked\n WHERE m.outbound_id = picked.outbound_id\nRETURNING m.*;",
++        "additionalFields": {}
++      },
++      "id": "215eed60-e2e2-4887-bb5e-4e3a9d7ec0d3",
++      "name": "O2 - Pick Due Outbox (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        -140,
++        260
++      ]
++    },
++    {
++      "parameters": {
++        "language": "javascript",
++        "jsCode": "const row = $json;\n\nconst maxAttempts = Number($env.OUTBOX_MAX_ATTEMPTS || 7);\nconst baseDelay = Number($env.OUTBOX_BASE_DELAY_SEC || 30);\nconst maxDelay = Number($env.OUTBOX_MAX_DELAY_SEC || 3600);\n\nconst ch = (row.channel || '').toString();\n\nconst cfg = {\n  whatsapp: { url: $env.WA_SEND_URL, token: $env.WA_API_TOKEN },\n  instagram:{ url: $env.IG_SEND_URL, token: $env.IG_API_TOKEN },\n  messenger:{ url: $env.MSG_SEND_URL, token: $env.MSG_API_TOKEN }\n};\n\nconst url = (cfg[ch]?.url || '').toString();\nconst token = (cfg[ch]?.token || '').toString();\n\nfunction nextDelaySec(attempt) {\n  // attempt starts at 1\n  const d = baseDelay * Math.pow(2, Math.max(0, attempt - 1));\n  return Math.min(maxDelay, Math.floor(d));\n}\n\nlet newAttempts = Number(row.attempts || 0) + 1;\nlet status = 'RETRY';\nlet lastError = null;\nlet providerMessageId = null;\nlet nextRetryAt = new Date(Date.now() + nextDelaySec(newAttempts) * 1000).toISOString();\n\nif (!url) {\n  status = 'DLQ';\n  lastError = 'send_url_missing';\n  nextRetryAt = new Date().toISOString();\n  return [{json:{...row, _outbox_status:status, _outbox_attempts:newAttempts, _outbox_next_retry_at:nextRetryAt, _outbox_last_error:lastError, _outbox_provider_message_id:providerMessageId}}];\n}\n\ntry {\n  const res = await $httpRequest({\n    method:'POST',\n    url,\n    headers: token ? {Authorization:'Bearer '+token} : {},\n    body: row.payload_json || {},\n    json:true,\n    timeout: 30000\n  });\n\n  status = 'SENT';\n  providerMessageId = (res && (res.message_id || res.id || res.provider_message_id)) ? (res.message_id || res.id || res.provider_message_id).toString() : null;\n  nextRetryAt = new Date().toISOString();\n\n  return [{json:{...row, _outbox_status:status, _outbox_attempts:newAttempts, _outbox_next_retry_at:nextRetryAt, _outbox_last_error:null, _outbox_provider_message_id:providerMessageId}}];\n} catch (err) {\n  lastError = (err && err.message) ? err.message : 'send_failed';\n  if (newAttempts >= maxAttempts) {\n    status = 'DLQ';\n    nextRetryAt = new Date().toISOString();\n  }\n  return [{json:{...row, _outbox_status:status, _outbox_attempts:newAttempts, _outbox_next_retry_at:nextRetryAt, _outbox_last_error:lastError, _outbox_provider_message_id:providerMessageId}}];\n}"
++      },
++      "id": "88c4f068-c7dc-4d9c-b985-c99ee26e7f3b",
++      "name": "O3 - Send Outbox",
++      "type": "n8n-nodes-base.code",
++      "typeVersion": 2,
++      "position": [
++        80,
++        260
++      ]
++    },
++    {
++      "parameters": {
++        "operation": "executeQuery",
++        "query": "UPDATE outbound_messages\n   SET status = $2,\n       attempts = $3,\n       next_retry_at = $4::timestamptz,\n       last_error = $5,\n       provider_message_id = COALESCE($6, provider_message_id),\n       sent_at = CASE WHEN $2='SENT' THEN now() ELSE sent_at END,\n       updated_at = now()\n WHERE outbound_id = $1\nRETURNING outbound_id, status;",
++        "additionalFields": {
++          "queryParams": "={{[$json.outbound_id, $json._outbox_status, $json._outbox_attempts, $json._outbox_next_retry_at, $json._outbox_last_error, $json._outbox_provider_message_id]}}"
++        }
++      },
++      "id": "0c4780ad-5212-47d8-b57a-49274602fc82",
++      "name": "O4 - Update Outbox (DB)",
++      "type": "n8n-nodes-base.postgres",
++      "typeVersion": 2,
++      "position": [
++        300,
++        260
++      ]
+     }
+   ],
+   "connections": {
+@@ -193,6 +259,39 @@
+             "type": "main",
+             "index": 0
+           }
++        ]
++      ]
++    },
++    "O1 - Every 1 min": {
++      "main": [
++        [
++          {
++            "node": "O2 - Pick Due Outbox (DB)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "O2 - Pick Due Outbox (DB)": {
++      "main": [
++        [
++          {
++            "node": "O3 - Send Outbox",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "O3 - Send Outbox": {
++      "main": [
++        [
++          {
++            "node": "O4 - Update Outbox (DB)",
++            "type": "main",
++            "index": 0
++          }
+         ]
+       ]
+     }

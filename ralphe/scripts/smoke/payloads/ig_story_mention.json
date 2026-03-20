@@ -1,0 +1,31 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "IG_USER_ID_901234"
+          },
+          "recipient": {
+            "id": "INSTAGRAM_PAGE_ID"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "message": {
+            "mid": "m_ig_story_mno567pqr890",
+            "attachments": [
+              {
+                "type": "story_mention",
+                "payload": {
+                  "url": "https://cdn.instagram.com/story/story123.jpg"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

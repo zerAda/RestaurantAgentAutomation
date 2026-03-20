@@ -1,0 +1,199 @@
+{
+    "name": "W_DRIVER_BOT",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/driver-bot",
+                "options": {}
+            },
+            "name": "WhatsApp Inbound",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers?filters[user_id][$eq]={{ $json.body.entry[0].changes[0].value.messages[0].from }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Identify Driver (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                300,
+                300
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.data && $json.data.length > 0 }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Is Registered?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const msg = $json.body.entry[0].changes[0].value.messages[0];\nreturn { json: { text: msg.text.body, type: msg.type } };"
+            },
+            "name": "Extract Message",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.text.toLowerCase() }}",
+                            "operation": "contains",
+                            "value2": "online"
+                        }
+                    ]
+                }
+            },
+            "name": "Command Router",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "PUT",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/drivers/{{ $('Identify Driver (Strapi)').item.json.data[0].id }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { status: 'ONLINE', last_location_update: new Date().toISOString() } }) }}"
+            },
+            "name": "Set Online (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1100,
+                200
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "method": "PUT",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/delivery-assignments/{{ $json.text.split(' ')[1] }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ data: { status: 'ACCEPTED', accepted_at: new Date().toISOString(), driver: $('Identify Driver (Strapi)').item.json.data[0].id } }) }}"
+            },
+            "name": "Accept Order (Strapi)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1100,
+                400
+            ],
+            "continueOnFail": true
+        }
+    ],
+    "connections": {
+        "WhatsApp Inbound": {
+            "main": [
+                [
+                    {
+                        "node": "Identify Driver (Strapi)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Identify Driver (Strapi)": {
+            "main": [
+                [
+                    {
+                        "node": "Is Registered?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Registered?": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Message": {
+            "main": [
+                [
+                    {
+                        "node": "Command Router",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

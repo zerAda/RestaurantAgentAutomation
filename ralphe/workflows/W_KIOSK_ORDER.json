@@ -1,0 +1,529 @@
+{
+    "name": "W_KIOSK_ORDER - Pro Kiosk Ordering Engine",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "saveManualExecutions": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "kiosk-order",
+                "options": {
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "webhook",
+            "name": "POST /kiosk-order",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                400
+            ]
+        },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-00: Validate Kiosk Authenticity & Rate Limits\n * DIAMOND-FIX: Secret validation + Redis-based throttling\n */\nconst secret = $env.KIOSK_SECRET || 'fallback-kiosk-key';\nconst headers = $node[\"POST /kiosk-order\"].json.headers;\n\n// 1. Secret Validation\nif (headers['x-kiosk-secret'] !== secret) {\n  throw new Error('AUTH_FAILED: Kiosk non autorisé');\n}\n\nconst body = $json.body || {};\nconst kioskId = body.kiosk_id || headers['x-kiosk-id'] || 'unknown_kiosk';\nconst sessionId = body.kiosk_session_id || `kiosk_${Date.now()}`;\nconst items = body.items || [];\n\nif (!items || items.length === 0) {\n  throw new Error('EMPTY_CART: Aucun article dans le panier');\n}\n\nreturn [{ json: {\n  ...body,\n  kiosk_id: kioskId,\n  kiosk_session_id: sessionId,\n  rate_limit_key: `limit:kiosk:order:${kioskId}`\n}}];"
+      },
+      "id": "kiosk-auth-guard",
+      "name": "B0 - Auth & ID Wrap",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "incr",
+        "key": "={{ $json.rate_limit_key }}"
+      },
+      "name": "B0 - Increment Counter",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        250,
+        550
+      ],
+      "credentials": {
+        "redis": {
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+          "name": "Redis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json }}",
+              "operation": "larger",
+              "value2": 5
+            }
+          ]
+        }
+      },
+      "name": "B0 - Throttled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"RATE_LIMIT_EXCEEDED\", \"message\": \"Too many orders. Please wait 60s.\" }",
+        "options": {}
+      },
+      "name": "C0 - Error (Throttled)",
+      "type": "n8n-nodes-base.webhookResponse",
+      "typeVersion": 1,
+      "position": [
+        550,
+        700
+      ]
+    },    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const body = $node[\"B0 - Auth & ID Wrap\"].json;\nconst items = body.items || [];\nconst tableNumber = body.table_number || null;\nconst orderType = body.order_type || 'dine_in';\nconst sessionId = body.kiosk_session_id;\n\n// Validate each item has required fields\nconst validatedItems = items.map((item, idx) => {\n  if (!item.product_id) throw new Error(`INVALID_ITEM: L'article ${idx + 1} n'a pas de product_id`);\n  if (!item.quantity || item.quantity < 1) throw new Error(`INVALID_QTY: Quantité invalide pour ${item.name || 'article ' + (idx+1)}`);\n  return {\n    product_id: item.product_id,\n    name: item.name || '',\n    quantity: item.quantity,\n    size: item.size || { name: 'Normal', price_modifier: 0 },\n    extras: (item.extras || []).map(e => ({ name: e.name, price: Number(e.price) || 0 })),\n    sauces: (item.sauces || []).map(s => ({ name: s.name, price: Number(s.price) || 0, is_free: !!s.is_free }))\n  };\n});\n\n// Get unique product IDs to fetch\nconst productIds = [...new Set(validatedItems.map(i => i.product_id))];\n\nreturn [{ json: {\n  items: validatedItems,\n  table_number: tableNumber,\n  order_type: orderType,\n  kiosk_session_id: sessionId,\n  product_ids: productIds,\n  payment_method: body.payment_method || 'cash'\n}}];"
+      },
+      "id": "validate",
+      "name": "Validate Cart",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_CORTEX_REGISTRY",
+
+                "workflowInputs": {
+                    "parameters": [
+                        {
+                            "name": "action",
+                            "value": "GET"
+                        },
+                        {
+                            "name": "key",
+                            "value": "LOGISTICS_SURGE"
+                        }
+                    ]
+                }
+            },
+            "id": "get-cortex-surge",
+            "name": "Get Cortex Surge",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                300,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/products?filters[id][$in]={{ $json.product_ids.join(',') }}&populate=ingredients&fields[0]=name&fields[1]=price&fields[2]=stock_quantity&fields[3]=available_extras&fields[4]=available_sauces&fields[5]=available_sizes&fields[6]=preparation_time_min",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "id": "fetch-products",
+            "name": "Fetch Products (Stock + Prices)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                500,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const cart = $node['Validate Cart'].json;\nconst products = ($json.data || []).map(p => ({ id: p.id, ...(p.attributes || p) }));\nconst productMap = {};\nproducts.forEach(p => { productMap[p.id] = p; });\n\n// Diamond Grade: Kitchen Capacity Guard\nconst kitchenLoad = $(\"Get Cortex Surge\").item.json.value || {};\nif (Number(kitchenLoad.multiplier || 1.0) > 1.8) {\n  throw new Error('KITCHEN_CONGESTED: La cuisine est saturée. Attente > 60m. Veuillez réessayer plus tard.');\n}\n\nlet totalAmount = 0;\nlet maxPrepTime = 0;\nconst verifiedItems = [];\nconst outOfStock = [];\n\nfor (const item of cart.items) {\n  const product = productMap[item.product_id];\n  if (!product) throw new Error(`PRODUCT_NOT_FOUND: Produit ${item.product_id} introuvable`);\n  \n  // Stock check\n  const stock = product.stock_quantity ?? Infinity;\n  if (stock < item.quantity) {\n    outOfStock.push({ name: product.name, requested: item.quantity, available: stock });\n    continue;\n  }\n  \n  // Server-side price calculation\n  const serverPrice = product.price;\n  const sizeModifier = item.size?.price_modifier || 0;\n  const extrasTotal = (item.extras||[]).reduce((s, e) => s + (Number(e.price)||0), 0);\n  const saucesTotal = (item.sauces||[]).filter(s => !s.is_free).reduce((s, sauce) => s + (Number(sauce.price)||0), 0);\n  const unitPrice = serverPrice + sizeModifier + extrasTotal + saucesTotal;\n  const subtotal = unitPrice * item.quantity;\n  \n  totalAmount += subtotal;\n  maxPrepTime = Math.max(maxPrepTime, product.preparation_time_min || 10);\n  \n  verifiedItems.push({\n    product_id: item.product_id,\n    name: product.marketing_name || product.name || item.name,\n    base_price: serverPrice,\n    size: item.size,\n    extras: item.extras,\n    sauces: item.sauces,\n    quantity: item.quantity,\n    unit_price: unitPrice,\n    subtotal\n  });\n}\n\nif (outOfStock.length > 0 && verifiedItems.length === 0) {\n  throw new Error('OUT_OF_STOCK: ' + outOfStock.map(o => `${o.name} (demandé: ${o.requested}, dispo: ${o.available})`).join(', '));\n}\n\n// Adjust ETA based on kitchen load\nconst finalETA = Math.ceil(maxPrepTime * Number(kitchenLoad.multiplier || 1.0));\n\nreturn [{ json: {\n  ...cart,\n  verified_items: verifiedItems,\n  out_of_stock: outOfStock,\n  total_amount: totalAmount,\n  estimated_ready_time: finalETA,\n  kitchen_surge_multiplier: kitchenLoad.multiplier || 1.0,\n  items_summary: verifiedItems.map(i => `${i.quantity}x ${i.name}${i.size?.name !== 'Normal' ? ` (${i.size.name})` : ''}`).join(', ')\n}}];"
+            },
+            "id": "verify-prices",
+            "name": "Verify Prices & Stock",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                750,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ $json.table_number }}",
+                            "operation": "isNotEmpty"
+                        }
+                    ]
+                }
+            },
+            "id": "has-table",
+            "name": "Has Table?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1000,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[table_number][$eq]={{ $json.table_number }}&filters[status][$in]=pending,confirmed,preparing&filters[order_type][$eq]=dine_in&sort=createdAt:desc&pagination[limit]=1",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "id": "check-table",
+            "name": "Check Existing Table Order",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1250,
+                300
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const cart = $node['Verify Prices & Stock'].json;\nconst existingOrders = $json.data || [];\nconst hasExisting = existingOrders.length > 0;\n\nif (hasExisting) {\n  // MERGE: append new items to existing order\n  const existing = existingOrders[0];\n  const attr = existing.attributes || existing;\n  const existingItems = attr.items_detailed || [];\n  const mergedItems = [...existingItems, ...cart.verified_items];\n  const newTotal = (attr.total_amount || 0) + cart.total_amount;\n  const maxPrep = Math.max(attr.estimated_ready_time || 0, cart.estimated_ready_time);\n  \n  return [{ json: {\n    action: 'UPDATE',\n    order_id: existing.id,\n    items_detailed: mergedItems,\n    items_summary: mergedItems.map(i => `${i.quantity}x ${i.name}`).join(', '),\n    total_amount: newTotal,\n    estimated_ready_time: maxPrep,\n    table_number: cart.table_number,\n    order_type: cart.order_type,\n    source: 'kiosk',\n    kiosk_session_id: cart.kiosk_session_id,\n    payment_method: cart.payment_method,\n    is_merge: true,\n    new_items_added: cart.verified_items\n  }}];\n}\n\n// CREATE new order\nreturn [{ json: {\n  action: 'CREATE',\n  items_detailed: cart.verified_items,\n  items_summary: cart.items_summary,\n  total_amount: cart.total_amount,\n  estimated_ready_time: cart.estimated_ready_time,\n  table_number: cart.table_number,\n  order_type: cart.order_type,\n  source: 'kiosk',\n  kiosk_session_id: cart.kiosk_session_id,\n  payment_method: cart.payment_method,\n  is_merge: false,\n  new_items_added: cart.verified_items\n}}];"
+            },
+            "id": "merge-or-create",
+            "name": "Merge or Create",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "// No table — always create new order\nconst cart = $json;\nreturn [{ json: {\n  action: 'CREATE',\n  items_detailed: cart.verified_items,\n  items_summary: cart.items_summary,\n  total_amount: cart.total_amount,\n  estimated_ready_time: cart.estimated_ready_time,\n  table_number: null,\n  order_type: cart.order_type,\n  source: 'kiosk',\n  kiosk_session_id: cart.kiosk_session_id,\n  payment_method: cart.payment_method,\n  is_merge: false,\n  new_items_added: cart.verified_items\n}}];"
+            },
+            "id": "no-table-create",
+            "name": "Create (No Table)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1250,
+                550
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const order = $json;\nconst strapiUrl = $env.STRAPI_URL || 'http://strapi:1337';\nconst token = $env.STRAPI_API_TOKEN;\n\nlet result;\n\nif (order.action === 'UPDATE') {\n  const res = await fetch(`${strapiUrl}/api/orders/${order.order_id}`, {\n    method: 'PUT',\n    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },\n    body: JSON.stringify({ data: {\n      items_detailed: order.items_detailed,\n      items_summary: order.items_summary,\n      total_amount: order.total_amount,\n      estimated_ready_time: order.estimated_ready_time,\n      kitchen_ticket_sent: false\n    }})\n  });\n  result = await res.json();\n  result.order_id = order.order_id;\n} else {\n  const res = await fetch(`${strapiUrl}/api/orders`, {\n    method: 'POST',\n    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },\n    body: JSON.stringify({ data: {\n      status: 'confirmed',\n      total_amount: order.total_amount,\n      items_summary: order.items_summary,\n      items_detailed: order.items_detailed,\n      table_number: order.table_number,\n      order_type: order.order_type,\n      source: 'kiosk',\n      kiosk_session_id: order.kiosk_session_id,\n      payment_method: order.payment_method,\n      estimated_ready_time: order.estimated_ready_time,\n      kitchen_ticket_sent: false\n    }})\n  });\n  result = await res.json();\n  result.order_id = result.data?.id || result.id;\n}\n\nreturn [{ json: {\n  order_id: result.order_id,\n  is_merge: order.is_merge,\n  table_number: order.table_number,\n  order_type: order.order_type,\n  total_amount: order.total_amount,\n  estimated_ready_time: order.estimated_ready_time,\n  items_summary: order.items_summary,\n  new_items: order.new_items_added,\n  kiosk_session_id: order.kiosk_session_id\n}}];"
+            },
+            "id": "save-order",
+            "name": "Save Order to Strapi",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1750,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "// Build kitchen ticket\nconst order = $json;\nconst items = order.new_items || [];\nconst timestamp = new Date().toLocaleString('fr-DZ', { timeZone: 'Africa/Algiers', hour: '2-digit', minute: '2-digit' });\n\nlet ticket = order.is_merge ? `🔄 *AJOUT TABLE ${order.table_number}*` : `🍽️ *NOUVELLE COMMANDE*`;\nticket += `\\n📋 N° ${order.order_id}`;\nif (order.table_number) ticket += ` | 🪑 Table ${order.table_number}`;\nticket += ` | ${order.order_type === 'takeaway' ? '🥡 Emporter' : '🍽️ Sur place'}`;\nticket += `\\n⏰ ${timestamp}\\n━━━━━━━━━━━━━━━━━`;\n\nfor (const item of items) {\n  ticket += `\\n*${item.quantity}x ${item.name}*`;\n  if (item.size?.name && item.size.name !== 'Normal') ticket += ` (${item.size.name})`;\n  if (item.extras?.length > 0) ticket += `\\n   + ${item.extras.map(e => e.name).join(', ')}`;\n  if (item.sauces?.length > 0) ticket += `\\n   🫙 ${item.sauces.map(s => s.name + (s.is_free ? ' ✓' : '')).join(', ')}`;\n  ticket += ` — ${item.subtotal} DA`;\n}\n\nticket += `\\n━━━━━━━━━━━━━━━━━\\n💰 *TOTAL: ${order.total_amount} DA*`;\nticket += `\\n⏱️ Prêt dans ~${order.estimated_ready_time} min`;\n\nreturn [{ json: { ...order, kitchen_ticket: ticket } }];"
+            },
+            "id": "format-ticket",
+            "name": "Format Kitchen Ticket",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+                "method": "POST",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $env.KITCHEN_PHONE_NUMBER || $env.ADMIN_PHONE_NUMBER, type: 'text', text: { body: $json.kitchen_ticket } }) }}"
+            },
+            "id": "send-ticket",
+            "name": "Send Kitchen Ticket (WA)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2250,
+                300
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "// Update stock + mark ticket sent + log funnel event\nconst order = $node['Format Kitchen Ticket'].json;\nconst strapiUrl = $env.STRAPI_URL || 'http://strapi:1337';\nconst token = $env.STRAPI_API_TOKEN;\n\n// Mark kitchen ticket sent\nawait fetch(`${strapiUrl}/api/orders/${order.order_id}`, {\n  method: 'PUT',\n  headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },\n  body: JSON.stringify({ data: { kitchen_ticket_sent: true, status: 'confirmed' } })\n});\n\n// Decrement stock for each item\nfor (const item of (order.new_items || [])) {\n  try {\n    const res = await fetch(`${strapiUrl}/api/products/${item.product_id}`, {\n      method: 'GET',\n      headers: { 'Authorization': `Bearer ${token}` }\n    });\n    const product = await res.json();\n    const currentStock = (product.data?.attributes || product.data)?.stock_quantity;\n    if (currentStock !== undefined && currentStock !== null) {\n      await fetch(`${strapiUrl}/api/products/${item.product_id}`, {\n        method: 'PUT',\n        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },\n        body: JSON.stringify({ data: { stock_quantity: Math.max(0, currentStock - item.quantity) } })\n      });\n    }\n  } catch(e) { /* continue on stock update failure */ }\n}\n\n// Log funnel event\nawait fetch(`${strapiUrl}/api/funnel-events`, {\n  method: 'POST',\n  headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },\n  body: JSON.stringify({ data: {\n    event_type: 'order_confirmed',\n    channel: 'kiosk',\n    session_id: order.kiosk_session_id,\n    metadata_json: {\n      order_id: order.order_id,\n      total: order.total_amount,\n      items_count: (order.new_items || []).reduce((s, i) => s + i.quantity, 0),\n      table_number: order.table_number,\n      is_merge: order.is_merge\n    }\n  }})\n});\n\nreturn [{ json: order }];"
+            },
+            "id": "finalize",
+            "name": "Update Stock & Log",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2500,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ JSON.stringify({ success: true, order_id: $json.order_id, is_merge: $json.is_merge, table_number: $json.table_number, total_amount: $json.total_amount, estimated_ready_time: $json.estimated_ready_time, items_summary: $json.items_summary, message: $json.is_merge ? `Commande ajoutée à la table ${$json.table_number}! Total: ${$json.total_amount} DA` : `Commande #${$json.order_id} confirmée! ${$json.order_type === 'takeaway' ? 'Emporter' : 'Table ' + ($json.table_number || '')} — Prêt dans ~${$json.estimated_ready_time} min` }) }}",
+                "options": {}
+            },
+            "id": "respond",
+            "name": "Respond (Receipt)",
+            "type": "n8n-nodes-base.webhookResponse",
+            "typeVersion": 1,
+            "position": [
+                2750,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "POST /kiosk-order": {
+            "main": [
+                [
+                    {
+                        "node": "B0 - Auth & ID Wrap",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Auth & ID Wrap": {
+            "main": [
+                [
+                    {
+                        "node": "B0 - Increment Counter",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Increment Counter": {
+            "main": [
+                [
+                    {
+                        "node": "B0 - Throttled?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Throttled?": {
+            "main": [
+                [
+                    {
+                        "node": "Validate Cart",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "C0 - Error (Throttled)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate Cart": {
+            "main": [
+                [
+                    {
+                        "node": "Get Cortex Surge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Cortex Surge": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Products (Stock + Prices)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Products (Stock + Prices)": {
+            "main": [
+                [
+                    {
+                        "node": "Verify Prices & Stock",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verify Prices & Stock": {
+            "main": [
+                [
+                    {
+                        "node": "Has Table?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Table?": {
+            "main": [
+                [
+                    {
+                        "node": "Check Existing Table Order",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Create (No Table)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Existing Table Order": {
+            "main": [
+                [
+                    {
+                        "node": "Merge or Create",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge or Create": {
+            "main": [
+                [
+                    {
+                        "node": "Save Order to Strapi",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create (No Table)": {
+            "main": [
+                [
+                    {
+                        "node": "Save Order to Strapi",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Order to Strapi": {
+            "main": [
+                [
+                    {
+                        "node": "Format Kitchen Ticket",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Kitchen Ticket": {
+            "main": [
+                [
+                    {
+                        "node": "Send Kitchen Ticket (WA)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Kitchen Ticket (WA)": {
+            "main": [
+                [
+                    {
+                        "node": "Update Stock & Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Stock & Log": {
+            "main": [
+                [
+                    {
+                        "node": "Respond (Receipt)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

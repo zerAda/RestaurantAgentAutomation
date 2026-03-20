@@ -1,0 +1,157 @@
+{
+  "name": "W_CONTENT_AUDITOR",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": "={{$env.AUDIT_SCHEDULE || '0 0 * * *'}}"
+      },
+      "id": "1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.STRAPI_INTERNAL_URL}}/api/content-libraries?filters[status][$eq]=ready",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.STRAPI_API_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "Strapi - Get Ready Assets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "id": "3",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{$env.LLM_MODEL}}",
+        "prompt": {
+          "parameters": [
+            {
+              "name": "system",
+              "value": "You are the Ralphé Chief Quality Officer. Audit this marketing asset for brand excellence.\n\nAsset: {{JSON.stringify($json.attributes)}}\n\nCriteria:\n1. Is the hook engaging?\n2. Is the visual script technically feasible?\n3. Are captions brand-aligned?\n\nOutput format: JSON only\n{\n  \"score\": 0-10,\n  \"reasoning\": \"string\",\n  \"status\": \"published\" | \"retry\"\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "AI Agent - Quality Audit",
+      "type": "n8n-nodes-base.ollamaChat",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{$env.STRAPI_INTERNAL_URL}}/api/content-libraries/{{$node[\"Split In Batches\"].json.id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.STRAPI_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={\n  \"quality_score\": {{$json.score}},\n  \"quality_reasoning\": \"{{$json.reasoning}}\",\n  \"status\": \"{{$json.status}}\"\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5",
+      "name": "Strapi - Update Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "1": {
+      "main": [
+        [
+          {
+            "node": "2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2": {
+      "main": [
+        [
+          {
+            "node": "3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3": {
+      "main": [
+        [
+          {
+            "node": "4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4": {
+      "main": [
+        [
+          {
+            "node": "5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5": {
+      "main": [
+        [
+          {
+            "node": "3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

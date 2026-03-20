@@ -1,0 +1,337 @@
+{
+    "name": "W_ADMIN_AGENT - Autonomous AI Admin Assistant",
+    "active": true,
+    "settings": {
+        "executionTimeout": 60,
+        "saveManualExecutions": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "admin/chat",
+                "authentication": "headerAuth",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-admin-chat",
+            "name": "Webhook POST /admin/chat",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/system-config",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiApi"
+            },
+            "id": "fetch-config",
+            "name": "Fetch Strapi Config",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                150,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "id": "agent-node",
+            "name": "AI Agent",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 1.1,
+            "position": [
+                300,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "model": "={{ $node['Fetch Strapi Config'].json.data?.attributes?.llm_model || $env.LLM_MODEL || 'llama3.1' }}",
+                "options": {
+                    "temperature": "={{ $node['Fetch Strapi Config'].json.data?.attributes?.llm_temperature || 0.1 }}"
+                }
+            },
+            "id": "ollama-model",
+            "name": "Ollama Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+            "typeVersion": 1,
+            "position": [
+                300,
+                200
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "memory-node",
+            "name": "Window Buffer Memory",
+            "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+            "typeVersion": 1,
+            "position": [
+                450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const output = $json.output || $json.text || $json.message || 'I processed the request.';\nreturn [{\n  json: {\n    output,\n    success: true\n  }\n}];"
+            },
+            "id": "format-response",
+            "name": "Format JSON Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                600,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "name": "Strapi_Manager",
+                "description": "Use this tool to read or write data to the Strapi CMS. Example: Update a menu item price, or change a delivery zone status. Use standard REST API paths like /api/menu-items or /api/delivery-zones. You MUST provide a 'method' parameter (GET, POST, PUT, DELETE) and a 'path' parameter.",
+                "method": "={{ $parameter.method || 'GET' }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}{{ $parameter.path }}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiApi",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "id": "tool-strapi",
+            "name": "Strapi Manager",
+            "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+            "typeVersion": 1,
+            "position": [
+                300,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "name": "KPI_Analytics",
+                "description": "Use this tool to get recent orders and sales data for analytics. Returns the last 200 orders from Strapi including status, total_cents, service_mode, and createdAt. Use this data to compute revenue, order volume, and trends.",
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=200&populate[0]=order_items",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiTokenApi",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "id": "tool-kpi",
+            "name": "KPI AnalyticsDB",
+            "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+            "typeVersion": 1,
+            "position": [
+                450,
+                400
+            ],
+            "credentials": {
+                "strapiTokenApi": {
+                    "id": "sT8kApXwN2mFqUvR",
+                    "name": "StrapiTokenAPI"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "name": "Marketing_Engine",
+                "description": "Use this tool to trigger the marketing engine to generate Instagram/TikTok videos or ads. Pass the instruction as 'prompt'.",
+                "workflowId": "W_OMNICHANNEL_CONTENT_GEN",
+                "mode": "invokeAnotherWorkflow"
+            },
+            "id": "tool-marketing",
+            "name": "Trigger Marketing",
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 1,
+            "position": [
+                600,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "name": "Funnel_Strategy_Engine",
+                "description": "Use this tool to read Omnichannel Conversion data from Strapi funnel-events... path=/funnel-events?pagination[pageSize]=100",
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api{{ $parameter.path }}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiApi"
+            },
+            "id": "tool-funnel",
+            "name": "Funnel Analytics",
+            "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+            "typeVersion": 1,
+            "position": [
+                750,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "name": "ROI_Calculator",
+                "description": "Use this tool to get order data from the last 14 days for ROI and revenue calculations. Returns orders with total_cents, status, and createdAt. Compute: revenue_this_week (sum total_cents/100 where createdAt > 7d ago and status=CONFIRMED), revenue_last_week (7-14d ago), orders_this_week (count last 7d), avg_order_value (avg total_cents/100 last 7d).",
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=500&filters[createdAt][$gte]={{ new Date(Date.now() - 14*24*60*60*1000).toISOString() }}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiTokenApi",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "id": "tool-roi",
+            "name": "ROI Calculator",
+            "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+            "typeVersion": 1,
+            "position": [
+                900,
+                400
+            ],
+            "credentials": {
+                "strapiTokenApi": {
+                    "id": "sT8kApXwN2mFqUvR",
+                    "name": "StrapiTokenAPI"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Webhook POST /admin/chat": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Strapi Config",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Strapi Config": {
+            "main": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Agent": {
+            "main": [
+                [
+                    {
+                        "node": "Format JSON Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Ollama Chat Model": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Window Buffer Memory": {
+            "ai_memory": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_memory",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Strapi Manager": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "KPI AnalyticsDB": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Trigger Marketing": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Funnel Analytics": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "ROI Calculator": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  nemoclaw:
+    image: ghcr.io/openclaw/openclaw:latest # Official OpenClaw image
+    container_name: nemoclaw-agent
+    restart: unless-stopped
+    environment:
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - NEMO_ROUTING_MODE=cloud
+      - MODEL_ID=meta/llama-3.3-70b-instruct
+      - BASE_URL=https://integrate.api.nvidia.com/v1
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nemoclaw.rule=Host(`nemoclaw.resto-bot.com`)"
+      - "traefik.http.routers.nemoclaw.entrypoints=websecure"
+      - "traefik.http.routers.nemoclaw.tls.certresolver=letsencrypt"
+      - "traefik.http.services.nemoclaw.loadbalancer.server.port=8080" # internal agent UI/API
+
+networks:
+  traefik-net:
+    external: true

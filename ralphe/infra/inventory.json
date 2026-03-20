@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    {
+      "name": "vps-primary",
+      "host": "__FROM_VARS__",
+      "user": "__FROM_VARS__",
+      "role": "primary",
+      "project_dir": "__FROM_VARS__",
+      "backup_dir": "__FROM_VARS__",
+      "log_dir": "__FROM_VARS__"
+    }
+  ]
+}

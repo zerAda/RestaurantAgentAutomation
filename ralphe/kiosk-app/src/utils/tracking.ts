@@ -1,0 +1,21 @@
+export const trackEvent = async (eventType: string, metadata: Record<string, unknown> = {}) => {
+    try {
+        const session_id = sessionStorage.getItem('kiosk_session') || `kiosk_${Date.now()}`;
+        if (!sessionStorage.getItem('kiosk_session')) {
+            sessionStorage.setItem('kiosk_session', session_id);
+        }
+
+        await fetch(`${import.meta.env.VITE_N8N_URL || 'https://n8n.srv1258231.hstgr.cloud'}/webhook/track`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id,
+                channel: 'kiosk',
+                event_type: eventType,
+                metadata
+            })
+        });
+    } catch (err) {
+        console.debug('[Tracking] Silent fail:', err);
+    }
+};

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "media_fetch_dlq",
+  "title": "P1-02 Media Fetch DLQ Entry",
+  "description": "Entry in ralphe:media:dlq when media fetch fails permanently",
+  "type": "object",
+  "required": ["media_id", "channel", "dlqReason", "failedAt"],
+  "properties": {
+    "media_id": {
+      "type": "string",
+      "description": "WhatsApp media ID that failed to fetch"
+    },
+    "msg_id": {
+      "type": "string",
+      "description": "Original message ID"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Correlation ID for tracing"
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["whatsapp"],
+      "description": "Channel (always whatsapp)"
+    },
+    "media_type": {
+      "type": "string",
+      "enum": ["image", "audio", "video", "document", "sticker"],
+      "description": "Type of media"
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of attempts before DLQ"
+    },
+    "error": {
+      "type": "string",
+      "description": "Error code (e.g., HTTP_401, NETWORK_ERROR)"
+    },
+    "statusCode": {
+      "type": "integer",
+      "description": "HTTP status code of final attempt"
+    },
+    "dlqReason": {
+      "type": "string",
+      "enum": [
+        "AUTH_EXPIRED",
+        "MEDIA_EXPIRED",
+        "BAD_REQUEST",
+        "FORBIDDEN",
+        "RATE_LIMITED",
+        "SERVER_ERROR",
+        "NETWORK_ERROR",
+        "MAX_RETRIES_EXHAUSTED",
+        "CONFIG_ERROR"
+      ],
+      "description": "Reason for DLQ placement"
+    },
+    "errorDetail": {
+      "type": ["object", "null"],
+      "description": "Detailed error from Graph API response"
+    },
+    "failedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of final failure"
+    },
+    "originalRequest": {
+      "type": "object",
+      "description": "Original request that was in the queue"
+    }
+  },
+  "examples": [
+    {
+      "media_id": "1234567890123456",
+      "msg_id": "wamid.HBgLMjEyNjAwMDAwMDAxFQIAEhgUM0EB",
+      "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+      "channel": "whatsapp",
+      "media_type": "audio",
+      "attempts": 5,
+      "error": "HTTP_401",
+      "statusCode": 401,
+      "dlqReason": "AUTH_EXPIRED",
+      "errorDetail": {
+        "message": "Error validating access token: The session has been invalidated because the user changed their password or Facebook has changed the session for security reasons.",
+        "type": "OAuthException",
+        "code": 190,
+        "error_subcode": 460
+      },
+      "failedAt": "2026-01-30T12:05:00.000Z",
+      "originalRequest": {
+        "media_id": "1234567890123456",
+        "media_type": "audio",
+        "mime": "audio/ogg",
+        "msg_id": "wamid.HBgLMjEyNjAwMDAwMDAxFQIAEhgUM0EB",
+        "channel": "whatsapp",
+        "queued_at": "2026-01-30T12:00:00.000Z",
+        "attempts": 4
+      }
+    }
+  ]
+}

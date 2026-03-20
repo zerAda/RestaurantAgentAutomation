@@ -1,0 +1,9 @@
+key,locale,content,approved,notes
+CORE_CLARIFY,fr,"Je n’ai pas bien compris. Tu peux préciser ? (ex: “menu”, “2 tacos”, “checkout”)",,Tone ok
+CORE_CLARIFY,ar,"لم أفهم جيداً. هل يمكنك التوضيح؟ (مثال: “menu”، “2 tacos”، “checkout”)",,RTL ok
+CORE_MENU_HEADER,fr,"📋 Menu (IDs utilisables dans ton message)",,Short
+CORE_MENU_HEADER,ar,"📋 القائمة (استخدم المعرفات في رسالتك)",,Short
+CORE_LANG_SET_FR,fr,"✅ Langue définie sur Français. Tape “menu” pour voir la carte.",,
+CORE_LANG_SET_AR,ar,"✅ تم تغيير اللغة إلى العربية. اكتب “menu” لعرض القائمة.",,
+WA_ORDER_STATUS_CONFIRMED,fr,"✅ Commande confirmée (#{{order_id}}).{{eta}}",,Variables ok
+WA_ORDER_STATUS_CONFIRMED,ar,"✅ تم تأكيد طلبك (#{{order_id}}).{{eta}}",,

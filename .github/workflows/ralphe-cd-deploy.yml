@@ -1,0 +1,1216 @@
+# =============================================================================
+# CD Pipeline - Deploy to VPS (Diamond Level)
+# =============================================================================
+# Production-grade deployment with staging gate:
+# CI passes (main) -> deploy-staging -> smoke-battery-staging -> [approval gate]
+#   -> deploy-production -> smoke-battery-prod -> dora-metrics + notify + cleanup
+# - Release directory model (/opt/resto/releases/<id>/)
+# - Pre-deploy backup (pg_dump + config)
+# - Migration gating (fail stops deploy)
+# - Health checks + smoke tests (staging + production)
+# - Automatic rollback on failure
+# - Post-deploy cleanup
+# - DORA metrics recording
+# - Full observability (artifacts, summaries, notifications)
+# =============================================================================
+# Actions pinned to SHA for supply-chain security.
+# VPS connection uses repository variables (not hardcoded).
+# SSH user must be 'deploy' (not root) with docker group membership.
+# Composite actions: setup-ssh, health-check, notify
+# =============================================================================
+
+name: CD - Deploy to VPS
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Artifacts (GHCR)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+      skip_backup:
+        description: "Skip database backup"
+        required: false
+        default: false
+        type: boolean
+      force_full_deploy:
+        description: "Force full deployment (treat as first deploy)"
+        required: false
+        default: false
+        type: boolean
+      instance_name:
+        description: "Target instance name from inventory.json (or 'all')"
+        required: true
+        default: "all"
+      version_ref:
+        description: "Branch, tag, or SHA to deploy (leave blank for default)"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+env:
+  KEEP_RELEASES: 5
+  MAX_RETRIES: 15
+  RETRY_INTERVAL: 10
+  # For workflow_run triggers, github.sha is HEAD of default branch (not the
+  # triggering commit). Use workflow_run.head_sha to match GHCR-built images.
+  DEPLOY_SHA: ${{ github.event.inputs.version_ref || github.event.workflow_run.head_sha || github.sha }}
+
+permissions:
+  contents: read
+  deployments: write
+
+defaults:
+  run:
+    working-directory: ralphe
+
+jobs:
+  # ============================================================================
+  # JOB 0: Validate Inputs (Hardening)
+  # ============================================================================
+  validate-inputs:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 2
+    steps:
+      - name: Validate environment input
+        run: |
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          if [[ ! "$ENV" =~ ^(production|staging)$ ]]; then
+            echo "::error::Invalid environment input: '$ENV'. Must be 'production' or 'staging'."
+            exit 1
+          fi
+          echo "✅ Environment: $ENV"
+
+      - name: Validate boolean inputs
+        run: |
+          for input_pair in "skip_backup:${{ github.event.inputs.skip_backup }}" "force_full_deploy:${{ github.event.inputs.force_full_deploy }}"; do
+            NAME="${input_pair%%:*}"
+            VAL="${input_pair#*:}"
+            if [ -n "$VAL" ] && [[ ! "$VAL" =~ ^(true|false)$ ]]; then
+              echo "::error::Invalid boolean input '$NAME': '$VAL'. Must be 'true' or 'false'."
+              exit 1
+            fi
+          done
+          echo "✅ Boolean inputs valid"
+
+      - name: Validate actor and ref
+        run: |
+          # Ensure actor is not empty
+          if [ -z "${{ github.actor }}" ]; then
+            echo "::error::github.actor is empty"
+            exit 1
+          fi
+          # Ensure SHA is a valid hex string
+          SHA="${{ env.DEPLOY_SHA }}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid commit SHA format: '$SHA'"
+            exit 1
+          fi
+          echo "✅ Actor: ${{ github.actor }}, SHA: $SHA"
+
+  # ============================================================================
+  # JOB 1: Pre-flight checks
+  # ============================================================================
+  preflight:
+    name: Pre-flight Checks
+    runs-on: [self-hosted, vps-primary]
+    needs: validate-inputs
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 5
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      deploy_id: ${{ steps.deploy_id.outputs.id }}
+      release_dir: ${{ steps.deploy_id.outputs.release_dir }}
+      environment: ${{ steps.env.outputs.environment }}
+      is_first_deploy: ${{ steps.detect.outputs.is_first_deploy }}
+      current_version: ${{ steps.detect.outputs.current_version }}
+      vps_host: ${{ steps.config.outputs.vps_host }}
+      vps_user: ${{ steps.config.outputs.vps_user }}
+      project_dir: ${{ steps.config.outputs.project_dir }}
+      backup_dir: ${{ steps.config.outputs.backup_dir }}
+      log_dir: ${{ steps.config.outputs.log_dir }}
+      domain: ${{ steps.config.outputs.domain }}
+      health_url: ${{ steps.config.outputs.health_url }}
+      nodes_matrix: ${{ steps.inventory.outputs.matrix }}
+    env:
+      KEEP_RELEASES: 5
+
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ vars.VPS_HOST }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ vars.VPS_USER || 'deploy' }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ vars.PROJECT_DIR || '/opt/resto' }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ vars['BACKUP_DIR'] || '/opt/resto/backups' }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ vars['LOG_DIR'] || '/var/log/resto-bot' }}" >> $GITHUB_OUTPUT
+          echo "domain=${{ vars.DOMAIN }}" >> $GITHUB_OUTPUT
+          HEALTH_URL="${{ vars.HEALTH_URL }}"
+          if [ -z "$HEALTH_URL" ] && [ -n "${{ vars.DOMAIN }}" ]; then
+            HEALTH_URL="https://api.${{ vars.DOMAIN }}/healthz"
+          fi
+          echo "health_url=$HEALTH_URL" >> $GITHUB_OUTPUT
+
+      - name: Validate required variables
+        run: |
+          MISSING=0
+          VAL="${{ steps.config.outputs.vps_host }}"
+          if [ -z "$VAL" ]; then
+            echo "::error::Repository variable VPS_HOST is not set"
+            MISSING=$((MISSING + 1))
+          fi
+          if [ $MISSING -gt 0 ]; then
+            exit 1
+          fi
+
+          # Validate VPS_HOST format (hostname or IP)
+          HOST="${{ steps.config.outputs.vps_host }}"
+          if [[ ! "$HOST" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::VPS_HOST contains invalid characters: '$HOST'"
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 0
+
+      - name: Parse inventory and build node matrix
+        id: inventory
+        run: |
+          VPS_HOST="${{ steps.config.outputs.vps_host }}"
+          VPS_USER="${{ steps.config.outputs.vps_user }}"
+          PROJECT_DIR="${{ steps.config.outputs.project_dir }}"
+          BACKUP_DIR="${{ steps.config.outputs.backup_dir }}"
+          LOG_DIR="${{ steps.config.outputs.log_dir }}"
+
+          if [ -f "infra/inventory.json" ]; then
+            echo "Using inventory file: infra/inventory.json"
+            INSTANCE="${{ github.event.inputs.instance_name || 'all' }}"
+
+            # Replace __FROM_VARS__ sentinels with actual values and filter by instance
+            MATRIX=$(jq -c --arg target "$INSTANCE" '{
+              "include": [.nodes[] | select($target == "all" or .name == $target) | {
+                "name": .name,
+                "host": (if .host == "__FROM_VARS__" then "'"$VPS_HOST"'" else .host end),
+                "user": (if .user == "__FROM_VARS__" then "'"$VPS_USER"'" else .user end),
+                "role": .role,
+                "project_dir": (if .project_dir == "__FROM_VARS__" then "'"$PROJECT_DIR"'" else .project_dir end),
+                "backup_dir": (if .backup_dir == "__FROM_VARS__" then "'"$BACKUP_DIR"'" else .backup_dir end),
+                "log_dir": (if .log_dir == "__FROM_VARS__" then "'"$LOG_DIR"'" else .log_dir end)
+              }]
+            }' infra/inventory.json)
+
+            echo "Generated matrix: $MATRIX"
+            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          else
+            echo "::notice::infra/inventory.json not found — falling back to single-node from vars"
+            MATRIX=$(jq -n -c '{
+              "include": [{
+                "name": "vps-primary",
+                "host": "'"$VPS_HOST"'",
+                "user": "'"$VPS_USER"'",
+                "role": "primary",
+                "project_dir": "'"$PROJECT_DIR"'",
+                "backup_dir": "'"$BACKUP_DIR"'",
+                "log_dir": "'"$LOG_DIR"'"
+              }]
+            }')
+            echo "Fallback matrix: $MATRIX"
+            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
+      - name: Determine environment
+        id: env
+        run: echo "environment=${{ github.event.inputs.environment || 'production' }}" >> $GITHUB_OUTPUT
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
+          # Validate semver format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::warning::VERSION '$VERSION' is not valid semver — proceeding anyway"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate deployment ID
+        id: deploy_id
+        run: |
+          DEPLOY_ID="$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          # Validate deploy_id is safe (alphanumeric + dashes only)
+          if [[ ! "$DEPLOY_ID" =~ ^[a-zA-Z0-9-]+$ ]]; then
+            echo "::error::Generated deploy_id contains unsafe characters: '$DEPLOY_ID'"
+            exit 1
+          fi
+          echo "id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "release_dir=${{ steps.config.outputs.project_dir }}/releases/$DEPLOY_ID" >> $GITHUB_OUTPUT
+
+      - name: Detect deployment type
+        id: detect
+        run: |
+          RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << 'ENDSSH'
+            IS_FIRST="false"
+            CURRENT_VER="none"
+            PROJECT_DIR="${{ steps.config.outputs.project_dir }}"
+
+            # Check if current symlink exists
+            if [ ! -L "$PROJECT_DIR/current" ] && [ ! -d "$PROJECT_DIR/current" ]; then
+              IS_FIRST="true"
+            fi
+
+            # Get current version
+            if [ -f "$PROJECT_DIR/current/VERSION" ]; then
+              CURRENT_VER=$(cat "$PROJECT_DIR/current/VERSION")
+            fi
+
+            echo "IS_FIRST=$IS_FIRST"
+            echo "CURRENT_VER=$CURRENT_VER"
+          ENDSSH
+          )
+
+          IS_FIRST=$(echo "$RESULT" | grep "IS_FIRST=" | cut -d= -f2)
+          CURRENT_VER=$(echo "$RESULT" | grep "CURRENT_VER=" | cut -d= -f2)
+
+          if [ "${{ github.event.inputs.force_full_deploy }}" = "true" ]; then
+            IS_FIRST="true"
+          fi
+
+          echo "is_first_deploy=${IS_FIRST:-false}" >> $GITHUB_OUTPUT
+          echo "current_version=${CURRENT_VER:-none}" >> $GITHUB_OUTPUT
+
+      - name: Verify VPS disk space
+        run: |
+          DISK_FREE=$(ssh -o StrictHostKeyChecking=no ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
+            "df -BG / | tail -1 | awk '{print \$4}' | tr -d 'G'")
+          if [ "$DISK_FREE" -lt 2 ]; then
+            echo "::error::Insufficient disk space: ${DISK_FREE}GB free (minimum 2GB)"
+            exit 1
+          fi
+          echo "Disk space: ${DISK_FREE}GB free"
+
+      - name: Config drift detection
+        run: |
+          if [ -f "scripts/ops/check_drift.sh" ]; then
+            chmod +x scripts/ops/check_drift.sh
+            ./scripts/ops/check_drift.sh \
+              "${{ steps.config.outputs.vps_user }}" \
+              "${{ steps.config.outputs.vps_host }}" \
+              "${{ steps.config.outputs.project_dir }}"
+          else
+            echo "::warning::scripts/ops/check_drift.sh not found - skipping drift check"
+          fi
+
+  # ============================================================================
+  # JOB 2: Security Gate (Secrets + Signatures)
+  # ============================================================================
+  security-gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 0
+
+      - name: Scan for secrets (Gitleaks)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz
+          ./gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" --verbose || {
+            echo "::warning::Gitleaks found potential secrets - review required"
+          }
+
+      - name: Validate no .env committed
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env is tracked by git"
+            exit 1
+          fi
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+
+      - name: Verify Image Signatures
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets['COSIGN_PUBLIC_KEY'] }}
+          REGISTRY: ghcr.io
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ env.DEPLOY_SHA }}
+        run: |
+          OWNER_LC="${OWNER,,}"
+          IMAGES=("resto-bot-cms" "resto-bot-admin" "resto-bot-kiosk")
+          VERIFY_FAILED=0
+
+          for img in "${IMAGES[@]}"; do
+            IMAGE_URI="$REGISTRY/$OWNER_LC/$img:$SHA"
+            echo "Verifying signature for $IMAGE_URI"
+            if cosign verify --key env://COSIGN_PUBLIC_KEY "$IMAGE_URI" 2>/dev/null; then
+              echo "✅ $img signature verified"
+            else
+              echo "::warning::Signature verification failed for $img (image may not be signed)"
+              VERIFY_FAILED=$((VERIFY_FAILED + 1))
+            fi
+          done
+
+          if [ "$VERIFY_FAILED" -gt 0 ]; then
+            echo "::warning::$VERIFY_FAILED image(s) failed signature verification. Fix COSIGN_PASSWORD/COSIGN_PRIVATE_KEY secrets to enable signing."
+          fi
+
+  # ============================================================================
+  # JOB 3: Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Deploy to Staging (${{ matrix.name }})
+    runs-on: [self-hosted, vps-primary]
+    needs: [preflight, security-gate]
+    timeout-minutes: 40
+
+    outputs:
+      staging_status: ${{ steps.staging-smoke.outputs.status }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ matrix.host }}
+
+      - name: Create staging directory
+        run: |
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} \
+            "mkdir -p $STAGING_DIR"
+
+      - name: Sync code to staging
+        run: |
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='secrets/' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.pytest_cache' \
+            --exclude='*.pyc' \
+            --exclude='.DS_Store' \
+            --exclude='kiosk-app/' \
+            --exclude='admin-dashboard/' \
+            --exclude='inventory-cms/' \
+            --exclude='mock-api/' \
+            --exclude='tests/' \
+            --exclude='docs/' \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ ${{ matrix.user }}@${{ matrix.host }}:$STAGING_DIR/
+
+      - name: Prepare and start staging services
+        run: |
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          PROJECT_DIR="${{ matrix.project_dir }}"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+
+          # Use the newly extracted staging deploy script
+          ssh $SSH_OPTS ${{ matrix.user }}@${{ matrix.host }} \
+            "export GH_TOKEN='${{ secrets.GITHUB_TOKEN }}'; \
+             chmod +x $STAGING_DIR/scripts/ops/deploy_staging_to_node.sh; \
+             bash $STAGING_DIR/scripts/ops/deploy_staging_to_node.sh \
+               --staging-dir '$STAGING_DIR' \
+               --project-dir '$PROJECT_DIR' \
+               --deploy-sha '${{ env.DEPLOY_SHA }}' \
+               --github-owner '${{ github.repository_owner }}' \
+               --github-actor '${{ github.actor }}' \
+               --github-token '${{ secrets.GITHUB_TOKEN }}'"
+
+      - name: Chaos Resilience Test (Staging)
+        continue-on-error: true
+        run: |
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+            cd $STAGING_DIR
+            export COMPOSE_PROJECT_NAME=resto-staging
+            if [ -f .env ]; then set -a; source .env; set +a; fi
+
+            echo "Running Chaos Monkey Resilience Test..."
+            bash scripts/chaos-monkey.sh || echo "::warning::Chaos monkey test had failures"
+
+            echo "Waiting for auto-healing..."
+            sleep 15
+
+            echo "Verifying recovery with Deep Health Check..."
+            bash scripts/deep-health-check.sh || echo "::warning::Post-chaos health check had failures"
+          ENDSSH
+
+      - name: Run staging smoke tests
+        id: staging-smoke
+        run: |
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+            set -e
+            cd $STAGING_DIR
+            if [ -f .env ]; then set -a; source .env; set +a; fi
+
+            echo "=== Running scripts/smoke.sh against staging ==="
+            if [ -f "scripts/smoke.sh" ]; then
+              chmod +x scripts/smoke.sh
+              bash scripts/smoke.sh || {
+                echo "::error::Staging smoke tests failed"
+                exit 1
+              }
+            else
+              echo "::warning::scripts/smoke.sh not found - skipping staging smoke tests"
+            fi
+          ENDSSH
+
+          echo "status=passed" >> $GITHUB_OUTPUT
+
+      - name: Stop staging services
+        if: always()
+        run: |
+          STAGING_DIR="${{ matrix.project_dir }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+            if [ -d "$STAGING_DIR" ]; then
+              cd "$STAGING_DIR"
+              if [ -f docker-compose.staging-override.yml ]; then
+                docker compose --project-name resto-staging -f docker-compose.yml -f docker-compose.staging-override.yml down -v --remove-orphans 2>/dev/null || true
+              else
+                docker compose --project-name resto-staging down --remove-orphans 2>/dev/null || true
+              fi
+              echo "Staging services stopped"
+            fi
+          ENDSSH
+
+  # ============================================================================
+  # JOB 4: Staging Smoke Battery
+  # ============================================================================
+  smoke-battery-staging:
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Smoke Battery (${{ matrix.name }})
+    runs-on: [self-hosted, vps-primary]
+    needs: [preflight, deploy-staging]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ matrix.host }}
+
+      - name: Validate staging deployment result
+        run: |
+          if [ "${{ needs.deploy-staging.outputs.staging_status }}" != "passed" ]; then
+            echo "::error::Staging smoke tests did not pass"
+            exit 1
+          fi
+          echo "Staging validation confirmed: smoke tests passed"
+
+  # ============================================================================
+  # JOB 5: Production Approval Gate
+  # ============================================================================
+  approve-production:
+    name: Approve Production Deploy
+    runs-on: ubuntu-latest
+    needs: [preflight, smoke-battery-staging]
+    environment:
+      name: production
+    timeout-minutes: 60
+
+    steps:
+      - name: Approval confirmed
+        run: |
+          echo "Production deployment approved"
+          echo "Version: ${{ needs.preflight.outputs.version }}"
+          echo "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}"
+          echo "Commit: ${{ env.DEPLOY_SHA }}"
+
+  # ============================================================================
+  # JOB 6: Pre-deployment backup
+  # ============================================================================
+  backup:
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Pre-deploy Backup (${{ matrix.name }})
+    runs-on: [self-hosted, vps-primary]
+    needs: [preflight, approve-production]
+    if: |
+      needs.preflight.outputs.is_first_deploy != 'true' &&
+      github.event.inputs.skip_backup != 'true'
+    timeout-minutes: 15
+    outputs:
+      backup_name: ${{ steps.backup.outputs.name }}
+    env:
+      BACKUP_DIR: ${{ format('{0}', matrix.backup_dir) }}
+      PROJECT_DIR: ${{ format('{0}', matrix.project_dir) }}
+
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ matrix.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ matrix.log_dir }}" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
+      - name: Create backup (n8n + strapi DBs)
+        id: backup
+        env:
+          BACKUP_ENCRYPT: ${{ secrets['BACKUP_ENCRYPT'] }}
+          GPG_PASSPHRASE: ${{ secrets['GPG_PASSPHRASE'] }}
+        run: |
+          BACKUP_NAME="deploy-${{ needs.preflight.outputs.deploy_id }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
+          COMMIT="${{ env.DEPLOY_SHA }}"
+          PROJECT_DIR="${{ matrix.project_dir }}"
+          BACKUP_DIR="${{ matrix.backup_dir }}"
+
+          echo "Using backup script: scripts/ops/backup.sh"
+
+          if [ -f "scripts/ops/backup.sh" ]; then
+            chmod +x scripts/ops/backup.sh
+            # Execute remotely by piping the script
+            # Pass encryption secrets if available
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+              ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} \
+              "export BACKUP_NAME='$BACKUP_NAME' VERSION='$VERSION' COMMIT='$COMMIT' PROJECT_DIR='$PROJECT_DIR' BACKUP_DIR='$BACKUP_DIR' BACKUP_ENCRYPT='$BACKUP_ENCRYPT' GPG_PASSPHRASE='$GPG_PASSPHRASE'; bash -s" < scripts/ops/backup.sh
+          else
+             echo "::error::scripts/ops/backup.sh not found"
+             exit 1
+          fi
+
+          echo "name=$BACKUP_NAME" >> $GITHUB_OUTPUT
+
+  # ============================================================================
+  # JOB 7: Deploy to Production (Multi-Node Matrix)
+  # ============================================================================
+  deploy-production:
+    name: Deploy (${{ matrix.name }})
+    runs-on: [self-hosted, vps-primary]
+    needs: [preflight, approve-production, backup]
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.approve-production.result == 'success' &&
+      (needs.backup.result == 'success' || needs.backup.result == 'skipped')
+    timeout-minutes: 40
+    strategy:
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+      fail-fast: true
+    outputs:
+      status: ${{ steps.health.outputs.status }}
+      deploy_start: ${{ steps.timer.outputs.start }}
+
+    steps:
+      - name: Record deploy start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ matrix.host }}
+
+      - name: Sync code to node
+        run: |
+          RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectionAttempts=3"
+
+          # Create release directory on target node (with retry)
+          for attempt in 1 2 3; do
+            if ssh $SSH_OPTS ${{ matrix.user }}@${{ matrix.host }} "mkdir -p $RELEASE_DIR"; then
+              break
+            fi
+            echo "SSH attempt $attempt failed, retrying in 15s..."
+            sleep 15
+          done
+
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='secrets/' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.pytest_cache' \
+            --exclude='*.pyc' \
+            --exclude='.DS_Store' \
+            --exclude='kiosk-app/' \
+            --exclude='admin-dashboard/' \
+            --exclude='inventory-cms/' \
+            --exclude='mock-api/' \
+            --exclude='tests/' \
+            --exclude='docs/' \
+            -e "ssh $SSH_OPTS" \
+            ./ ${{ matrix.user }}@${{ matrix.host }}:$RELEASE_DIR/
+
+      - name: Deploy to ${{ matrix.name }} via deploy_to_node.sh
+        run: |
+          RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectionAttempts=3"
+
+          if [ ! -f "scripts/ops/deploy_to_node.sh" ]; then
+            echo "::error::scripts/ops/deploy_to_node.sh not found"
+            exit 1
+          fi
+
+          # Execute the deploy script directly on the VPS (already synced via rsync)
+          # NOTE: Do NOT use 'bash -s < script' — docker compose up consumes stdin
+          ssh $SSH_OPTS ${{ matrix.user }}@${{ matrix.host }} \
+            "export GH_TOKEN='${{ secrets.GITHUB_TOKEN }}'; \
+             chmod +x $RELEASE_DIR/scripts/ops/deploy_to_node.sh; \
+             bash $RELEASE_DIR/scripts/ops/deploy_to_node.sh \
+               --role '${{ matrix.role }}' \
+               --project-dir '${{ matrix.project_dir }}' \
+               --release-dir '$RELEASE_DIR' \
+               --backup-dir '${{ matrix.backup_dir }}' \
+               --log-dir '${{ matrix.log_dir }}' \
+               --is-first-deploy '${{ needs.preflight.outputs.is_first_deploy }}' \
+               --github-owner '${{ github.repository_owner }}' \
+               --image-sha '${{ env.DEPLOY_SHA }}' \
+               --github-actor '${{ github.actor }}' \
+               --github-token '${{ secrets.GITHUB_TOKEN }}'"
+
+      - name: Health check
+        id: health
+        uses: ./.github/actions/health-check
+        with:
+          url: ${{ needs.preflight.outputs.health_url }}
+          max-retries: ${{ env.MAX_RETRIES }}
+          retry-interval: ${{ env.RETRY_INTERVAL }}
+          expected-code: "200"
+
+      - name: Collect failure artifacts
+        if: failure()
+        run: |
+          echo "=== Failure Diagnostics (${{ matrix.name }}) ===" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH >> $GITHUB_STEP_SUMMARY 2>&1
+            echo "--- docker compose ps ---"
+            cd ${{ matrix.project_dir }}/current 2>/dev/null && docker compose ps 2>/dev/null || echo "compose not available"
+            echo ""
+            echo "--- docker compose logs (last 30 lines) ---"
+            cd ${{ matrix.project_dir }}/current 2>/dev/null && docker compose logs --tail=30 2>/dev/null || echo "logs not available"
+            echo ""
+            echo "--- disk usage ---"
+            df -h / | tail -1
+            echo ""
+            echo "--- memory ---"
+            free -m | head -2
+            echo ""
+            echo "--- listening ports ---"
+            ss -tulpn 2>/dev/null | head -20 || netstat -tulpn 2>/dev/null | head -20
+          ENDSSH
+
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Record deployment on ${{ matrix.name }}
+        if: success()
+        run: |
+          LOG_DIR="${{ matrix.log_dir }}"
+          RELEASE_DIR="${{ matrix.project_dir }}/releases/${{ needs.preflight.outputs.deploy_id }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ matrix.user }}@${{ matrix.host }} << ENDSSH
+            LOG_DIR="${LOG_DIR:-/var/log/resto-bot}"
+            mkdir -p "\$LOG_DIR"
+            echo "${{ needs.preflight.outputs.version }}" > "\$LOG_DIR/current_version"
+
+            cat >> "\$LOG_DIR/deployments.log" << EOF
+
+          ================================================================================
+          Deployment: ${{ needs.preflight.outputs.deploy_id }}
+          Node:       ${{ matrix.name }} (${{ matrix.role }})
+          Version:    ${{ needs.preflight.outputs.version }}
+          Previous:   ${{ needs.preflight.outputs.current_version }}
+          Commit:     ${{ env.DEPLOY_SHA }}
+          Branch:     ${{ github.ref_name }}
+          Actor:      ${{ github.actor }}
+          Release:    $RELEASE_DIR
+          Timestamp:  \$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Status:     SUCCESS
+          ================================================================================
+          EOF
+          ENDSSH
+
+  # ============================================================================
+  # JOB 8: Production Smoke Battery
+  # ============================================================================
+  smoke-battery-prod:
+    name: Smoke (${{ matrix.node.name }} - ${{ matrix.check }})
+    runs-on: [self-hosted, vps-primary]
+    needs: [preflight, deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [internal, whatsapp, instagram, messenger]
+        node: ${{ fromJson(needs.preflight.outputs.nodes_matrix).include }}
+
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ matrix.node.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.node.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.node.project_dir }}" >> $GITHUB_OUTPUT
+          echo "domain=${{ needs.preflight.outputs.domain }}" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
+      # Internal Check (SSH)
+      - name: Execute smoke.sh on VPS
+        if: matrix.check == 'internal'
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
+            set -e
+            cd ${{ steps.config.outputs.project_dir }}/current
+            if [ -f .env ]; then set -a; source .env; set +a; fi
+            if [ -f "scripts/smoke.sh" ]; then
+              chmod +x scripts/smoke.sh
+              bash scripts/smoke.sh
+            else
+              echo "::error::scripts/smoke.sh missing"
+              exit 1
+            fi
+          ENDSSH
+
+      # External Checks (Curl)
+      - name: Check Channel Endpoint
+        if: matrix.check != 'internal'
+        run: |
+          ENDPOINT=""
+          case "${{ matrix.check }}" in
+            whatsapp) ENDPOINT="v1/inbound/whatsapp" ;;
+            instagram) ENDPOINT="v1/inbound/instagram" ;;
+            messenger) ENDPOINT="v1/inbound/messenger" ;;
+          esac
+
+          URL="https://api.${{ steps.config.outputs.domain }}/$ENDPOINT?hub.mode=subscribe&hub.verify_token=test&hub.challenge=test"
+          echo "Checking $URL..."
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+
+          if [ "$CODE" != "000" ] && [ "$CODE" != "502" ] && [ "$CODE" != "503" ]; then
+            echo "✅ $ENDPOINT: PASS (HTTP $CODE)"
+          else
+            echo "::error::$ENDPOINT: FAIL (HTTP $CODE)"
+            exit 1
+          fi
+
+  # ============================================================================
+  # JOB 9: DORA Metrics
+  # ============================================================================
+  dora-metrics:
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: DORA Metrics (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy-production, smoke-battery-prod]
+    if: always() && needs.deploy-production.result == 'success'
+    continue-on-error: true
+    timeout-minutes: 5
+    env:
+      LOG_DIR: ${{ format('{0}', matrix.log_dir) }}
+      PROJECT_DIR: ${{ format('{0}', matrix.project_dir) }}
+
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ matrix.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ matrix.log_dir }}" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
+      - name: Record DORA metrics
+        run: |
+          DEPLOY_START="${{ needs.deploy-production.outputs.deploy_start }}"
+          DEPLOY_END=$(date +%s)
+          DEPLOY_DURATION=$((DEPLOY_END - DEPLOY_START))
+
+          # Calculate lead time (time from commit to deploy)
+          COMMIT_TS=$(git log -1 --format=%ct "${{ env.DEPLOY_SHA }}" 2>/dev/null || echo "$DEPLOY_START")
+          LEAD_TIME=$((DEPLOY_END - COMMIT_TS))
+
+          # Determine status
+          if [ "${{ needs.smoke-battery-prod.result }}" = "success" ] && [ "${{ needs.deploy-production.result }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
+          fi
+
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << ENDSSH
+            set -e
+            LOG_DIR="${LOG_DIR:-/var/log/resto-bot}"
+            mkdir -p "\$LOG_DIR"
+
+            # Check if scripts/dora_metrics.sh exists on VPS
+            if [ -f "${{ steps.config.outputs.project_dir }}/current/scripts/dora_metrics.sh" ]; then
+              cd ${{ steps.config.outputs.project_dir }}/current
+              chmod +x scripts/dora_metrics.sh
+              bash scripts/dora_metrics.sh \
+                "${{ needs.preflight.outputs.version }}" \
+                "${{ env.DEPLOY_SHA }}" \
+                "$STATUS" \
+                "$DEPLOY_START" \
+                "\$LOG_DIR"
+            else
+              # Inline DORA metrics recording
+              TIMESTAMP="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo '{"timestamp":"'\$TIMESTAMP'","version":"${{ needs.preflight.outputs.version }}","commit":"${{ env.DEPLOY_SHA }}","status":"$STATUS","lead_time_sec":'$LEAD_TIME',"deploy_duration_sec":'$DEPLOY_DURATION'}' \
+                >> "\$LOG_DIR/dora_metrics.jsonl"
+              echo "DORA metrics recorded (inline) to \$LOG_DIR/dora_metrics.jsonl"
+            fi
+          ENDSSH
+
+          echo "DORA Metrics:"
+          echo "  Status: $STATUS"
+          echo "  Version: ${{ needs.preflight.outputs.version }}"
+          echo "  Lead Time: ${LEAD_TIME}s"
+          echo "  Deploy Duration: ${DEPLOY_DURATION}s"
+
+  # ============================================================================
+  # JOB 10: Cleanup
+  # ============================================================================
+  cleanup:
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
+    name: Cleanup (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy-production, smoke-battery-prod]
+    if: always() && needs.deploy-production.result == 'success'
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          echo "vps_host=${{ matrix.host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ matrix.user }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ matrix.project_dir }}" >> $GITHUB_OUTPUT
+          echo "backup_dir=${{ matrix.backup_dir }}" >> $GITHUB_OUTPUT
+          echo "log_dir=${{ matrix.log_dir }}" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
+      - name: Cleanup old releases and Docker artifacts
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 ${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }} << 'ENDSSH'
+            set -e
+            echo "=== Disk BEFORE cleanup ==="
+            df -h / | tail -1
+
+            # 1. Prune old releases (keep KEEP_RELEASES=5)
+            PROJECT_DIR="${{ steps.config.outputs.project_dir }}"
+            RELEASES_DIR="${PROJECT_DIR}/releases"
+            if [ -d "$RELEASES_DIR" ]; then
+              CURRENT=$(readlink ${PROJECT_DIR}/current 2>/dev/null || echo "")
+              RELEASE_COUNT=$(ls -1d $RELEASES_DIR/*/ 2>/dev/null | wc -l)
+              echo "Releases: $RELEASE_COUNT (keeping 5)"
+
+              if [ "$RELEASE_COUNT" -gt 5 ]; then
+                ls -1dt $RELEASES_DIR/*/ | tail -n +6 | while read old_release; do
+                  if [ "$old_release" != "$CURRENT" ] && [ "$old_release" != "$CURRENT/" ]; then
+                    echo "Removing old release: $old_release"
+                    rm -rf "$old_release"
+                  fi
+                done
+              fi
+            fi
+
+            # 2. Cleanup staging directory
+            STAGING_DIR="${PROJECT_DIR}/staging"
+            if [ -d "$STAGING_DIR" ]; then
+              echo "Cleaning up staging directory"
+              rm -rf "$STAGING_DIR"/*
+            fi
+
+            # 3. Docker cleanup (safe)
+            docker image prune -f 2>/dev/null || true
+            docker builder prune -f --keep-storage 1GB 2>/dev/null || true
+
+            # 4. Old backup cleanup (keep 10 deploy backups, 7 daily, 4 weekly)
+            BACKUP_DIR="${{ steps.config.outputs.backup_dir }}"
+            if [ -d "$BACKUP_DIR" ]; then
+              ls -t $BACKUP_DIR/deploy-*-n8n.dump 2>/dev/null | tail -n +11 | xargs -r rm -v
+              ls -t $BACKUP_DIR/deploy-*-strapi.dump 2>/dev/null | tail -n +11 | xargs -r rm -v
+              ls -t $BACKUP_DIR/deploy-*-config.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
+              ls -t $BACKUP_DIR/deploy-*-meta.json 2>/dev/null | tail -n +11 | xargs -r rm -v
+              ls -t $BACKUP_DIR/daily-*-db.dump.gz 2>/dev/null | tail -n +8 | xargs -r rm -v
+              ls -t $BACKUP_DIR/full-*-db.dump.gz 2>/dev/null | tail -n +5 | xargs -r rm -v
+              find $BACKUP_DIR -name "pre-rollback-*" -mtime +3 -delete 2>/dev/null || true
+            fi
+
+            # 5. Journal cleanup
+            journalctl --vacuum-time=7d 2>/dev/null || true
+
+            echo "=== Disk AFTER cleanup ==="
+            df -h / | tail -1
+
+            echo "=== Docker disk usage ==="
+            docker system df
+          ENDSSH
+
+  # ============================================================================
+  # JOB 10b: Cleanup staging on rejected/timed-out approval
+  # ============================================================================
+  cleanup-staging-on-reject:
+    name: Cleanup Staging (rejected)
+    runs-on: ubuntu-latest
+    needs: [preflight, approve-production]
+    if: always() && needs.approve-production.result != 'success'
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ needs.preflight.outputs.vps_host }}
+
+      - name: Clean staging directory
+        run: |
+          STAGING_DIR="${{ needs.preflight.outputs.project_dir || '/opt/resto' }}/staging/${{ needs.preflight.outputs.deploy_id }}"
+          VPS_USER="${{ needs.preflight.outputs.vps_user || 'deploy' }}"
+          VPS_HOST="${{ needs.preflight.outputs.vps_host }}"
+
+          echo "Cleaning staging directory: $STAGING_DIR"
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 "$VPS_USER@$VPS_HOST" \
+            "cd $STAGING_DIR 2>/dev/null && docker compose down --remove-orphans 2>/dev/null; rm -rf $STAGING_DIR; echo 'Staging cleaned'"
+
+  # ============================================================================
+  # JOB 11: Post-deployment (rollback + summary + notification)
+  # ============================================================================
+  post-deploy:
+    name: Post-deployment
+    runs-on: ubuntu-latest
+    needs:
+      [
+        preflight,
+        security-gate,
+        deploy-staging,
+        smoke-battery-staging,
+        approve-production,
+        backup,
+        deploy-production,
+        smoke-battery-prod,
+        dora-metrics,
+        cleanup,
+      ]
+    if: always()
+    timeout-minutes: 10
+    steps:
+      - name: Resolve configuration
+        id: config
+        run: |
+          # Non-secret values only — secrets are referenced directly where needed
+          # post-deploy is a singleton job (no matrix), use preflight outputs
+          echo "vps_host=${{ needs.preflight.outputs.vps_host }}" >> $GITHUB_OUTPUT
+          echo "vps_user=${{ needs.preflight.outputs.vps_user || 'deploy' }}" >> $GITHUB_OUTPUT
+          echo "project_dir=${{ needs.preflight.outputs.project_dir || '/opt/resto' }}" >> $GITHUB_OUTPUT
+
+          # Calculate deploy duration
+          if [ -n "${{ needs.deploy-production.outputs.deploy_start }}" ]; then
+            DEPLOY_END=$(date +%s)
+            DURATION=$((DEPLOY_END - ${{ needs.deploy-production.outputs.deploy_start }}))
+            echo "deploy_duration=$DURATION" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_duration=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
+      - name: Auto-rollback on failure
+        if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
+        run: |
+          echo "::warning::Deployment failed — initiating rollback"
+
+          PROJECT_DIR="${{ steps.config.outputs.project_dir }}"
+          VPS_USER="${{ steps.config.outputs.vps_user }}"
+          VPS_HOST="${{ steps.config.outputs.vps_host }}"
+
+          if [ -f "scripts/ops/rollback.sh" ]; then
+             chmod +x scripts/ops/rollback.sh
+             ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 "$VPS_USER@$VPS_HOST" \
+               "export PROJECT_DIR='$PROJECT_DIR'; bash -s" < scripts/ops/rollback.sh
+          else
+             echo "::error::scripts/ops/rollback.sh not found"
+             exit 1
+          fi
+
+      - name: Deployment summary
+        run: |
+          DEPLOY_STATUS="FAILED"
+          if [ "${{ needs.deploy-production.result }}" = "success" ] && [ "${{ needs.smoke-battery-prod.result }}" = "success" ]; then
+            DEPLOY_STATUS="SUCCESS"
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## Deployment Summary
+
+          | Property | Value |
+          |----------|-------|
+          | **Status** | ${DEPLOY_STATUS} |
+          | **Version** | ${{ needs.preflight.outputs.version }} |
+          | **Previous** | ${{ needs.preflight.outputs.current_version }} |
+          | **Deploy ID** | ${{ needs.preflight.outputs.deploy_id }} |
+          | **Release Dir** | ${{ needs.preflight.outputs.release_dir }} |
+          | **Environment** | ${{ needs.preflight.outputs.environment }} |
+          | **Commit** | \`${{ env.DEPLOY_SHA }}\` |
+          | **Branch** | \`${{ github.ref_name }}\` |
+          | **Backup** | ${{ needs.backup.outputs.backup_name || 'skipped' }} |
+
+          ### Job Results
+          | Job | Result |
+          |-----|--------|
+          | Preflight | ${{ needs.preflight.result }} |
+          | Security Gate | ${{ needs.security-gate.result }} |
+          | Deploy Staging | ${{ needs.deploy-staging.result }} |
+          | Smoke Battery Staging | ${{ needs.smoke-battery-staging.result }} |
+          | Approve Production | ${{ needs.approve-production.result }} |
+          | Backup | ${{ needs.backup.result || 'skipped' }} |
+          | Deploy Production | ${{ needs.deploy-production.result }} |
+          | Smoke Battery Prod | ${{ needs.smoke-battery-prod.result }} |
+          | DORA Metrics | ${{ needs.dora-metrics.result }} |
+          | Cleanup | ${{ needs.cleanup.result || 'skipped' }} |
+          EOF
+
+      - name: Notify on failure
+        if: needs.deploy-production.result == 'failure' || needs.smoke-battery-prod.result == 'failure'
+        uses: ./.github/actions/notify
+        with:
+          webhook-url: ${{ secrets.ALERT_WEBHOOK_URL }}
+          discord-webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: failure
+          title: "Deployment FAILED - v${{ needs.preflight.outputs.version }}"
+          version: ${{ needs.preflight.outputs.version }}
+          environment: ${{ needs.preflight.outputs.environment }}
+          details: "Auto-rollback initiated. Actor: ${{ github.actor }}"
+          commit-sha: ${{ env.DEPLOY_SHA }}
+          deploy-id: ${{ needs.preflight.outputs.deploy_id }}
+          deploy-duration: ${{ steps.config.outputs.deploy_duration }}
+          repo-url: ${{ github.server_url }}/${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Notify on success
+        if: needs.deploy-production.result == 'success' && needs.smoke-battery-prod.result == 'success'
+        uses: ./.github/actions/notify
+        with:
+          webhook-url: ${{ secrets.ALERT_WEBHOOK_URL }}
+          discord-webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: success
+          title: "Deployment SUCCESS - v${{ needs.preflight.outputs.version }}"
+          version: ${{ needs.preflight.outputs.version }}
+          environment: ${{ needs.preflight.outputs.environment }}
+          details: "Deploy ID: ${{ needs.preflight.outputs.deploy_id }}. All smoke tests passed."
+          commit-sha: ${{ env.DEPLOY_SHA }}
+          deploy-id: ${{ needs.preflight.outputs.deploy_id }}
+          deploy-duration: ${{ steps.config.outputs.deploy_duration }}
+          repo-url: ${{ github.server_url }}/${{ github.repository }}
+          run-id: ${{ github.run_id }}

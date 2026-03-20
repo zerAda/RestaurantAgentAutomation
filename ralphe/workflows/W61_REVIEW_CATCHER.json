@@ -1,0 +1,129 @@
+{
+    "name": "W61 - Automated Sentiment & Review Catcher",
+    "active": true,
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "minutes",
+                            "minutesInterval": 15
+                        }
+                    ]
+                }
+            },
+            "id": "cron_15m",
+            "name": "Every 15 Minutes",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT o.order_id, o.conversation_key, o.channel, o.tenant_id, o.restaurant_id, c.phone as user_id\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nWHERE o.created_at >= NOW() - INTERVAL '75 minutes'\n  AND o.created_at <= NOW() - INTERVAL '60 minutes'\n  AND o.review_prompted = false;\n"
+            },
+            "id": "find_delivered_orders",
+            "name": "Find Orders ~1h Ago",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                200,
+                0
+            ],
+            "alwaysOutputData": false
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE orders SET review_prompted = true WHERE order_id = $1;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.order_id]}}"
+                }
+            },
+            "id": "mark_prompted",
+            "name": "Mark Prompted",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                400,
+                -100
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const e = $json;\nreturn [{\n  json: {\n    outbox_dedupe_key: `review:${e.order_id}`,\n    tenantId: e.tenant_id,\n    restaurantId: e.restaurant_id,\n    conversationKey: e.conversation_key,\n    channel: e.channel,\n    userId: e.user_id,\n    orderId: e.order_id,\n    outbox_template: 'review_prompt',\n    outbox_payload: {\n      channel: e.channel,\n      to: e.user_id,\n      restaurantId: e.restaurant_id,\n      text: 'J\\'espère que tu t\\'es bien régalé ! Comment noterais-tu ta commande sur 5 étoiles ? ⭐\\n\\n1. Très déçu 😞\\n2. Bof 😕\\n3. Moyen 😐\\n4. Bon 🙂\\n5. Excellent ! 🤩',\n      buttons: [\n        { id: 'REVIEW_5', title: '⭐⭐⭐⭐⭐' },\n        { id: 'REVIEW_4', title: '⭐⭐⭐⭐' },\n        { id: 'REVIEW_1_3', title: 'Moyen / Déçu' }\n      ]\n    }\n  }\n}];"
+            },
+            "id": "format_review_prompt",
+            "name": "Format Review Prompt",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                600,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO outbound_messages(dedupe_key, tenant_id, restaurant_id, conversation_key, channel, user_id, order_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO NOTHING\nRETURNING outbound_id, status;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.outbox_dedupe_key, $json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json.orderId, $json.outbox_template, $json.outbox_payload]}}"
+                }
+            },
+            "id": "enqueue_review",
+            "name": "Enqueue Outbox",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                800,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Every 15 Minutes": {
+            "main": [
+                [
+                    {
+                        "node": "Find Orders ~1h Ago",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Orders ~1h Ago": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Prompted",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Format Review Prompt",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Review Prompt": {
+            "main": [
+                [
+                    {
+                        "node": "Enqueue Outbox",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {}
+}

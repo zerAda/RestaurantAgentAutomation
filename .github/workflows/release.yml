@@ -1,0 +1,175 @@
+# =============================================================================
+# Release - Resto Bot
+# =============================================================================
+# Manual release workflow:
+# - Bumps semantic version (patch/minor/major)
+# - Updates VERSION file
+# - Generates changelog from git log
+# - Creates git tag and GitHub Release
+# =============================================================================
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump-type:
+        description: Version bump type
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Read current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(cat VERSION)
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Calculate new version
+        id: bump
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          case "${{ inputs.bump-type }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW_VERSION"
+
+      - name: Update VERSION file
+        run: |
+          echo "${{ steps.bump.outputs.version }}" > VERSION
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.version }}"
+
+          # Get the last tag, or use initial commit if no tags exist
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+
+          echo "Generating changelog from $LAST_TAG to HEAD"
+
+          # Generate grouped changelog
+          {
+            echo "## v${NEW_VERSION}"
+            echo ""
+
+            FEAT=$(git log --oneline "${LAST_TAG}..HEAD" --grep="^feat/" --format="- %s" 2>/dev/null || true)
+            if [[ -n "$FEAT" ]]; then
+              echo "### Features"
+              echo "$FEAT"
+              echo ""
+            fi
+
+            FIX=$(git log --oneline "${LAST_TAG}..HEAD" --grep="^fix/" --format="- %s" 2>/dev/null || true)
+            if [[ -n "$FIX" ]]; then
+              echo "### Fixes"
+              echo "$FIX"
+              echo ""
+            fi
+
+            CI=$(git log --oneline "${LAST_TAG}..HEAD" --grep="^ci/" --format="- %s" 2>/dev/null || true)
+            if [[ -n "$CI" ]]; then
+              echo "### CI"
+              echo "$CI"
+              echo ""
+            fi
+
+            DOCS=$(git log --oneline "${LAST_TAG}..HEAD" --grep="^docs/" --format="- %s" 2>/dev/null || true)
+            if [[ -n "$DOCS" ]]; then
+              echo "### Documentation"
+              echo "$DOCS"
+              echo ""
+            fi
+
+            CHORE=$(git log --oneline "${LAST_TAG}..HEAD" --grep="^chore/" --format="- %s" 2>/dev/null || true)
+            if [[ -n "$CHORE" ]]; then
+              echo "### Chores"
+              echo "$CHORE"
+              echo ""
+            fi
+
+            # Ungrouped commits (those not matching any prefix)
+            OTHER=$(git log --oneline "${LAST_TAG}..HEAD" --format="- %s" \
+              --invert-grep --grep="^feat/" --grep="^fix/" --grep="^ci/" --grep="^docs/" --grep="^chore/" 2>/dev/null || true)
+            if [[ -n "$OTHER" ]]; then
+              echo "### Other"
+              echo "$OTHER"
+              echo ""
+            fi
+          } > /tmp/changelog.md
+
+          cat /tmp/changelog.md
+
+          # Make changelog available for the release step
+          {
+            echo "body<<CHANGELOG_EOF"
+            cat /tmp/changelog.md
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "release: v${NEW_VERSION}"
+
+      - name: Create tag
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.version }}"
+          git tag "v${NEW_VERSION}"
+
+      - name: Push commit and tag
+        run: |
+          git push origin HEAD
+          git push origin "v${{ steps.bump.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "v${{ steps.bump.outputs.version }}" \
+            --title "v${{ steps.bump.outputs.version }}" \
+            --notes-file /tmp/changelog.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,193 @@
+{
+    "name": "W_UPSELL_ENGINE - Intelligent Memory Upselling",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "saveManualExecutions": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "upsell",
+                "options": {}
+            },
+            "id": "webhook-upsell",
+            "name": "Webhook POST /upsell",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/customers?filters[phone][$eq]={{ $json.body.phone }}&populate=orders",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "strapiApi"
+            },
+            "id": "fetch-customer",
+            "name": "Fetch Customer Memory",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                200,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const customer = $json.data && $json.data.length > 0 ? $json.data[0] : null;\nconst learningsData = $node['Fetch AI Learnings'].json?.data;\nconst latestLearning = Array.isArray(learningsData) && learningsData.length > 0 ? (learningsData[0].attributes || learningsData[0]) : null;\nconst funnelLearnings = latestLearning?.learnings_json || {};\nreturn [{\n  json: {\n    has_profile: !!customer,\n    preferences: customer ? customer.attributes.preferences_json : {},\n    past_orders: customer ? customer.attributes.orders.data : [],\n    current_cart: $('Webhook POST /upsell').item.json.body.cart,\n    funnel_learnings: funnelLearnings,\n    has_funnel_data: !!latestLearning,\n    upsell_timing: funnelLearnings.upsell_timing || 'before_confirm',\n    best_channel: funnelLearnings.best_channel || 'whatsapp'\n  }\n}];"
+            },
+            "id": "format-memory",
+            "name": "Format Memory",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                400,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ai-learnings?sort=createdAt:desc&pagination[limit]=1",
+                "method": "GET",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "id": "fetch-learnings",
+            "name": "Fetch AI Learnings",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                200,
+                200
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $json.system_config?.ollama_api_url || $env.LLM_API_URL || 'http://ollama:11434/api/generate' }}",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({\n  model: $json.system_config?.llm_model || $env.LLM_MODEL || 'llama3.1',\n  prompt: 'You are Ralphé, an intelligent upselling AI. The user currently has this in their cart: ' + JSON.stringify($json.current_cart) + '. Their past preferences are: ' + JSON.stringify($json.preferences) + '.' + ($json.has_funnel_data ? ' FUNNEL INTELLIGENCE: Best upsell timing is ' + $json.upsell_timing + '. Top converting channel is ' + $json.best_channel + '. Peak conversion hours: ' + JSON.stringify($json.funnel_learnings.peak_hours || []) + '.' : '') + ' Suggest ONE perfect complementary item to add to their order from this restaurant. Keep it under 2 sentences, alluring, and conversational.',\n  stream: false\n}) }}"
+            },
+            "id": "llm-upsell",
+            "name": "Generate Upsell via LLM",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                600,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "return [{\n  json: {\n    upsell_message: $json.response,\n    applied_memory: $('Format Memory').item.json.has_profile\n  }\n}];"
+            },
+            "id": "respond-webhook",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "webhook-response",
+            "name": "Respond",
+            "type": "n8n-nodes-base.webhookResponse",
+            "typeVersion": 1,
+            "position": [
+                1000,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook POST /upsell": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Customer Memory",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Customer Memory": {
+            "main": [
+                [
+                    {
+                        "node": "Format Memory",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch AI Learnings": {
+            "main": [
+                [
+                    {
+                        "node": "Format Memory",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Memory": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Upsell via LLM",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Upsell via LLM": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Respond to Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Respond",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

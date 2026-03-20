@@ -1,0 +1,45 @@
+{
+    "kind": "collectionType",
+    "collectionName": "driver_rewards",
+    "info": {
+        "singularName": "driver-reward",
+        "pluralName": "driver-rewards",
+        "displayName": "Driver Reward & Gamification",
+        "description": "Tracks points, badges, and streaks for fleet gamification"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "driver": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::driver.driver",
+            "inversedBy": "rewards"
+        },
+        "event_type": {
+            "type": "enumeration",
+            "enum": [
+                "delivery",
+                "streak",
+                "bonus",
+                "penalty"
+            ],
+            "required": true
+        },
+        "points": {
+            "type": "integer",
+            "required": true,
+            "description": "Points awarded or deducted"
+        },
+        "description": {
+            "type": "string",
+            "description": "Human-readable reason for the event"
+        },
+        "metadata_json": {
+            "type": "json",
+            "description": "Extra context (streak count, multiplier, etc.)"
+        }
+    }
+}

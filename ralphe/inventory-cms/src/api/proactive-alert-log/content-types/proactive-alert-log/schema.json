@@ -1,0 +1,46 @@
+{
+    "kind": "collectionType",
+    "collectionName": "proactive_alert_logs",
+    "info": {
+        "singularName": "proactive-alert-log",
+        "pluralName": "proactive-alert-logs",
+        "displayName": "Proactive Alert Log",
+        "description": "Log of automated KPI alerts sent to the admin via W_ADMIN_PROACTIVE_AGENT"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "alert_type": {
+            "type": "enumeration",
+            "enum": [
+                "revenue_drop",
+                "stock_low",
+                "error_spike",
+                "kpi_alert"
+            ],
+            "required": true
+        },
+        "message": {
+            "type": "text",
+            "required": true
+        },
+        "channel": {
+            "type": "enumeration",
+            "enum": [
+                "whatsapp",
+                "dashboard",
+                "email"
+            ],
+            "required": true
+        },
+        "acknowledged": {
+            "type": "boolean",
+            "default": false
+        },
+        "data_snapshot": {
+            "type": "json"
+        }
+    }
+}

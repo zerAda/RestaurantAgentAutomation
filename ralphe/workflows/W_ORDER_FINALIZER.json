@@ -1,0 +1,385 @@
+{
+  "name": "W_ORDER_FINALIZER",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order/finalize",
+        "options": {}
+      },
+      "name": "Webhook - Finalize Order",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/inventory/orchestrate",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"RESERVE\",\n  \"restaurant_id\": \"={{$json.body.restaurantId}}\",\n  \"items\": \"={{$json.body.items}}\"\n}",
+        "options": {}
+      },
+      "name": "Trigger Inventory Reserve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO orders (customer_phone, restaurant_id, total_amount, status, source, metadata) \nVALUES ($1, $2, $3, 'A_PREPARER', $4, $5) \nRETURNING id;",
+        "additionalFields": {
+          "queryParams": "={{[$item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.restaurantId, $item(0).$node[\"Webhook - Finalize Order\"].json.body.totalAmount, $item(0).$node[\"Webhook - Finalize Order\"].json.body.source, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {})]}}"
+        }
+      },
+      "name": "Create Order (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const orderId = $node[\"Create Order (DB)\"].json.id;\nconst items = $item(0).$node[\"Webhook - Finalize Order\"].json.body.items;\nreturn items.map(item => ({\n  json: {\n    order_id: orderId,\n    item_code: item.id,\n    quantity: item.qty,\n    price_cents: item.price || 0\n  }\n}));"
+      },
+      "name": "Map Order Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO order_items (order_id, item_code, quantity, price_cents) \nVALUES ($1, $2, $3, $4);",
+        "additionalFields": {
+          "queryParams": "={{[$json.order_id, $json.item_code, $json.quantity, $json.price_cents]}}"
+        }
+      },
+      "name": "Batch Insert Items (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/inventory/orchestrate",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"COMMIT\",\n  \"restaurant_id\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.restaurantId}}\",\n  \"items\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.items}}\"\n}",
+        "options": {}
+      },
+      "name": "Trigger Inventory Commit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1100,
+        300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !!$json.success || !!$json.ok }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "name": "B1 - Commit Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE orders SET status = 'ERROR_INVENTORY', metadata = $2 WHERE id = $1;",
+        "additionalFields": {
+          "queryParams": "={{ [ $item(0).$node[\"Create Order (DB)\"].json.id, JSON.stringify({ ...($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {}), \"inventory_commit_failed\": true, \"error_time\": new Date().toISOString() }) ] }}"
+        }
+      },
+      "name": "E1 - Mark Inventory ERROR",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/track",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"session_id\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.customerPhone}}\",\n  \"event_type\": \"order_confirmed\",\n  \"channel\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.source === 'VOICE_BOT' ? 'voice' : 'chat'}}\",\n  \"metadata\": {\n    \"order_id\": \"={{$item(0).$node[\\\"Create Order (DB)\\\"].json.id}}\",\n    \"total_amount\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.totalAmount}}\"\n  }\n}",
+        "options": {}
+      },
+      "name": "Track Conversion (Funnel)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$item(0).$node[\"Webhook - Finalize Order\"].json.body.source}}",
+              "operation": "equal",
+              "value2": "VOICE_BOT"
+            }
+          ]
+        }
+      },
+      "name": "Is Voice Order?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "={{ \"lock:finalize:\" + $json.body.customerPhone }}",
+        "value": "locked",
+        "additionalFields": {
+          "expire": 60,
+          "nx": true
+        }
+      },
+      "name": "B0 - Concurrency Lock",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        200,
+        150
+      ],
+      "credentials": {
+        "redis": {
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+          "name": "Redis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json }}",
+              "operation": "equal",
+              "value2": "OK"
+            }
+          ]
+        }
+      },
+      "name": "B0 - Lock Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        350,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"DUPLICATE_REQUEST\", \"message\": \"Une commande est déjà en cours de finalisation pour ce numéro.\" }",
+        "options": {}
+      },
+      "name": "C0 - Early Response (Duplicate)",
+      "type": "n8n-nodes-base.webhookResponse",
+      "typeVersion": 1,
+      "position": [
+        500,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.WA_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.customerPhone}}\",\n  \"message\": \"\ud83c\udfa4 Ralph\u00e9 Voice: J'ai bien enregistr\u00e9 votre commande !\\n\\n\ud83d\udcc1 Commande n\u00b0{{$item(0).$node[\\\"Create Order (DB)\\\"].json.id}}\\n\ud83d\udcb0 Total: {{($item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.totalAmount/100).toFixed(2)}} DZD\\n\\nVous recevrez une notification d\u00e8s qu'elle sera en cuisine.\"\n}",
+        "options": {}
+      },
+      "name": "Push Voice Summary (WA)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1500,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Finalize Order": {
+      "main": [
+        [
+          {
+            "node": "B0 - Concurrency Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Concurrency Lock": {
+      "main": [
+        [
+          {
+            "node": "B0 - Lock Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Lock Success?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Inventory Reserve",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C0 - Early Response (Duplicate)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Inventory Reserve": {
+      "main": [
+        [
+          {
+            "node": "Create Order (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Order (DB)": {
+      "main": [
+        [
+          {
+            "node": "Map Order Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Order Items": {
+      "main": [
+        [
+          {
+            "node": "Batch Insert Items (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Insert Items (DB)": {
+      "main": [
+        [
+          {
+            "node": "Trigger Inventory Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Inventory Commit": {
+      "main": [
+        [
+          {
+            "node": "B1 - Commit Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Commit Success?": {
+      "main": [
+        [
+          {
+            "node": "Is Voice Order?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E1 - Mark Inventory ERROR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Voice Order?": {
+      "main": [
+        [
+          {
+            "node": "Push Voice Summary (WA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

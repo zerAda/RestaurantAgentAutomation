@@ -1,0 +1,86 @@
+{
+    "name": "W_CMS_SYNC",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/cms-sync",
+                "options": {}
+            },
+            "name": "Strapi Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const model = $json.model;\nconst data = $json.data || {};\nconst payload = { data: {} };\n\nfor (const [key, value] of Object.entries(data)) {\n  if (['id', 'createdAt', 'updatedAt', 'publishedAt', 'createdBy', 'updatedBy', 'documentId'].includes(key)) continue;\n  payload.data[key] = value;\n}\n\nlet endpoint = '';\nif (model === 'system-config') {\n  endpoint = '/api/system-config';\n} else {\n  let plural = model + 's';\n  if (model === 'delivery-zone') plural = 'delivery-zones';\n  endpoint = `/api/${plural}/${data.documentId || data.id}`;\n}\n\nreturn [{ json: { ...($json), _syncPayload: payload, _endpoint: endpoint } }];"
+            },
+            "name": "Format URL & Payload",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                350,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "method": "PUT",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}{{ $json._endpoint }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json._syncPayload) }}"
+            },
+            "name": "Upsert Strapi Model",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                600,
+                200
+            ],
+            "continueOnFail": true
+        }
+    ],
+    "connections": {
+        "Strapi Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Format URL & Payload",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format URL & Payload": {
+            "main": [
+                [
+                    {
+                        "node": "Upsert Strapi Model",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

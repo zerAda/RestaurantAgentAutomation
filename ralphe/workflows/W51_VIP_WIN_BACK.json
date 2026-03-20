@@ -1,0 +1,151 @@
+{
+    "name": "W51 - VIP Win-Back & Retention",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "saveExecutionProgress": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "workflowId": "W0_CONFIG_READER",
+                "workflowInputs": {
+                    "parameters": []
+                }
+            },
+            "id": "fetch-strapi-config",
+            "name": "Fetch Strapi Config",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                150,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT customer_phone, COUNT(id) as total_orders, MAX(created_at) as last_order_date FROM orders GROUP BY customer_phone HAVING COUNT(id) > 5 AND MAX(created_at) < NOW() - INTERVAL '30 days';"
+            },
+            "id": "find-lost-vips",
+            "name": "Find Lost VIPs (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                250,
+                0
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "POSTGRES_CREDENTIAL_ID",
+                    "name": "Postgres"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "batchSize": 1,
+                "options": {}
+            },
+            "id": "split-vips",
+            "name": "Split In Batches",
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 2,
+            "position": [
+                500,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "model": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.AI.LLM_MODEL || $node[\"Fetch Strapi Config\"].json.LLM_MODEL || 'llama3.1' }}",
+                "prompt": "Tu es le manager du restaurant Ralphé. Rédige un message SMS très chaleureux à l'attention d'un client VIP qui n'a pas commandé depuis 1 mois. Le message doit contenir un code promo VIP exclusif de -20% : RALPHE-VIP20. Sois humain, montre que son absence a été remarquée.",
+                "options": {
+                    "temperature": 0.8
+                }
+            },
+            "id": "ollama-msg-node",
+            "name": "Generate Hyper-Personal Msg (Ollama)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                750,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.SOCIAL.SMS_API_URL || $node[\"Fetch Strapi Config\"].json.SMS_API_URL }}",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{JSON.stringify({ to: $json.customer_phone, message: $json.text })}}"
+            },
+            "id": "send-vip-sms",
+            "name": "Send VIP Win-Back SMS",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1000,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Daily Trigger (Midnight)": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Strapi Config",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Strapi Config": {
+            "main": [
+                [
+                    {
+                        "node": "Find Lost VIPs (DB)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Lost VIPs (DB)": {
+            "main": [
+                [
+                    {
+                        "node": "Split In Batches",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split In Batches": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Hyper-Personal Msg (Ollama)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Hyper-Personal Msg (Ollama)": {
+            "main": [
+                [
+                    {
+                        "node": "Send VIP Win-Back SMS",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

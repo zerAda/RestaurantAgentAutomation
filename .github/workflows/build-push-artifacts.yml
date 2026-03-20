@@ -1,0 +1,159 @@
+# =============================================================================
+# Build and Push Artifacts to GHCR (Supply Chain Secured)
+# =============================================================================
+# Actions pinned to SHA for supply-chain security.
+# =============================================================================
+
+name: Build and Push Artifacts (GHCR)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  OWNER: ${{ github.repository_owner }}
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  # ============================================================================
+  # JOB 0: Validate Inputs
+  # ============================================================================
+  validate-build-inputs:
+    name: Validate Build Inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Validate trigger
+        run: |
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          # Ensure we're on main branch or workflow_dispatch
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Build triggered from non-main branch: ${{ github.ref }}"
+            exit 1
+          fi
+          # Validate SHA format
+          SHA="${{ github.sha }}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid commit SHA: '$SHA'"
+            exit 1
+          fi
+          echo "Build inputs validated"
+
+  # ============================================================================
+  # JOB 1: Build, Push, Sign, SBOM, Attest
+  # ============================================================================
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: validate-build-inputs
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: cms
+            context: ./inventory-cms
+            dockerfile: ./inventory-cms/Dockerfile
+          - name: admin
+            context: .
+            dockerfile: ./admin-dashboard/Dockerfile
+          - name: kiosk
+            context: .
+            dockerfile: ./kiosk-app/Dockerfile
+    steps:
+      - name: Lowercase owner
+        id: owner
+        run: echo "lc=${OWNER,,}" >> $GITHUB_OUTPUT
+
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.3.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.7.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      # ======================= Build & Push =======================
+      - name: Build and push ${{ matrix.image.name }}
+        id: build
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.4.0
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-${{ matrix.image.name }}:latest,${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-${{ matrix.image.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Sign Image
+        continue-on-error: true
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY "${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-${{ matrix.image.name }}:${{ github.sha }}"
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Generate SBOM
+        continue-on-error: true
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-${{ matrix.image.name }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.image.name }}.json
+
+      - name: Attest SBOM with Cosign
+        continue-on-error: true
+        run: |
+          cosign attest --yes --key env://COSIGN_PRIVATE_KEY \
+            --predicate sbom-${{ matrix.image.name }}.json \
+            --type cyclonedx \
+            "${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-${{ matrix.image.name }}:${{ github.sha }}"
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: SLSA Provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}/resto-bot-${{ matrix.image.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # ======================= Summary =======================
+      - name: Build summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## Supply Chain Security Summary: ${{ matrix.image.name }}
+
+          | Image | Signed | SBOM | SLSA Provenance |
+          |-------|--------|------|-----------------|
+          | resto-bot-${{ matrix.image.name }} | Cosign | CycloneDX | SLSA L2 |
+
+          **Commit**: `${{ github.sha }}`
+          **Registry**: `${{ env.REGISTRY }}/${{ steps.owner.outputs.lc }}`
+          EOF

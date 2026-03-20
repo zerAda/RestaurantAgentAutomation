@@ -1,0 +1,48 @@
+{
+    "kind": "collectionType",
+    "collectionName": "dispatch_logs",
+    "info": {
+        "singularName": "dispatch-log",
+        "pluralName": "dispatch-logs",
+        "displayName": "Dispatch Log",
+        "description": "AI dispatch decision audit trail from W_HIVE_MIND_DISPATCH"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "order_id": {
+            "type": "string",
+            "required": true,
+            "description": "The order that triggered dispatch"
+        },
+        "selected_driver_id": {
+            "type": "string",
+            "description": "The driver selected by the algorithm"
+        },
+        "driver_score": {
+            "type": "decimal",
+            "description": "Efficiency score of the selected driver"
+        },
+        "candidates_count": {
+            "type": "integer",
+            "description": "Number of online drivers evaluated"
+        },
+        "scoring_snapshot": {
+            "type": "json",
+            "description": "Full scoring breakdown for all candidates"
+        },
+        "accepted": {
+            "type": "boolean",
+            "description": "Whether the driver accepted the assignment"
+        },
+        "accepted_at": {
+            "type": "datetime",
+            "description": "When the driver accepted"
+        },
+        "restaurant_id": {
+            "type": "string"
+        }
+    }
+}

@@ -1,0 +1,275 @@
+# =============================================================================
+# Composite Action: Rich Notifications (Slack Block Kit + Discord Embeds)
+# =============================================================================
+# Diamond Grade Pro One — Rich deployment notifications with:
+# - Slack Block Kit: Structured blocks, fields, action buttons
+# - Discord Embeds: Color-coded, rich embed cards (optional)
+# - Action links: View Diff, View Run, Rollback (on failure)
+# =============================================================================
+
+name: Notify
+description: Send rich deployment notifications (Slack Block Kit + Discord Embeds)
+
+inputs:
+  webhook-url:
+    description: Slack webhook URL
+    required: true
+  discord-webhook-url:
+    description: Discord webhook URL (optional — sends Discord embed if provided)
+    required: false
+    default: ""
+  status:
+    description: "Deployment status: success, failure, warning"
+    required: true
+  title:
+    description: Notification title
+    required: true
+  version:
+    description: Application version
+    required: false
+    default: ""
+  environment:
+    description: Target environment
+    required: false
+    default: ""
+  details:
+    description: Additional details text
+    required: false
+    default: ""
+  commit-sha:
+    description: Git commit SHA
+    required: false
+    default: ""
+  deploy-id:
+    description: Deployment ID
+    required: false
+    default: ""
+  deploy-duration:
+    description: Deployment duration in seconds
+    required: false
+    default: ""
+  repo-url:
+    description: Repository URL (for diff/commit links)
+    required: false
+    default: ""
+  run-id:
+    description: GitHub Actions run ID (for "View Run" button)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Send Slack Block Kit notification
+      shell: bash
+      run: |
+        WEBHOOK_URL="${{ inputs.webhook-url }}"
+        if [ -z "$WEBHOOK_URL" ]; then
+          echo "::notice::No Slack webhook URL provided — skipping Slack notification"
+        else
+          STATUS="${{ inputs.status }}"
+          case "$STATUS" in
+            success) COLOR="#36a64f"; EMOJI="✅"; HEADER_EMOJI=":white_check_mark:" ;;
+            failure) COLOR="#dc3545"; EMOJI="❌"; HEADER_EMOJI=":x:" ;;
+            warning) COLOR="#ffc107"; EMOJI="⚠️"; HEADER_EMOJI=":warning:" ;;
+            *)       COLOR="#6c757d"; EMOJI="ℹ️"; HEADER_EMOJI=":information_source:" ;;
+          esac
+
+          VERSION="${{ inputs.version }}"
+          ENVIRONMENT="${{ inputs.environment }}"
+          DETAILS="${{ inputs.details }}"
+          COMMIT="${{ inputs.commit-sha }}"
+          SHORT_COMMIT="${COMMIT:0:7}"
+          DEPLOY_ID="${{ inputs.deploy-id }}"
+          DEPLOY_DURATION="${{ inputs.deploy-duration }}"
+          REPO_URL="${{ inputs.repo-url }}"
+          RUN_ID="${{ inputs.run-id }}"
+
+          # --- Build Fields ---
+          FIELDS_JSON="[]"
+
+          if [ -n "$VERSION" ]; then
+            FIELDS_JSON=$(echo "$FIELDS_JSON" | jq --arg v "$VERSION" \
+              '. + [{"type":"mrkdwn","text":"*Version*\n`'"$VERSION"'`"}]')
+          fi
+
+          if [ -n "$ENVIRONMENT" ]; then
+            ENV_UPPER=$(echo "$ENVIRONMENT" | tr '[:lower:]' '[:upper:]')
+            FIELDS_JSON=$(echo "$FIELDS_JSON" | jq --arg v "$ENV_UPPER" \
+              '. + [{"type":"mrkdwn","text":"*Environment*\n`'"$ENV_UPPER"'`"}]')
+          fi
+
+          if [ -n "$SHORT_COMMIT" ] && [ -n "$REPO_URL" ]; then
+            COMMIT_LINK="<${REPO_URL}/commit/${COMMIT}|${SHORT_COMMIT}>"
+            FIELDS_JSON=$(echo "$FIELDS_JSON" | jq --arg v "$COMMIT_LINK" \
+              '. + [{"type":"mrkdwn","text":"*Commit*\n'"$COMMIT_LINK"'"}]')
+          elif [ -n "$SHORT_COMMIT" ]; then
+            FIELDS_JSON=$(echo "$FIELDS_JSON" | jq \
+              '. + [{"type":"mrkdwn","text":"*Commit*\n`'"$SHORT_COMMIT"'`"}]')
+          fi
+
+          if [ -n "$DEPLOY_DURATION" ]; then
+            MINS=$((DEPLOY_DURATION / 60))
+            SECS=$((DEPLOY_DURATION % 60))
+            DURATION_STR="${MINS}m ${SECS}s"
+            FIELDS_JSON=$(echo "$FIELDS_JSON" | jq \
+              '. + [{"type":"mrkdwn","text":"*Duration*\n'"$DURATION_STR"'"}]')
+          fi
+
+          if [ -n "$DEPLOY_ID" ]; then
+            FIELDS_JSON=$(echo "$FIELDS_JSON" | jq \
+              '. + [{"type":"mrkdwn","text":"*Deploy ID*\n`'"$DEPLOY_ID"'`"}]')
+          fi
+
+          STATUS_UPPER=$(echo "$STATUS" | tr '[:lower:]' '[:upper:]')
+          FIELDS_JSON=$(echo "$FIELDS_JSON" | jq \
+            '. + [{"type":"mrkdwn","text":"*Status*\n'"$EMOJI $STATUS_UPPER"'"}]')
+
+          # --- Build Action Buttons ---
+          ACTIONS="[]"
+
+          if [ -n "$REPO_URL" ] && [ -n "$COMMIT" ]; then
+            DIFF_URL="${REPO_URL}/commit/${COMMIT}"
+            ACTIONS=$(echo "$ACTIONS" | jq --arg url "$DIFF_URL" \
+              '. + [{"type":"button","text":{"type":"plain_text","text":"📝 View Diff","emoji":true},"url":$url,"style":"primary"}]')
+          fi
+
+          if [ -n "$REPO_URL" ] && [ -n "$RUN_ID" ]; then
+            RUN_URL="${REPO_URL}/actions/runs/${RUN_ID}"
+            ACTIONS=$(echo "$ACTIONS" | jq --arg url "$RUN_URL" \
+              '. + [{"type":"button","text":{"type":"plain_text","text":"🔍 View Run","emoji":true},"url":$url}]')
+          fi
+
+          if [ "$STATUS" = "failure" ] && [ -n "$REPO_URL" ]; then
+            ROLLBACK_URL="${REPO_URL}/actions"
+            ACTIONS=$(echo "$ACTIONS" | jq --arg url "$ROLLBACK_URL" \
+              '. + [{"type":"button","text":{"type":"plain_text","text":"🔄 Rollback","emoji":true},"url":$url,"style":"danger"}]')
+          fi
+
+          # --- Build Blocks ---
+          BLOCKS=$(jq -n \
+            --arg title "$HEADER_EMOJI ${{ inputs.title }}" \
+            --arg details "$DETAILS" \
+            --argjson fields "$FIELDS_JSON" \
+            --argjson actions "$ACTIONS" \
+            '[
+              {
+                "type": "header",
+                "text": {"type": "plain_text", "text": $title, "emoji": true}
+              },
+              {
+                "type": "section",
+                "fields": $fields
+              }
+            ]
+            + (if $details != "" then [{
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": $details}]
+              }] else [] end)
+            + (if ($actions | length) > 0 then [
+                {"type": "divider"},
+                {"type": "actions", "elements": $actions}
+              ] else [] end)
+            ')
+
+          # --- Build final payload ---
+          PAYLOAD=$(jq -n \
+            --arg text "${{ inputs.title }}" \
+            --arg color "$COLOR" \
+            --argjson blocks "$BLOCKS" \
+            '{
+              "text": $text,
+              "attachments": [{
+                "color": $color,
+                "blocks": $blocks
+              }]
+            }')
+
+          # --- Send ---
+          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" || echo "000")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Slack notification sent"
+          else
+            echo "::warning::Slack notification failed (HTTP $HTTP_CODE)"
+          fi
+        fi
+
+    - name: Send Discord Embed notification
+      shell: bash
+      run: |
+        DISCORD_URL="${{ inputs.discord-webhook-url }}"
+        if [ -z "$DISCORD_URL" ]; then
+          echo "::notice::No Discord webhook URL — skipping Discord notification"
+          exit 0
+        fi
+
+        STATUS="${{ inputs.status }}"
+        case "$STATUS" in
+          success) COLOR=3650901  ;;  # #36a64f in decimal
+          failure) COLOR=14423173 ;;  # #dc3545
+          warning) COLOR=16761095 ;;  # #ffc107
+          *)       COLOR=7108453  ;;  # #6c757d
+        esac
+
+        VERSION="${{ inputs.version }}"
+        ENVIRONMENT="${{ inputs.environment }}"
+        COMMIT="${{ inputs.commit-sha }}"
+        SHORT_COMMIT="${COMMIT:0:7}"
+        DEPLOY_ID="${{ inputs.deploy-id }}"
+        DEPLOY_DURATION="${{ inputs.deploy-duration }}"
+        REPO_URL="${{ inputs.repo-url }}"
+        RUN_ID="${{ inputs.run-id }}"
+        DETAILS="${{ inputs.details }}"
+
+        # Build fields
+        FIELDS="[]"
+        [ -n "$VERSION" ] && FIELDS=$(echo "$FIELDS" | jq '. + [{"name":"Version","value":"'"$VERSION"'","inline":true}]')
+        [ -n "$ENVIRONMENT" ] && FIELDS=$(echo "$FIELDS" | jq '. + [{"name":"Environment","value":"'"$ENVIRONMENT"'","inline":true}]')
+        [ -n "$SHORT_COMMIT" ] && FIELDS=$(echo "$FIELDS" | jq '. + [{"name":"Commit","value":"['"$SHORT_COMMIT"']('"$REPO_URL/commit/$COMMIT"')","inline":true}]')
+        [ -n "$DEPLOY_ID" ] && FIELDS=$(echo "$FIELDS" | jq '. + [{"name":"Deploy ID","value":"'"$DEPLOY_ID"'","inline":true}]')
+
+        if [ -n "$DEPLOY_DURATION" ]; then
+          MINS=$((DEPLOY_DURATION / 60))
+          SECS=$((DEPLOY_DURATION % 60))
+          FIELDS=$(echo "$FIELDS" | jq '. + [{"name":"Duration","value":"'"${MINS}m ${SECS}s"'","inline":true}]')
+        fi
+
+        FIELDS=$(echo "$FIELDS" | jq '. + [{"name":"Status","value":"'"$(echo "$STATUS" | tr '[:lower:]' '[:upper:]')"'","inline":true}]')
+
+        # Build description with links
+        DESC="$DETAILS"
+        if [ -n "$REPO_URL" ] && [ -n "$COMMIT" ]; then
+          DESC="$DESC\n[📝 View Diff](${REPO_URL}/commit/${COMMIT})"
+        fi
+        if [ -n "$REPO_URL" ] && [ -n "$RUN_ID" ]; then
+          DESC="$DESC  |  [🔍 View Run](${REPO_URL}/actions/runs/${RUN_ID})"
+        fi
+
+        PAYLOAD=$(jq -n \
+          --arg title "${{ inputs.title }}" \
+          --arg desc "$DESC" \
+          --argjson color "$COLOR" \
+          --argjson fields "$FIELDS" \
+          '{
+            "embeds": [{
+              "title": $title,
+              "description": $desc,
+              "color": $color,
+              "fields": $fields,
+              "footer": {"text": "Diamond Grade Pro One CI/CD"},
+              "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+            }]
+          }')
+
+        HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "$DISCORD_URL" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" || echo "000")
+
+        if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
+          echo "✅ Discord notification sent"
+        else
+          echo "::warning::Discord notification failed (HTTP $HTTP_CODE)"
+        fi

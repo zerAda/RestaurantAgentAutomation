@@ -1,0 +1,166 @@
+{
+    "name": "W_HIVE_MIND_DISPATCH",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "dispatch/hive-mind",
+                "options": {}
+            },
+            "name": "Trigger: New Order",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_INTERNAL_URL || 'http://cms:1337' }}/api/system-config",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "options": {}
+            },
+            "name": "Get System Config",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                100,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT d.driver_id, d.name, d.current_lat, d.current_lng, \n       (SELECT count(*) FROM delivery_assignments da WHERE da.driver_id = d.driver_id AND da.status IN ('ACCEPTED', 'PICKED_UP')) as active_jobs\nFROM drivers d \nWHERE d.status = 'ONLINE' \nAND d.is_active = true;",
+                "additionalFields": {}
+            },
+            "name": "Get Fleet State",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// THE BRAIN: Calculate 'Efficiency Score' for each driver\n// Score = (Proximity * 0.5) + (StackingBonus * 0.3) - (LoadPenalty * 0.2)\n\nconst order = $('Trigger: New Order').item.json.body;\nconst drivers = $items('Get Fleet State');\n// GPS fetched from Strapi system-config (restaurant_lat / restaurant_lng)\nconst sysConfig = $('Get System Config').item.json.data || {};\nconst REST_LAT = parseFloat(sysConfig.restaurant_lat) || 36.7372;\nconst REST_LNG = parseFloat(sysConfig.restaurant_lng) || 3.0865;\n\nif (!drivers || drivers.length === 0) {\n  // FAIL SAFE: No drivers available\n  // In a real app, this would trigger an alert to the Admin Dashboard via a separate node\n  return { json: { error: 'NO_DRIVERS_AVAILABLE' } };\n}\n\nfunction getDistance(lat1, lon1, lat2, lon2) {\n  // Haversine formula mock\n  return Math.sqrt(Math.pow(lat1-lat2, 2) + Math.pow(lon1-lon2, 2));\n}\n\nconst scoredDrivers = drivers.map(d => {\n  const driver = d.json;\n  const dist = getDistance(driver.current_lat, driver.current_lng, REST_LAT, REST_LNG);\n  \n  let score = 100 - (dist * 1000); // Closer is better\n  \n  // Stacking Logic: If driver is already at restaurant picking up, BONUS!\n  if (dist < 0.001 && driver.active_jobs < 3) {\n     score += 50; // efficient stacking\n  }\n  \n  // Overload prevention\n  if (driver.active_jobs >= 3) {\n      score -= 200;\n  }\n  \n  return { ...driver, calculated_score: score };\n});\n\n// Sort by score DESC\nscoredDrivers.sort((a, b) => b.calculated_score - a.calculated_score);\n\nreturn { json: { best_driver: scoredDrivers[0] } };"
+            },
+            "name": "Calculate Efficiency Score",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "tableName": "delivery_assignments",
+                "columns": "order_id, driver_id, status, offered_at",
+                "additionalFields": {}
+            },
+            "name": "Assign to Best Driver",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ 'https://graph.facebook.com/' + ($json.system_config?.graph_api_version || $env.GRAPH_API_VERSION || 'v21.0') + '/' + ($json.system_config?.whatsapp_phone_number_id || $env.WA_PHONE_NUMBER_ID) + '/messages' }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $json.system_config?.whatsapp_access_token || $env.WA_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "messaging_product",
+                            "value": "whatsapp"
+                        },
+                        {
+                            "name": "to",
+                            "value": "={{ $json.best_driver.user_id }}"
+                        },
+                        {
+                            "name": "type",
+                            "value": "template"
+                        },
+                        {
+                            "name": "template",
+                            "value": "={ \"name\": \"hive_assignment\", \"language\": { \"code\": \"fr\" } }"
+                        }
+                    ]
+                }
+            },
+            "name": "Notify Driver",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Trigger: New Order": {
+            "main": [
+                [
+                    {
+                        "node": "Get Fleet State",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Fleet State": {
+            "main": [
+                [
+                    {
+                        "node": "Calculate Efficiency Score",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Calculate Efficiency Score": {
+            "main": [
+                [
+                    {
+                        "node": "Assign to Best Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Assign to Best Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Driver",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

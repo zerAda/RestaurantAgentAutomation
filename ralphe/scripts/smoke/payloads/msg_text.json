@@ -1,0 +1,24 @@
+{
+  "object": "page",
+  "entry": [
+    {
+      "id": "PAGE_ID_123456",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "PSID_USER_111222333"
+          },
+          "recipient": {
+            "id": "PAGE_ID_123456"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "message": {
+            "mid": "m_msg_text_aaa111bbb222",
+            "text": "Salut! C'est quoi le menu du jour?"
+          }
+        }
+      ]
+    }
+  ]
+}

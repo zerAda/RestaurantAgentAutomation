@@ -1,0 +1,152 @@
+{
+    "name": "W53 - Dynamic Kitchen Load Balancing",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "saveExecutionProgress": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "minutes",
+                            "minutesInterval": 5
+                        }
+                    ]
+                }
+            },
+            "id": "check-every-5-mins",
+            "name": "Interval Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT COUNT(id) as current_workload FROM orders WHERE status IN ('A_PREPARER', 'EN_PREPARATION');"
+            },
+            "id": "get-kds-load",
+            "name": "Check DB Active Tickets (Load)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                250,
+                0
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "POSTGRES_CREDENTIAL_ID",
+                    "name": "Postgres"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const load = $input.all()[0].json.current_workload;\nlet prepTime = 15; // default 15 mins\nlet status = 'NORMAL';\n\nif (load > 20) {\n  prepTime = 45;\n  status = 'CRITICAL_RUSH';\n} else if (load > 10) {\n  prepTime = 30;\n  status = 'BUSY';\n}\n\nreturn [{\n  json: {\n    load,\n    newEstimatedTime: prepTime,\n    status\n  }\n}];"
+            },
+            "id": "calculate-dynamic-time",
+            "name": "Calculate Wait Time Algorithm",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                500,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "PUT",
+                "url": "={{ $env.STRAPI_API_URL }}/api/restaurant-settings",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{JSON.stringify({ data: { estimated_prep_time: $json.newEstimatedTime, current_status: $json.status } })}}"
+            },
+            "id": "update-strapi-settings",
+            "name": "Update Kiosk & Bot Prep Time",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                750,
+                0
+            ],
+            "credentials": {
+                "httpHeaderAuth": {
+                    "id": "STRAPI_TOKEN_ID",
+                    "name": "Header Auth"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.TELEGRAM_ALERT_URL }}",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{JSON.stringify({ text: `⚠️ ALERTE CUISINE : Le restaurant passe en statut ${$json.status} avec ${$json.load} tickets en cours. Temps d'attente client ajusté dynamiquement à ${$json.newEstimatedTime} mins.` })}}"
+            },
+            "id": "alert-kitchen-manager",
+            "name": "Alert Manager if Rush",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1000,
+                0
+            ],
+            "executeOnce": false,
+            "continueOnFail": true
+        }
+    ],
+    "connections": {
+        "Interval Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Check DB Active Tickets (Load)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check DB Active Tickets (Load)": {
+            "main": [
+                [
+                    {
+                        "node": "Calculate Wait Time Algorithm",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Calculate Wait Time Algorithm": {
+            "main": [
+                [
+                    {
+                        "node": "Update Kiosk & Bot Prep Time",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Kiosk & Bot Prep Time": {
+            "main": [
+                [
+                    {
+                        "node": "Alert Manager if Rush",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

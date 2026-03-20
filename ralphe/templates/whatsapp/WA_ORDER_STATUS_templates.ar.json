@@ -1,0 +1,8 @@
+{
+  "WA_ORDER_STATUS_CONFIRMED": "✅ تم تأكيد طلبك (#{{order_id}}).{{eta}}",
+  "WA_ORDER_STATUS_PREPARING": "👨‍🍳 يتم تحضير طلبك (#{{order_id}}).{{eta}}",
+  "WA_ORDER_STATUS_READY": "📦 طلبك جاهز (#{{order_id}}).{{eta}}",
+  "WA_ORDER_STATUS_OUT_FOR_DELIVERY": "🛵 طلبك في الطريق للتوصيل (#{{order_id}}).{{eta}}",
+  "WA_ORDER_STATUS_DELIVERED": "🎉 تم تسليم/إنهاء الطلب (#{{order_id}}). شكراً لك!",
+  "WA_ORDER_STATUS_CANCELLED": "❌ تم إلغاء الطلب (#{{order_id}})."
+}

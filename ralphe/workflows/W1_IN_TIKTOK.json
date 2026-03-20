@@ -1,0 +1,326 @@
+{
+  "name": "W1 - IN TikTok Adapter (Secure)",
+  "active": true,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tiktok-webhook",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "name": "TikTok Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -2400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\n\nfunction parseTikTok(rawBody) {\n  if (!rawBody || typeof rawBody !== 'object') return null;\n  // Assuming a structure similar to the previous implementation as a starting point\n  const entry = rawBody.entry?.[0];\n  if (!entry) return null;\n  const change = entry.changes?.[0];\n  if (!change) return null;\n  const val = change.value || {};\n  \n  if (val.message_id === undefined && val.sender_id === undefined) return null;\n\n  return {\n    provider: 'tiktok',\n    msg_id: val.message_id || val.mid || crypto.randomUUID(),\n    from: val.sender_id || '',\n    text: val.message?.text || '',\n    timestamp: new Date().toISOString(),\n    attachments: [],\n    meta: {\n      recipient_id: val.recipient_id || '',\n      campaign: val.referral_param || ''\n    }\n  };\n}\n\nconst rawBodyInput = $json.body ?? $json;\nconst parsed = parseTikTok(rawBodyInput);\n\nconst headers = ($json.headers ?? {});\nconst ipRaw = (headers['x-forwarded-for'] || '').toString();\nconst ip = ipRaw.split(',')[0].trim();\nconst inboundReceivedAt = new Date().toISOString();\nconst correlationId = (headers['x-correlation-id'] || crypto.randomUUID()).toString();\n\nconst token = (headers['x-api-token'] || '').toString().trim();\nconst tokenHash = token ? crypto.createHash('sha256').update(token).digest('hex') : '';\n\nconst envelope = parsed ? {\n  contract_version: 'v1',\n  provider: 'tiktok',\n  msg_id: parsed.msg_id,\n  from: parsed.from,\n  text: parsed.text,\n  timestamp: parsed.timestamp,\n  attachments: [],\n  meta: { ...parsed.meta, ip }\n} : null;\n\nreturn [{\n  json: {\n    channel: 'tiktok',\n    userId: parsed?.from || 'unknown',\n    tenantId: '',\n    restaurantId: '',\n    conversationKey: '',\n    inbound_envelope: envelope,\n    metadata: {\n      msgId: parsed?.msg_id || crypto.randomUUID(),\n      timestamp: inboundReceivedAt,\n      ip,\n      userAgent: (headers['user-agent'] || '').toString()\n    },\n    message: {\n      type: 'text',\n      text: (parsed?.text || '').toString().trim()\n    },\n    _auth: {\n      tokenPresent: !!token,\n      tokenHash\n    },\n    _timing: {\n      inbound_received_at: inboundReceivedAt,\n      correlation_id: correlationId\n    },\n    _sec: {\n      textHash: crypto.createHash('sha256').update(parsed?.text || '').digest('hex')\n    }\n  }\n}];"
+      },
+      "name": "B0 - Parse & Canonicalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2150,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH c AS (SELECT client_id, client_name, tenant_id, restaurant_id, scopes FROM api_clients WHERE is_active=true AND token_hash = $1 LIMIT 1) SELECT client_id, client_name, tenant_id, restaurant_id, COALESCE(scopes, '[]'::jsonb) AS scopes, EXISTS(SELECT 1 FROM api_clients WHERE is_active=true AND token_hash = $1) AS matched;",
+        "additionalFields": {
+          "queryParams": "={{[$json._auth.tokenHash]}}"
+        }
+      },
+      "name": "B0 - Resolve Client (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -1900,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nlet tenantId = e.tenant_id || '';\nlet restaurantId = e.restaurant_id || '';\nlet authMode = matched ? 'api_client' : 'deny';\nlet scopes = [];\ntry { scopes = Array.isArray(e.scopes) ? e.scopes : JSON.parse(e.scopes || '[]'); } catch { scopes = []; }\n\nconst conversationKey = tenantId ? `${tenantId}:${restaurantId}:tiktok:${e.userId}` : '';\nconst authOk = authMode !== 'deny';\nconst scopeOk = authOk && (scopes.includes('inbound:write') || scopes.includes('*'));\n\nconst tenant_context = {\n  tenant_id: tenantId || null,\n  restaurant_id: restaurantId || null,\n  source: authMode,\n  scopes\n};\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    tenant_context,\n    _auth: {\n      ...e._auth,\n      authOk,\n      scopeOk,\n      denyReason: authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY'\n    }\n  }\n}];"
+      },
+      "name": "B0 - Apply Auth Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1650,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst secret = ($env.TENANT_CONTEXT_SECRET || 'fallback-secret-6789').toString();\nconst seal = crypto.createHmac('sha256', secret).update(JSON.stringify(ctx)).digest('hex');\nreturn [{json:{...e, tenant_context_seal: seal}}];"
+      },
+      "name": "B0 - Seal Tenant Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._auth.authOk}}",
+              "operation": "isTrue"
+            },
+            {
+              "value1": "={{$json._auth.scopeOk}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "name": "B0 - Token OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1150,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (INSERT INTO idempotency_keys (conversation_key, msg_id, channel) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING 1) SELECT COALESCE((SELECT 1 FROM ins), 0) AS inserted;",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey, $json.metadata.msgId, $json.channel]}}"
+        }
+      },
+      "name": "B0 - Idempotency (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.inserted === 1}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "name": "B0 - Is New Msg?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -650,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO inbound_messages (conversation_key, msg_id, channel, message_type, text_hash)\nVALUES ($1, $2, $3, $4, $5)\nRETURNING 1;",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey, $json.metadata.msgId, $json.channel, $json.message.type, $json._sec.textHash]}}"
+        }
+      },
+      "name": "B0 - Log Message (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{$env.CORE_WORKFLOW_ID}}",
+        "options": {
+          "waitTillFinished": false
+        }
+      },
+      "name": "B1 - Execute CORE_AGENT",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        -150,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseBody": "={{JSON.stringify({status:'received',channel:'tiktok',msg_id:$json.metadata?.msgId})}}",
+        "options": {}
+      },
+      "name": "RESP - 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseBody": "={{JSON.stringify({error:'unauthorized',reason:$json._auth.denyReason})}}",
+        "options": {}
+      },
+      "name": "RESP - 401 Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        150
+      ]
+    }
+  ],
+  "connections": {
+    "TikTok Webhook": {
+      "main": [
+        [
+          {
+            "node": "B0 - Parse & Canonicalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Parse & Canonicalize": {
+      "main": [
+        [
+          {
+            "node": "B0 - Resolve Client (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Resolve Client (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Apply Auth Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Apply Auth Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Seal Tenant Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Seal Tenant Context": {
+      "main": [
+        [
+          {
+            "node": "B0 - Token OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Token OK?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Idempotency (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESP - 401 Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Idempotency (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Is New Msg?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Is New Msg?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Log Message (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESP - 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Log Message (DB)": {
+      "main": [
+        [
+          {
+            "node": "B1 - Execute CORE_AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Execute CORE_AGENT": {
+      "main": [
+        [
+          {
+            "node": "RESP - 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

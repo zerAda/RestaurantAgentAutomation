@@ -1,0 +1,702 @@
+{
+    "kind": "singleType",
+    "collectionName": "system_configs",
+    "info": {
+        "singularName": "system-config",
+        "pluralName": "system-configs",
+        "displayName": "System Configuration",
+        "description": "Centralized source of truth for AI prompts, API keys, and business settings"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "openai_key": {
+            "type": "string",
+            "private": true
+        },
+        "replicate_token": {
+            "type": "string",
+            "private": true
+        },
+        "whatsapp_phone_number_id": {
+            "type": "string",
+            "private": true
+        },
+        "whatsapp_business_account_id": {
+            "type": "string",
+            "private": true
+        },
+        "whatsapp_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "whatsapp_verify_token": {
+            "type": "string",
+            "private": true
+        },
+        "system_prompt_strategy": {
+            "type": "text",
+            "default": "You are a professional restaurant marketing strategist specializing in Algerian market dynamics."
+        },
+        "system_prompt_image_gen": {
+            "type": "text",
+            "default": "Generate a high-end, appetizing image of {dish_name} with a luxury minimalist aesthetic."
+        },
+        "maintenance_mode": {
+            "type": "boolean",
+            "default": false
+        },
+        "allowed_admin_ips": {
+            "type": "text",
+            "default": "127.0.0.1/32"
+        },
+        "global_contact_phone": {
+            "type": "string"
+        },
+        "llm_model": {
+            "type": "string",
+            "default": "llama3.1"
+        },
+        "llm_temperature": {
+            "type": "decimal",
+            "default": 0.1
+        },
+        "llm_max_tokens": {
+            "type": "integer",
+            "default": 512
+        },
+        "agent_system_prompt": {
+            "type": "text",
+            "default": "You are Ralphé, a professional AI assistant for an Algerian restaurant chain. You MUST only answer questions related to the restaurant menu, orders, delivery, and promotions. Never invent menu items. If unsure, say 'Let me check with the team.'"
+        },
+        "system_prompt_video_gen": {
+            "type": "text",
+            "default": "Create a 5-second cinematic food reveal video. Camera slowly orbits the dish. Warm golden lighting. Shallow depth of field. Steam rising. Brand: {brand_name}."
+        },
+        "video_aspect_ratio": {
+            "type": "string",
+            "default": "9:16"
+        },
+        "enable_tiktok": {
+            "type": "boolean",
+            "default": false
+        },
+        "enable_snapchat": {
+            "type": "boolean",
+            "default": false
+        },
+        "enable_instagram": {
+            "type": "boolean",
+            "default": true
+        },
+        "enable_facebook": {
+            "type": "boolean",
+            "default": true
+        },
+        "enable_whatsapp_stories": {
+            "type": "boolean",
+            "default": true
+        },
+        "stt_model": {
+            "type": "string",
+            "default": "whisper-1"
+        },
+        "stt_language": {
+            "type": "string",
+            "default": "ar"
+        },
+        "tiktok_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "instagram_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "snapchat_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "wa_send_url": {
+            "type": "string",
+            "default": "https://graph.facebook.com/v21.0"
+        },
+        "graph_api_version": {
+            "type": "string",
+            "default": "v21.0"
+        },
+        "meta_app_secret": {
+            "type": "string",
+            "private": true
+        },
+        "chargily_secret_key": {
+            "type": "string",
+            "private": true
+        },
+        "app_public_url": {
+            "type": "string"
+        },
+        "facebook_page_id": {
+            "type": "string",
+            "private": true
+        },
+        "facebook_page_token": {
+            "type": "string",
+            "private": true
+        },
+        "instagram_business_id": {
+            "type": "string",
+            "private": true
+        },
+        "tiktok_open_id": {
+            "type": "string"
+        },
+        "strapi_internal_token": {
+            "type": "string",
+            "private": true
+        },
+        "n8n_webhook_base_url": {
+            "type": "string",
+            "default": "http://n8n:5678"
+        },
+        "ollama_api_url": {
+            "type": "string",
+            "default": "http://ollama:11434/api/chat"
+        },
+        "openweather_api_key": {
+            "type": "string",
+            "private": true
+        },
+        "admin_phone_number": {
+            "type": "string"
+        },
+        "default_tenant_id": {
+            "type": "string"
+        },
+        "default_restaurant_id": {
+            "type": "string"
+        },
+        "vip_churn_days": {
+            "type": "integer",
+            "default": 30
+        },
+        "driver_otp_max_attempts": {
+            "type": "integer",
+            "default": 3
+        },
+        "facebook_page_access_token": {
+            "type": "string",
+            "private": true,
+            "description": "Facebook Page access token for publishing and ads"
+        },
+        "instagram_business_account_id": {
+            "type": "string",
+            "description": "Instagram Business Account ID for publishing via Graph API"
+        },
+        "meta_ad_account_id": {
+            "type": "string",
+            "description": "Meta Ads account ID (without act_ prefix)"
+        },
+        "tiktok_refresh_token": {
+            "type": "string",
+            "private": true
+        },
+        "tiktok_client_key": {
+            "type": "string"
+        },
+        "tiktok_client_secret": {
+            "type": "string",
+            "private": true
+        },
+        "tiktok_advertiser_id": {
+            "type": "string"
+        },
+        "tiktok_ads_access_token": {
+            "type": "string",
+            "private": true
+        },
+        "content_quality_threshold": {
+            "type": "integer",
+            "default": 7,
+            "description": "Minimum quality score (1-10) for auto-publishing"
+        },
+        "auto_ad_budget_multiplier": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "Global multiplier for AI ad budget calculations"
+        },
+        "ad_roas_pause_threshold": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "ROAS below this after 24h triggers auto-pause"
+        },
+        "darija_patterns": {
+            "type": "text",
+            "default": "wash, kifach, bghit, fin, mchaha, dkhalt, chnou",
+            "description": "Comma-separated keywords for Moroccan Arabic detection"
+        },
+        "sticky_ar_threshold_mins": {
+            "type": "integer",
+            "default": 60,
+            "description": "Minutes to keep session in Arabic after detection"
+        },
+        "handoff_keywords": {
+            "type": "text",
+            "default": "agent, human, help, support, assist, helpme, aide, human",
+            "description": "Keywords that trigger human support handoff"
+        },
+        "allowed_audio_domains": {
+            "type": "text",
+            "default": "https://cdn.fbsbx.com, https://lookaside.fbsbx.com",
+            "description": "Allowed domains for voice note media URLs"
+        },
+        "delivery_slots_enabled": {
+            "type": "boolean",
+            "default": true
+        },
+        "max_voice_note_duration_sec": {
+            "type": "integer",
+            "default": 60,
+            "description": "Maximum duration in seconds for processing voice notes"
+        },
+        "l10n_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable Arabic/Darija/FR multilingual detection"
+        },
+        "l10n_sticky_ar_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Keep Arabic session sticky after N Arabic-script messages"
+        },
+        "l10n_sticky_ar_threshold": {
+            "type": "integer",
+            "default": 2,
+            "description": "Number of Arabic-script messages before sticky AR activates"
+        },
+        "strict_ar_out": {
+            "type": "boolean",
+            "default": true,
+            "description": "Force Arabic output when Arabic script detected in input"
+        },
+        "support_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable human support handoff via keywords"
+        },
+        "faq_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable FAQ/RAG knowledge base queries"
+        },
+        "delivery_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable delivery mode for customers"
+        },
+        "delivery_address_max_attempts": {
+            "type": "integer",
+            "default": 3,
+            "description": "Max retries for address clarification before handoff"
+        },
+        "delivery_address_clarify": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable address clarification loop"
+        },
+        "messenger_page_id": {
+            "type": "string",
+            "private": true,
+            "description": "Facebook Messenger Page ID for sending DMs"
+        },
+        "messenger_api_token": {
+            "type": "string",
+            "private": true,
+            "description": "Messenger Page Access Token for Graph API"
+        },
+        "messenger_send_url": {
+            "type": "string",
+            "description": "Override Messenger send URL (auto-built from page_id if empty)"
+        },
+        "ig_page_id": {
+            "type": "string",
+            "private": true,
+            "description": "Instagram Professional Account ID for sending DMs"
+        },
+        "ig_api_token": {
+            "type": "string",
+            "private": true,
+            "description": "Instagram API token for Graph API"
+        },
+        "ig_send_url": {
+            "type": "string",
+            "description": "Override Instagram send URL (auto-built from ig_page_id if empty)"
+        },
+        "stt_api_url": {
+            "type": "string",
+            "description": "Speech-to-Text API endpoint (Whisper, Deepgram, etc.)"
+        },
+        "stt_max_duration_sec": {
+            "type": "integer",
+            "default": 120,
+            "description": "Maximum audio duration to send to STT API"
+        },
+        "llm_api_url": {
+            "type": "string",
+            "description": "LLM API endpoint (Ollama, OpenAI, etc.)"
+        },
+        "llm_fallback_model": {
+            "type": "string",
+            "default": "llama3",
+            "description": "Fallback LLM model if primary fails"
+        },
+        "llm_timeout_ms": {
+            "type": "integer",
+            "default": 120000,
+            "description": "LLM API timeout in milliseconds"
+        },
+        "outbox_max_attempts": {
+            "type": "integer",
+            "default": 3,
+            "description": "Max retry attempts for outbound message delivery"
+        },
+        "outbox_base_delay_sec": {
+            "type": "integer",
+            "default": 1,
+            "description": "Base delay for exponential backoff (seconds)"
+        },
+        "outbox_max_delay_sec": {
+            "type": "integer",
+            "default": 60,
+            "description": "Max delay cap for exponential backoff (seconds)"
+        },
+        "outbox_async_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Queue messages for async worker instead of sending inline"
+        },
+        "outbox_redis_ttl_sec": {
+            "type": "integer",
+            "default": 604800,
+            "description": "Redis TTL for outbox entries (7 days default)"
+        },
+        "supabase_url": {
+            "type": "string",
+            "description": "Supabase REST API URL for KDS and real-time"
+        },
+        "supabase_anon_key": {
+            "type": "string",
+            "private": true,
+            "description": "Supabase anonymous key for KDS ticket sync"
+        },
+        "menu_cache_ttl_sec": {
+            "type": "integer",
+            "default": 300,
+            "description": "Menu cache duration in seconds (5 min default)"
+        },
+        "menu_image_url": {
+            "type": "string",
+            "description": "URL to a visual menu image sent with SHOW_MENU"
+        },
+        "restaurant_lat": {
+            "type": "decimal",
+            "description": "Restaurant latitude for driver dispatch calculations"
+        },
+        "restaurant_lng": {
+            "type": "decimal",
+            "description": "Restaurant longitude for driver dispatch calculations"
+        },
+        "kiosk_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable in-store kiosk ordering mode"
+        },
+        "kiosk_default_service_mode": {
+            "type": "string",
+            "default": "sur_place",
+            "description": "Default service mode for kiosk orders (sur_place, a_emporter)"
+        },
+        "kiosk_idle_timeout_sec": {
+            "type": "integer",
+            "default": 120,
+            "description": "Seconds of inactivity before kiosk resets"
+        },
+        "cart_abandonment_delay_min": {
+            "type": "integer",
+            "default": 30,
+            "description": "Minutes before cart abandonment reminder is sent"
+        },
+        "vip_win_back_delay_days": {
+            "type": "integer",
+            "default": 14,
+            "description": "Days of inactivity before VIP win-back message"
+        },
+        "kitchen_load_threshold": {
+            "type": "integer",
+            "default": 15,
+            "description": "Number of active orders before adding extra ETA time"
+        },
+        "kitchen_load_extra_min": {
+            "type": "integer",
+            "default": 10,
+            "description": "Extra minutes added to ETA when kitchen is overloaded"
+        },
+        "delivery_fee_multiplier": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "Global multiplier applied to delivery fees"
+        },
+        "delivery_radius_km": {
+            "type": "decimal",
+            "default": 15,
+            "description": "Maximum delivery radius in kilometers"
+        },
+        "delivery_eta_base_min": {
+            "type": "integer",
+            "default": 20,
+            "description": "Base ETA in minutes before distance factor"
+        },
+        "delivery_eta_per_km_min": {
+            "type": "decimal",
+            "default": 3,
+            "description": "Minutes added per km of delivery distance"
+        },
+        "surge_multiplier_max": {
+            "type": "decimal",
+            "default": 2.0,
+            "description": "Maximum surge pricing multiplier for delivery"
+        },
+        "surge_rain_bonus": {
+            "type": "decimal",
+            "default": 0.3,
+            "description": "Extra surge multiplier added during rain/bad weather"
+        },
+        "chargily_public_key": {
+            "type": "string",
+            "private": true,
+            "description": "Chargily public API key for payment initiation"
+        },
+        "chargily_webhook_secret": {
+            "type": "string",
+            "private": true,
+            "description": "Chargily webhook signature secret for payment callbacks"
+        },
+        "twilio_account_sid": {
+            "type": "string",
+            "description": "Twilio Account SID for voice calls"
+        },
+        "twilio_auth_token": {
+            "type": "string",
+            "private": true,
+            "description": "Twilio Auth Token for voice calls"
+        },
+        "twilio_phone_number": {
+            "type": "string",
+            "description": "Twilio phone number for outbound calls"
+        },
+        "vapi_api_key": {
+            "type": "string",
+            "private": true,
+            "description": "VAPI API key for AI voice agent"
+        },
+        "cart_abandon_template": {
+            "type": "string",
+            "default": "cart_abandonment_reminder_fr",
+            "description": "WhatsApp template name for cart abandonment messages"
+        },
+        "vip_winback_template": {
+            "type": "string",
+            "default": "vip_win_back_fr",
+            "description": "WhatsApp template name for VIP win-back messages"
+        },
+        "review_url": {
+            "type": "string",
+            "description": "Google Review URL for the restaurant"
+        },
+        "printer_api_url": {
+            "type": "string",
+            "description": "Kitchen cloud printer API endpoint (e.g. Star CloudPRNT)"
+        },
+        "kds_supabase_table": {
+            "type": "string",
+            "default": "kds_tickets",
+            "description": "Supabase table name for Kitchen Display System sync"
+        },
+        "predictive_reorder_days": {
+            "type": "integer",
+            "default": 7,
+            "description": "Days of history to analyze for predictive stock reordering"
+        },
+        "redis_url": {
+            "type": "string",
+            "default": "redis://redis:6379",
+            "description": "Redis connection URL for outbox, DLQ, and caching"
+        },
+        "enable_proactive_alerts": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W_ADMIN_PROACTIVE_AGENT (4h KPI alerts to admin)"
+        },
+        "proactive_alert_interval_hours": {
+            "type": "integer",
+            "default": 4,
+            "description": "Hours between proactive KPI alert runs"
+        },
+        "enable_content_scheduler": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W_CONTENT_SCHEDULER (auto social media publishing)"
+        },
+        "content_scheduler_interval_hours": {
+            "type": "integer",
+            "default": 1,
+            "description": "Hours between content scheduler runs"
+        },
+        "enable_driver_gamification": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W_DRIVER_GAMIFICATION (driver XP/level system)"
+        },
+        "driver_xp_per_delivery": {
+            "type": "integer",
+            "default": 50,
+            "description": "Base XP earned per successful delivery"
+        },
+        "driver_xp_speed_bonus": {
+            "type": "integer",
+            "default": 20,
+            "description": "Bonus XP for fast delivery"
+        },
+        "driver_level_divisor": {
+            "type": "integer",
+            "default": 100,
+            "description": "XP divisor for level calc: level = floor(sqrt(XP / divisor)) + 1"
+        },
+        "the_usual_min_repeats": {
+            "type": "integer",
+            "default": 3,
+            "description": "Minimum identical orders before 'The Usual' suggestion triggers"
+        },
+        "hive_mind_stacking_bonus": {
+            "type": "integer",
+            "default": 50,
+            "description": "Dispatch score bonus for drivers already at restaurant"
+        },
+        "hive_mind_overload_penalty": {
+            "type": "integer",
+            "default": 200,
+            "description": "Dispatch score penalty when driver has 3+ active jobs"
+        },
+        "hive_mind_max_active_jobs": {
+            "type": "integer",
+            "default": 3,
+            "description": "Max concurrent jobs before driver is penalized"
+        },
+        "review_delay_min": {
+            "type": "integer",
+            "default": 60,
+            "description": "Minutes after order before review prompt is sent (W61)"
+        },
+        "review_window_min": {
+            "type": "integer",
+            "default": 15,
+            "description": "Window in minutes after review_delay to catch eligible orders"
+        },
+        "dlq_retry_interval_hours": {
+            "type": "integer",
+            "default": 1,
+            "description": "Hours between DLQ retry attempts (W8_DLQ_HANDLER)"
+        },
+        "enable_funnel_learner": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W_AI_FUNNEL_LEARNER"
+        },
+        "enable_hive_mind_dispatch": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable W_HIVE_MIND_DISPATCH"
+        },
+        "enable_low_stock_alerts": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W_LOW_STOCK_ALERT"
+        },
+        "enable_the_usual": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W_THE_USUAL"
+        },
+        "fortune_wheel_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable W25_GAMIFICATION_WHEEL"
+        },
+        "funnel_learner_cron": {
+            "type": "string",
+            "default": "0 2 * * *",
+            "description": "Cron expression for Funnel Learner"
+        },
+        "content_scheduler_cron": {
+            "type": "string",
+            "default": "0 9,12,18 * * *",
+            "description": "Cron expression for Content Scheduler"
+        },
+        "inventory_sync_interval_min": {
+            "type": "integer",
+            "default": 60,
+            "description": "Minutes between inventory syncs"
+        },
+        "low_stock_alert_cron": {
+            "type": "string",
+            "default": "0 7 * * *",
+            "description": "Cron expression for Low Stock Alert"
+        },
+        "proactive_alert_revenue_drop_pct": {
+            "type": "integer",
+            "default": 20,
+            "description": "Alert if revenue drops by this percent"
+        },
+        "funnel_learner_min_events": {
+            "type": "integer",
+            "default": 50,
+            "description": "Min events required before funnel learning"
+        },
+        "upsell_min_orders": {
+            "type": "integer",
+            "default": 3,
+            "description": "Min orders before suggesting an upsell"
+        },
+        "upsell_cooldown_days": {
+            "type": "integer",
+            "default": 7,
+            "description": "Days between upsell suggestions"
+        },
+        "gamification_points_per_delivery": {
+            "type": "integer",
+            "default": 10,
+            "description": "Reward points per delivery"
+        },
+        "driver_bot_system_prompt": {
+            "type": "text",
+            "default": "You are the driver assistant. Keep responses short and focus on delivery details.",
+            "description": "AI prompt for W_DRIVER_BOT"
+        },
+        "hive_mind_max_distance_km": {
+            "type": "decimal",
+            "default": 5.0,
+            "description": "Max dispatch distance"
+        },
+        "hive_mind_priority_weight": {
+            "type": "decimal",
+            "default": 0.7,
+            "description": "Weight of rating vs distance (0-1)"
+        },
+        "fortune_wheel_prizes_json": {
+            "type": "json",
+            "description": "Prize list and probabilities for the gamification wheel"
+        }
+    }
+}

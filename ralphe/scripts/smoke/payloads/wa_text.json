@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15551234567",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Ahmed Benali"
+                },
+                "wa_id": "213555123456"
+              }
+            ],
+            "messages": [
+              {
+                "from": "213555123456",
+                "id": "wamid.HBgNMjEzNTU1MTIzNDU2FQIAEhggMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkw",
+                "timestamp": "__TIMESTAMP__",
+                "text": {
+                  "body": "Salam, je voudrais commander une pizza"
+                },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

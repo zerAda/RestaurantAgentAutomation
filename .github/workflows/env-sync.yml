@@ -1,0 +1,128 @@
+# =============================================================================
+# Environment Sync Check - Resto Bot
+# =============================================================================
+# Ensures VPS environment variables stay in sync with the template:
+# - Compares config/.env.example with deployed /opt/resto/shared/.env
+# - Reports MISSING and EXTRA variables
+# - Fails if required critical variables are missing
+# =============================================================================
+
+name: Environment Sync Check
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Monday 8am UTC
+  pull_request:
+    paths:
+      - 'config/.env.example'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: env-sync
+  cancel-in-progress: true
+
+env:
+  VPS_HOST: ${{ vars.VPS_HOST }}
+  VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
+
+jobs:
+  env-sync:
+    name: Check Environment Sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ vars.VPS_HOST }}
+
+      - name: Extract expected variables from template
+        id: expected
+        run: |
+          echo "::group::Expected variables"
+          EXPECTED=$(grep -E '^[A-Z_]+=' config/.env.example | cut -d= -f1 | sort)
+          echo "$EXPECTED"
+          echo "$EXPECTED" > /tmp/expected_vars.txt
+          echo "::endgroup::"
+
+      - name: Extract actual variables from VPS
+        id: actual
+        run: |
+          echo "::group::Actual variables on VPS"
+          ACTUAL=$(ssh -o StrictHostKeyChecking=no "${VPS_USER}@${VPS_HOST}" \
+            "grep -E '^[A-Z_]+=' /opt/resto/shared/.env | cut -d= -f1 | sort")
+          echo "$ACTUAL"
+          echo "$ACTUAL" > /tmp/actual_vars.txt
+          echo "::endgroup::"
+
+      - name: Compare and report
+        run: |
+          echo "::group::Environment sync comparison"
+
+          MISSING=$(comm -23 /tmp/expected_vars.txt /tmp/actual_vars.txt)
+          EXTRA=$(comm -13 /tmp/expected_vars.txt /tmp/actual_vars.txt)
+
+          # Build summary table
+          {
+            echo "## Environment Sync Report"
+            echo ""
+            echo "| Status | Variable |"
+            echo "|--------|----------|"
+
+            if [[ -n "$MISSING" ]]; then
+              while IFS= read -r var; do
+                echo "| MISSING | \`$var\` |"
+              done <<< "$MISSING"
+            fi
+
+            if [[ -n "$EXTRA" ]]; then
+              while IFS= read -r var; do
+                echo "| EXTRA | \`$var\` |"
+              done <<< "$EXTRA"
+            fi
+
+            if [[ -z "$MISSING" && -z "$EXTRA" ]]; then
+              echo "| OK | All variables in sync |"
+            fi
+
+            echo ""
+            echo "**Template:** \`config/.env.example\`"
+            echo "**VPS:** \`/opt/resto/shared/.env\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::endgroup::"
+
+          # Check required variables
+          REQUIRED_VARS=(
+            DOMAIN_NAME
+            WEBHOOK_SHARED_TOKEN
+            META_APP_SECRET
+            POSTGRES_USER
+            POSTGRES_PASSWORD
+          )
+
+          FAIL=0
+          for req in "${REQUIRED_VARS[@]}"; do
+            if echo "$MISSING" | grep -qw "$req"; then
+              echo "::error::Required variable missing on VPS: $req"
+              FAIL=1
+            fi
+          done
+
+          if [[ $FAIL -eq 1 ]]; then
+            echo "::error::Required environment variables are missing on VPS"
+            exit 1
+          fi
+
+          if [[ -n "$MISSING" ]]; then
+            echo "::warning::Some non-required variables are missing on VPS"
+          fi
+
+          echo "Environment sync check complete"

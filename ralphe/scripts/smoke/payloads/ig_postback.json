@@ -1,0 +1,25 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+      "time": __TIMESTAMP_MS__,
+      "messaging": [
+        {
+          "sender": {
+            "id": "IG_USER_ID_345678"
+          },
+          "recipient": {
+            "id": "INSTAGRAM_PAGE_ID"
+          },
+          "timestamp": __TIMESTAMP_MS__,
+          "postback": {
+            "mid": "m_ig_postback_pqr345stu678",
+            "title": "Commander",
+            "payload": "ACTION_START_ORDER"
+          }
+        }
+      ]
+    }
+  ]
+}

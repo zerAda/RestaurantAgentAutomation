@@ -1,0 +1,18 @@
+{
+  "contract_version": "v2",
+  "provider": "msg",
+  "msg_id": 123,
+  "sender": {
+    "id": false
+  },
+  "message": {
+    "attachments": [
+      {
+        "type": "audio",
+        "url": 5,
+        "mime": "video/mp4"
+      }
+    ]
+  },
+  "timestamp": "not-a-date"
+}
