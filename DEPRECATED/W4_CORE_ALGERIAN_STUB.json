@@ -1,0 +1,111 @@
+{
+    "name": "W4_CORE_ALGERIAN_STUB",
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "Message Input",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "collection": "restaurant-brand",
+                "id": "singleton",
+                "filters": {
+                    "restaurant_id": {
+                        "$eq": "={{ $json.tenant_context?.restaurant_id }}"
+                    }
+                }
+            },
+            "name": "Get Brand Config",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Détection de langue Algérienne\nconst text = $input.first().json.text || '';\nconst brand = $node['Get Brand Config'].json;\n\n// Patterns Darija\nconst darijaPatterns = /\\b(sahit|bsaha|chhal|wesh|khouya|rabi|inchallah|baraka|rabbi yahafdek|bghit|3andi)\\b/i;\n\n// Patterns Arabe\nconst arabicPattern = /[\\u0600-\\u06FF]/;\n\n// Patterns Français\nconst frenchPattern = /\\b(bonjour|merci|salut|commander|livraison)\\b/i;\n\nlet detectedLang = 'fr';\nlet mixedMode = false;\n\nif (arabicPattern.test(text)) {\n  detectedLang = 'ar';\n}\n\nif (darijaPatterns.test(text)) {\n  detectedLang = 'dz';\n  if (frenchPattern.test(text)) {\n    mixedMode = true;\n  }\n}\n\nreturn {\n  json: {\n    text: text,\n    detected_language: detectedLang,\n    mixed_mode: mixedMode,\n    brand: brand\n  }\n};"
+            },
+            "name": "Language Detection (DZ Market)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.LLM_API_URL || 'http://ollama:11434/api/chat' }}",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "={{ $env.LLM_MODEL || 'llama3.1' }}"
+                        },
+                        {
+                            "name": "stream",
+                            "value": "={{ false }}"
+                        },
+                        {
+                            "name": "messages",
+                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `Tu es l'assistant conversationnel de '${$json.brand.restaurant_name}'.\n\nIDENTITÉ & MARCHÉ:\n- Marché: ALGÉRIE (Français, Darija, Arabe)\n- Ton: ${$json.brand.voice_tone}\n- Histoire: ${$json.brand.brand_story}\n\nRÈGLES LINGUISTIQUES:\n1. LANGUE DÉTECTÉE: ${$json.detected_language}\n2. CODE-SWITCHING: ${$json.mixed_mode ? 'OUI' : 'NON'}\n3. EXPRESSIONS DARIJA: ${JSON.stringify($json.brand.localization?.darija_expressions || [])}\n4. Réponds dans la langue du client\n5. Si Darija: utilise expressions naturelles\n6. Sois concis et chaleureux\n\nTÂCHE: Aide le client en respectant SA langue.`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": $json.text\n  }\n] }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Ollama Chat (Local)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                600,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Message Input": {
+            "main": [
+                [
+                    {
+                        "node": "Get Brand Config",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Brand Config": {
+            "main": [
+                [
+                    {
+                        "node": "Language Detection (DZ Market)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Language Detection (DZ Market)": {
+            "main": [
+                [
+                    {
+                        "node": "Ollama Chat (Local)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
