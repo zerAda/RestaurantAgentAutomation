@@ -16,6 +16,19 @@ export default function GodMode() {
     const [settingId, setSettingId] = useState<number | null>(null);
     const [killLoading, setKillLoading] = useState(false);
     const [statusMsg, setStatusMsg] = useState<string | null>(null);
+    const [pendingCount, setPendingCount] = useState<number>(0);
+
+    // Load metrics
+    useEffect(() => {
+        strapi.find<any>('orders', {
+            filters: { status: { $in: ['pending', 'confirmed', 'preparing'] } },
+            pagination: { limit: 0 }
+        }).then(res => {
+            if (res.meta?.pagination) {
+                setPendingCount(res.meta.pagination.total);
+            }
+        }).catch(() => {});
+    }, []);
 
     // Load current orders acceptance status on mount
     useEffect(() => {
@@ -101,7 +114,7 @@ export default function GodMode() {
                             </li>
                             <li className="flex justify-between text-sm">
                                 <span className="text-slate-400">Pending Orders</span>
-                                <span className="text-yellow-400 font-bold">12</span>
+                                <span className="text-yellow-400 font-bold">{pendingCount}</span>
                             </li>
                         </ul>
                     </div>

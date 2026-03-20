@@ -29,6 +29,23 @@
         },
         {
             "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO public.restaurant_users (tenant_id, restaurant_id, channel, user_id, role)\nVALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'whatsapp', $1, 'kitchen')\nON CONFLICT (restaurant_id, channel, user_id) DO NOTHING;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.phone]}}"
+                }
+            },
+            "id": "e6a4b12c-3d4f-4e5a-8b6c-7d8e9f0a1b2c",
+            "name": "Ensure Customer Profile",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                400,
+                400
+            ]
+        },
+        {
+            "parameters": {
                 "conditions": {
                     "boolean": [
                         {
@@ -141,6 +158,17 @@
             ]
         },
         "Parse Driver": {
+            "main": [
+                [
+                    {
+                        "node": "Ensure Customer Profile",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Ensure Customer Profile": {
             "main": [
                 [
                     {

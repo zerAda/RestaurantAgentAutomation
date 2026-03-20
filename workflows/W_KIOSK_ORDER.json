@@ -30,23 +30,90 @@
                 400
             ]
         },
-        {
-            "parameters": {
-                "language": "javascript",
-                "jsCode": "const body = $json.body || {};\nconst items = body.items || [];\nconst tableNumber = body.table_number || null;\nconst orderType = body.order_type || 'dine_in';\nconst sessionId = body.kiosk_session_id || `kiosk_${Date.now()}`;\n\nif (!items || items.length === 0) {\n  throw new Error('EMPTY_CART: Aucun article dans le panier');\n}\n\n// Validate each item has required fields\nconst validatedItems = items.map((item, idx) => {\n  if (!item.product_id) throw new Error(`INVALID_ITEM: L'article ${idx + 1} n'a pas de product_id`);\n  if (!item.quantity || item.quantity < 1) throw new Error(`INVALID_QTY: Quantité invalide pour ${item.name || 'article ' + (idx+1)}`);\n  return {\n    product_id: item.product_id,\n    name: item.name || '',\n    quantity: item.quantity,\n    size: item.size || { name: 'Normal', price_modifier: 0 },\n    extras: (item.extras || []).map(e => ({ name: e.name, price: Number(e.price) || 0 })),\n    sauces: (item.sauces || []).map(s => ({ name: s.name, price: Number(s.price) || 0, is_free: !!s.is_free }))\n  };\n});\n\n// Get unique product IDs to fetch\nconst productIds = [...new Set(validatedItems.map(i => i.product_id))];\n\nreturn [{ json: {\n  items: validatedItems,\n  table_number: tableNumber,\n  order_type: orderType,\n  kiosk_session_id: sessionId,\n  product_ids: productIds,\n  payment_method: body.payment_method || 'cash'\n}}];"
-            },
-            "id": "validate",
-            "name": "Validate Cart",
-            "type": "n8n-nodes-base.code",
-            "typeVersion": 2,
-            "position": [
-                250,
-                400
-            ]
-        },
-        {
-            "parameters": {
-                "workflowId": "W_CORTEX_REGISTRY",
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * P1-00: Validate Kiosk Authenticity & Rate Limits\n * DIAMOND-FIX: Secret validation + Redis-based throttling\n */\nconst secret = $env.KIOSK_SECRET || 'fallback-kiosk-key';\nconst headers = $node[\"POST /kiosk-order\"].json.headers;\n\n// 1. Secret Validation\nif (headers['x-kiosk-secret'] !== secret) {\n  throw new Error('AUTH_FAILED: Kiosk non autorisé');\n}\n\nconst body = $json.body || {};\nconst kioskId = body.kiosk_id || headers['x-kiosk-id'] || 'unknown_kiosk';\nconst sessionId = body.kiosk_session_id || `kiosk_${Date.now()}`;\nconst items = body.items || [];\n\nif (!items || items.length === 0) {\n  throw new Error('EMPTY_CART: Aucun article dans le panier');\n}\n\nreturn [{ json: {\n  ...body,\n  kiosk_id: kioskId,\n  kiosk_session_id: sessionId,\n  rate_limit_key: `limit:kiosk:order:${kioskId}`\n}}];"
+      },
+      "id": "kiosk-auth-guard",
+      "name": "B0 - Auth & ID Wrap",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "incr",
+        "key": "={{ $json.rate_limit_key }}"
+      },
+      "name": "B0 - Increment Counter",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        250,
+        550
+      ],
+      "credentials": {
+        "redis": {
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+          "name": "Redis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json }}",
+              "operation": "larger",
+              "value2": 5
+            }
+          ]
+        }
+      },
+      "name": "B0 - Throttled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"RATE_LIMIT_EXCEEDED\", \"message\": \"Too many orders. Please wait 60s.\" }",
+        "options": {}
+      },
+      "name": "C0 - Error (Throttled)",
+      "type": "n8n-nodes-base.webhookResponse",
+      "typeVersion": 1,
+      "position": [
+        550,
+        700
+      ]
+    },    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const body = $node[\"B0 - Auth & ID Wrap\"].json;\nconst items = body.items || [];\nconst tableNumber = body.table_number || null;\nconst orderType = body.order_type || 'dine_in';\nconst sessionId = body.kiosk_session_id;\n\n// Validate each item has required fields\nconst validatedItems = items.map((item, idx) => {\n  if (!item.product_id) throw new Error(`INVALID_ITEM: L'article ${idx + 1} n'a pas de product_id`);\n  if (!item.quantity || item.quantity < 1) throw new Error(`INVALID_QTY: Quantité invalide pour ${item.name || 'article ' + (idx+1)}`);\n  return {\n    product_id: item.product_id,\n    name: item.name || '',\n    quantity: item.quantity,\n    size: item.size || { name: 'Normal', price_modifier: 0 },\n    extras: (item.extras || []).map(e => ({ name: e.name, price: Number(e.price) || 0 })),\n    sauces: (item.sauces || []).map(s => ({ name: s.name, price: Number(s.price) || 0, is_free: !!s.is_free }))\n  };\n});\n\n// Get unique product IDs to fetch\nconst productIds = [...new Set(validatedItems.map(i => i.product_id))];\n\nreturn [{ json: {\n  items: validatedItems,\n  table_number: tableNumber,\n  order_type: orderType,\n  kiosk_session_id: sessionId,\n  product_ids: productIds,\n  payment_method: body.payment_method || 'cash'\n}}];"
+      },
+      "id": "validate",
+      "name": "Validate Cart",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_CORTEX_REGISTRY",
+
                 "workflowInputs": {
                     "parameters": [
                         {
@@ -272,7 +339,47 @@
             "main": [
                 [
                     {
+                        "node": "B0 - Auth & ID Wrap",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Auth & ID Wrap": {
+            "main": [
+                [
+                    {
+                        "node": "B0 - Increment Counter",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Increment Counter": {
+            "main": [
+                [
+                    {
+                        "node": "B0 - Throttled?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Throttled?": {
+            "main": [
+                [
+                    {
                         "node": "Validate Cart",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "C0 - Error (Throttled)",
                         "type": "main",
                         "index": 0
                     }

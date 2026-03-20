@@ -24,25 +24,71 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "// Validate loyalty event payload\nconst body = $json.body || $json;\nconst eventType = (body.event_type || '').toString(); // order_confirmed | order_cancelled | manual_award\nconst customerId = body.customer_id;\nconst orderId = body.order_id;\nconst orderAmount = Number(body.total_amount || 0); // in DA\n\nif (!eventType || !customerId) {\n  return [{ json: { _skip: true, reason: 'missing event_type or customer_id' }}];\n}\n\n// Points calculation: 1 point per 10 DA spent\nconst pointsEarned = eventType === 'order_confirmed' ? Math.floor(orderAmount / 10) : 0;\n\nreturn [{ json: {\n  eventType,\n  customerId,\n  orderId,\n  orderAmount,\n  pointsEarned,\n  processedAt: new Date().toISOString()\n}}];"
+        "jsCode": "/**\n * L0-00: Loyalty HMAC Guard & Idempotency\n * DIAMOND-FIX: Prevents point fabrication and replay attacks\n */\nconst crypto = require('crypto');\nconst secret = $env.TENANT_CONTEXT_SECRET || 'fallback-secret';\nconst headers = $node[\"IN — POST /webhook/loyalty-event\"].json.headers;\nconst signature = headers['x-loyalty-signature'];\nconst body = $node[\"IN — POST /webhook/loyalty-event\"].json.body;\n\n// 1. Signature Verify\nconst expected = crypto.createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex');\nif (signature !== expected) {\n  throw new Error('AUTH_FAILED: Signature de fidélité invalide');\n}\n\nreturn [{ json: {\n  ...body,\n  idempotency_key: `loyalty:processed:${body.order_id || body.customer_id + '_' + Date.now()}`\n}}];"
+      },
+      "id": "loyalty-auth-guard",
+      "name": "B0 - Auth Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1050,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "setnx",
+        "key": "={{ $json.idempotency_key }}",
+        "value": "1",
+        "expire": 86400
+      },
+      "name": "B0 - Idempotency Check",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        0
+      ],
+      "credentials": {
+        "redis": {
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+          "name": "Redis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json }}",
+              "operation": "equal",
+              "value2": 1
+            }
+          ]
+        }
+      },
+      "name": "B0 - Is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Validate loyalty event payload\nconst body = $node[\"B0 - Is New?\"].json._skip ? {} : $node[\"B0 - Auth Guard\"].json;\nconst eventType = (body.event_type || '').toString();\nconst customerId = body.customer_id;\nconst orderId = body.order_id;\nconst orderAmount = Number(body.total_amount || 0);\n\nif (!eventType || !customerId) {\n  return [{ json: { _skip: true, reason: 'missing event_type or customer_id' }}];\n}\n\nconst pointsEarned = eventType === 'order_confirmed' ? Math.floor(orderAmount / 10) : 0;\n\nreturn [{ json: {\n  eventType,\n  customerId,\n  orderId,\n  orderAmount,\n  pointsEarned,\n  processedAt: new Date().toISOString()\n}}];"
       },
       "id": "validate-event",
       "name": "L0 — Validate Loyalty Event",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-980, 0]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [{ "value1": "={{$json._skip === true}}", "operation": "isTrue" }]
-        }
-      },
-      "id": "check-skip",
-      "name": "L0x — Skip?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [-760, 0]
+      "position": [
+        -600,
+        0
+      ]
     },
     {
       "parameters": {
@@ -139,10 +185,59 @@
   ],
   "connections": {
     "IN — POST /webhook/loyalty-event": {
-      "main": [[{ "node": "L0 — Validate Loyalty Event", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "B0 - Auth Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Auth Guard": {
+      "main": [
+        [
+          {
+            "node": "B0 - Idempotency Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Idempotency Check": {
+      "main": [
+        [
+          {
+            "node": "B0 - Is New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Is New?": {
+      "main": [
+        [
+          {
+            "node": "L0 — Validate Loyalty Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "L0 — Validate Loyalty Event": {
-      "main": [[{ "node": "L0x — Skip?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "L1 — Fetch Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "L0x — Skip?": {
       "main": [[], [{ "node": "L1 — Fetch Customer", "type": "main", "index": 0 }]]

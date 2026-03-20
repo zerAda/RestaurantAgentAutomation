@@ -108,62 +108,68 @@
         },
         {
             "parameters": {
-                "url": "https://api.replicate.com/v1/predictions",
+                "url": "={{ $env.AI_STRATEGY === 'local' ? ($env.SD_API_URL || 'http://stable-diffusion:7860') + '/sdapi/v1/txt2img' : 'https://api.replicate.com/v1/predictions' }}",
                 "method": "POST",
-                "authentication": "genericCredentialType",
+                "authentication": "={{ $env.AI_STRATEGY === 'local' ? 'none' : 'genericCredentialType' }}",
                 "genericAuthType": "httpHeaderAuth",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ version: 'black-forest-labs/flux-1.1-pro', input: { prompt: $json.image_prompt, aspect_ratio: '1:1', safety_tolerance: 5, output_format: 'jpg', output_quality: 95 } }) }}"
+                "jsonBody": "={{ $env.AI_STRATEGY === 'local' ? JSON.stringify({ prompt: $json.image_prompt, width: 1024, height: 1024, steps: 25, cfg_scale: 7, sampler_name: 'Euler a' }) : JSON.stringify({ version: 'black-forest-labs/flux-1.1-pro', input: { prompt: $json.image_prompt, aspect_ratio: '1:1', safety_tolerance: 5, output_format: 'jpg' } }) }}"
             },
             "id": "gen-image-square",
-            "name": "Gen Image 1:1 (Feed)",
+            "name": "Local SD 1:1 (Feed)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
                 700,
                 100
             ],
+            "retryOnFail": true,
+            "maxRetries": 2,
             "continueOnFail": true
         },
         {
             "parameters": {
-                "url": "https://api.replicate.com/v1/predictions",
+                "url": "={{ $env.AI_STRATEGY === 'local' ? ($env.SD_API_URL || 'http://stable-diffusion:7860') + '/sdapi/v1/txt2img' : 'https://api.replicate.com/v1/predictions' }}",
                 "method": "POST",
-                "authentication": "genericCredentialType",
+                "authentication": "={{ $env.AI_STRATEGY === 'local' ? 'none' : 'genericCredentialType' }}",
                 "genericAuthType": "httpHeaderAuth",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ version: 'black-forest-labs/flux-1.1-pro', input: { prompt: $node['Build Creative Brief'].json.image_prompt, aspect_ratio: '9:16', safety_tolerance: 5, output_format: 'jpg', output_quality: 95 } }) }}"
+                "jsonBody": "={{ $env.AI_STRATEGY === 'local' ? JSON.stringify({ prompt: $node['Build Creative Brief'].json.image_prompt, width: 720, height: 1280, steps: 25, cfg_scale: 7, sampler_name: 'Euler a' }) : JSON.stringify({ version: 'black-forest-labs/flux-1.1-pro', input: { prompt: $node['Build Creative Brief'].json.image_prompt, aspect_ratio: '9:16', safety_tolerance: 5, output_format: 'jpg' } }) }}"
             },
             "id": "gen-image-vertical",
-            "name": "Gen Image 9:16 (Stories/Reels)",
+            "name": "Local SD 9:16 (Stories/Reels)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
                 700,
                 300
             ],
+            "retryOnFail": true,
+            "maxRetries": 2,
             "continueOnFail": true
         },
         {
             "parameters": {
-                "url": "https://api.replicate.com/v1/predictions",
+                "url": "={{ $env.VIDEO_API_URL || 'https://api.replicate.com/v1/predictions' }}",
                 "method": "POST",
                 "authentication": "genericCredentialType",
                 "genericAuthType": "httpHeaderAuth",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ version: 'luma/ray', input: { prompt: $node['Build Creative Brief'].json.video_prompt, aspect_ratio: '9:16', duration: '5s' } }) }}"
+                "jsonBody": "={{ JSON.stringify($env.VIDEO_API_URL ? { prompt: $node['Build Creative Brief'].json.video_prompt } : { version: 'luma/ray', input: { prompt: $node['Build Creative Brief'].json.video_prompt, aspect_ratio: '9:16', duration: '5s' } }) }}"
             },
             "id": "gen-video",
-            "name": "Gen Video 9:16 (Reels/TikTok)",
+            "name": "Gen Video (Local-First Fallback)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
-                700,
+                164,
                 500
             ],
+            "retryOnFail": true,
+            "maxRetries": 2,
             "continueOnFail": true
         },
         {
@@ -187,7 +193,7 @@
         {
             "parameters": {
                 "language": "javascript",
-                "jsCode": "const brief = $node['Build Creative Brief'].json;\nconst imgSquare = $node['Gen Image 1:1 (Feed)'].json;\nconst imgVertical = $node['Gen Image 9:16 (Stories/Reels)'].json;\nconst video = $node['Gen Video 9:16 (Reels/TikTok)'].json;\nconst captionRaw = $node['Gen A/B Captions (LLM)'].json;\n\n// Parse captions\nlet captions = { caption_a: '', caption_b: '', hashtags: [] };\ntry {\n  const content = captionRaw.message?.content || captionRaw.response || '{}';\n  const jsonMatch = content.match(/```json?\\s*([\\s\\S]*?)```/) || [null, content];\n  captions = JSON.parse(jsonMatch[1].trim());\n} catch(e) {\n  captions = {\n    caption_a: `🔥 ${brief.dish_name} chez ${brief.brand_name}! Commandez maintenant 📲`,\n    caption_b: `Vous connaissez cette sensation quand ${brief.dish_name} arrive devant vous? 🤤 Chez ${brief.brand_name}, c'est tous les jours comme ça. Fi dar wella livraison, à vous de choisir! 📲`,\n    hashtags: ['#fooddz', '#algeriafood', '#resto', '#livraison', `#${brief.brand_name.replace(/\\s/g,'').toLowerCase()}`]\n  };\n}\n\nreturn [{ json: {\n  dish_name: brief.dish_name,\n  brand_name: brief.brand_name,\n  image_square_url: imgSquare.output || imgSquare.urls?.get || null,\n  image_vertical_url: imgVertical.output || imgVertical.urls?.get || null,\n  video_url: video.output || video.urls?.get || null,\n  caption_a: captions.caption_a || '',\n  caption_b: captions.caption_b || '',\n  hashtags: captions.hashtags || [],\n  config: brief.config,\n  best_channel: brief.best_channel,\n  peak_hours: brief.peak_hours,\n  retry_count: brief.retry_count\n}}];"
+                "jsCode": "const brief = $node['Build Creative Brief'].json;\nconst imgSquare = $node['Gen Image 1:1 (Feed)'].json;\nconst imgVertical = $node['Gen Image 9:16 (Stories/Reels)'].json;\nconst video = $node['Gen Video 9:16 (Reels/TikTok)'].json;\nconst captionRaw = $node['Gen A/B Captions (LLM)'].json;\n\n// Parse captions\nlet captions = { caption_a: '', caption_b: '', hashtags: [] };\ntry {\n  const content = captionRaw.message?.content || captionRaw.response || '{}';\n  const jsonMatch = content.match(/```json?\\s*([\\s\\S]*?)```/) || [null, content];\n  captions = JSON.parse(jsonMatch[1].trim());\n} catch(e) {\n  captions = {\n    caption_a: `🔥 ${brief.dish_name} chez ${brief.brand_name}! Commandez maintenant 📲`,\n    caption_b: `Vous connaissez cette sensation quand ${brief.dish_name} arrive devant vous? 🤤 Chez ${brief.brand_name}, c'est tous les jours comme ça. Fi dar wella livraison, à vous de choisir! 📲`,\n    hashtags: ['#fooddz', '#algeriafood', '#resto', '#livraison', `#${brief.brand_name.replace(/\\s/g,'').toLowerCase()}`]\n  };\n}\n\nreturn [{ json: {\n  dish_name: brief.dish_name,\n  brand_name: brief.brand_name,\n  image_square_url: imgSquare.images?.[0] ? `data:image/png;base64,${imgSquare.images[0]}` : (imgSquare.output || imgSquare.urls?.get || null),\n  image_vertical_url: imgVertical.images?.[0] ? `data:image/png;base64,${imgVertical.images[0]}` : (imgVertical.output || imgVertical.urls?.get || null),\n  video_url: video.output || video.urls?.get || null,\n  caption_a: captions.caption_a || '',\n  caption_b: captions.caption_b || '',\n  hashtags: captions.hashtags || [],\n  config: brief.config,\n  best_channel: brief.best_channel,\n  peak_hours: brief.peak_hours,\n  retry_count: brief.retry_count\n}}];"
             },
             "id": "assemble",
             "name": "Assemble Content Package",

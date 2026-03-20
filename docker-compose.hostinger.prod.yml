@@ -598,6 +598,8 @@ services:
           memory: 3G
         reservations:
           memory: 512M
+    environment:
+      - OLLAMA_HOST=0.0.0.0
     logging:
       driver: json-file
       options:
@@ -605,6 +607,8 @@ services:
         max-size: 10m
     networks:
       - internal
+    ports:
+      - "11434:11434"
     profiles:
       - ai
     restart: unless-stopped

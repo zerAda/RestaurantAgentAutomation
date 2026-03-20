@@ -21,10 +21,12 @@
             "private": true
         },
         "whatsapp_phone_number_id": {
-            "type": "string"
+            "type": "string",
+            "private": true
         },
         "whatsapp_business_account_id": {
-            "type": "string"
+            "type": "string",
+            "private": true
         },
         "whatsapp_access_token": {
             "type": "string",
@@ -137,14 +139,16 @@
             "type": "string"
         },
         "facebook_page_id": {
-            "type": "string"
+            "type": "string",
+            "private": true
         },
         "facebook_page_token": {
             "type": "string",
             "private": true
         },
         "instagram_business_id": {
-            "type": "string"
+            "type": "string",
+            "private": true
         },
         "tiktok_open_id": {
             "type": "string"
@@ -304,6 +308,7 @@
         },
         "messenger_page_id": {
             "type": "string",
+            "private": true,
             "description": "Facebook Messenger Page ID for sending DMs"
         },
         "messenger_api_token": {
@@ -317,6 +322,7 @@
         },
         "ig_page_id": {
             "type": "string",
+            "private": true,
             "description": "Instagram Professional Account ID for sending DMs"
         },
         "ig_api_token": {
@@ -469,6 +475,7 @@
         },
         "chargily_public_key": {
             "type": "string",
+            "private": true,
             "description": "Chargily public API key for payment initiation"
         },
         "chargily_webhook_secret": {

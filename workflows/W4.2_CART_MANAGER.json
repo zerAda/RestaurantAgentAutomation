@@ -21,9 +21,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH up_state AS (\n  INSERT INTO public.conversation_state (conversation_key, tenant_id, restaurant_id, channel, user_id, state_json)\n  VALUES ($1,$2,$3,$4,$5,$6::jsonb)\n  ON CONFLICT (conversation_key) DO UPDATE\n    SET state_json=EXCLUDED.state_json, updated_at=now()\n  RETURNING 1\n),\nup_cart AS (\n  INSERT INTO public.carts (conversation_key, cart_json)\n  VALUES ($1, $7::jsonb)\n  ON CONFLICT (conversation_key) DO UPDATE\n    SET cart_json=EXCLUDED.cart_json, updated_at=now()\n  RETURNING 1\n),\nup_pref AS (\n  INSERT INTO public.customer_preferences(tenant_id, phone, locale)\n  SELECT $2, $5, $9\n  WHERE COALESCE($8::boolean,false) = true\n    AND $9 IS NOT NULL\n    AND length(trim($9)) > 0\n  ON CONFLICT (tenant_id, phone) DO UPDATE\n    SET locale=EXCLUDED.locale, updated_at=now()\n  RETURNING 1\n)\nSELECT 1 AS ok;\n",
+        "query": "WITH current_cart AS (\n  SELECT updated_at FROM public.carts WHERE conversation_key = $1\n),\nup_state AS (\n  INSERT INTO public.conversation_state (conversation_key, tenant_id, restaurant_id, channel, user_id, state_json)\n  VALUES ($1,$2,$3,$4,$5,$6::jsonb)\n  ON CONFLICT (conversation_key) DO UPDATE\n    SET state_json=EXCLUDED.state_json, updated_at=now()\n  RETURNING 1\n),\nup_cart AS (\n  UPDATE public.carts \n  SET cart_json=$7::jsonb, updated_at=now()\n  WHERE conversation_key = $1 \n    AND (updated_at = $10 OR $10 IS NULL) -- FORENSIC-FIX: Optimistic Lock Check\n  RETURNING 1\n),\nins_cart AS (\n  INSERT INTO public.carts (conversation_key, cart_json)\n  SELECT $1, $7::jsonb\n  WHERE NOT EXISTS (SELECT 1 FROM public.carts WHERE conversation_key = $1)\n  RETURNING 1\n),\nup_pref AS (\n  INSERT INTO public.customer_preferences(tenant_id, phone, locale)\n  SELECT $2, $5, $9\n  WHERE COALESCE($8::boolean,false) = true\n    AND $9 IS NOT NULL\n    AND length(trim($9)) > 0\n  ON CONFLICT (tenant_id, phone) DO UPDATE\n    SET locale=EXCLUDED.locale, updated_at=now()\n  RETURNING 1\n)\nSELECT (CASE WHEN EXISTS (SELECT 1 FROM up_cart) OR EXISTS (SELECT 1 FROM ins_cart) THEN 1 ELSE 0 END) AS ok;\n",
         "additionalFields": {
-          "queryParams": "={{[$json.conversationKey,$json.tenantId,$json.restaurantId,$json.channel,$json.userId, JSON.stringify($json.state), JSON.stringify($json.cart), !!$json.l10nPersistLocale, ($json.state && $json.state.localePref) ? $json.state.localePref : null]}}"
+          "queryParams": "={{[$json.conversationKey,$json.tenantId,$json.restaurantId,$json.channel,$json.userId, JSON.stringify($json.state), JSON.stringify($json.cart), !!$json.l10nPersistLocale, ($json.state && $json.state.localePref) ? $json.state.localePref : null, $json.state?.last_cart_update]}}"
         }
       },
       "id": "c627f006-396c-4b8c-a695-6bfd1389e349",
@@ -262,24 +262,47 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/track",
-        "method": "POST",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ session_id: $json.conversationKey, channel: $json.channel || 'whatsapp', event_type: 'order_confirmed', metadata: { order_id: $json.state?.lastOrderId, total_cents: $json.state?.lastTotalCents } }) }}",
-        "options": {
-          "timeout": 3000
+        "workflowId": "W_TRACKING_FUNNEL",
+        "mode": "fireAndForget",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "userId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "eventType",
+              "value": "order_confirmed"
+            },
+            {
+              "name": "payload",
+              "value": "={{JSON.stringify({ order_id: $json.debug?.orderId, total_cents: $json.debug?.totalCents, referral: $json.inbound_envelope?.meta?.referral })}}"
+            }
+          ]
         }
       },
-      "id": "TRACK_ORDER_CONFIRMED",
+      "id": "track-order-confirmed",
       "name": "Track Order Confirmed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
       "position": [
         460,
-        -300
-      ],
-      "continueOnFail": true
+        -120
+      ]
     },
     {
       "parameters": {
@@ -305,7 +328,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const e = $json;\nconst resp = e.response || { replyText: 'OK', buttons: [] };\n\nconst out = {\n  channel: e.channel,\n  tenantId: e.tenantId || '',\n  restaurantId: e.restaurantId,\n  conversationKey: e.conversationKey || '',\n  userId: e.userId,\n  orderId: e.debug?.orderId || null,\n  replyText: resp.replyText || '',\n  buttons: Array.isArray(resp.buttons) ? resp.buttons : [],\n  attachments: Array.isArray(resp.attachments) ? resp.attachments : [],\n  actions: e.actions || { sendToKitchen:false },\n  debug: {\n    traceId: e.metadata?.msgId || '',\n    intent: e.intent || '',\n    riskFlags: e.debug?.riskFlags || []\n  }\n};\nreturn [{json: out}];\n"
+        "jsCode": "const e = $json;\nconst resp = e.response || { replyText: 'OK', buttons: [] };\n\nconst darijaPatterns = [\n  'chno kayn','chnou kayen','wach kayn','wesh kayn','ash kayn','fin menu',\n  'nchouf','warini','bghit','wakha','wah','iyeh','mzyan','zwina',\n  'kml','kammel','kmel','ncommandi','sift','salam','slm','labas',\n  'jib','khassni','haja','makla','ftour','ghda','asha','atini','zid'\n];\nconst out = {\n  channel: e.channel,\n  tenantId: e.tenantId || '',\n  restaurantId: e.restaurantId,\n  conversationKey: e.conversationKey || '',\n  userId: e.userId,\n  orderId: e.debug?.orderId || null,\n  replyText: resp.replyText || '',\n  buttons: Array.isArray(resp.buttons) ? resp.buttons : [],\n  attachments: Array.isArray(resp.attachments) ? resp.attachments : [],\n  actions: e.actions || { sendToKitchen:false },\n  debug: {\n    traceId: e.metadata?.msgId || '',\n    intent: e.intent || '',\n    riskFlags: e.debug?.riskFlags || []\n  }\n};\nreturn [{json: out}];\n"
       },
       "id": "561fff75-d491-4d33-8295-4d8e5b56425c",
       "name": "C11 - Finalize Response (default)",
@@ -536,6 +559,94 @@
         -100
       ],
       "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "workflowId": "W_TRACKING_FUNNEL",
+        "mode": "fireAndForget",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "userId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "eventType",
+              "value": "item_added"
+            },
+            {
+              "name": "payload",
+              "value": "={{JSON.stringify({ cart: $json.cart, last_item: $json.cart?.items?.[$json.cart?.items?.length - 1], referral: $json.inbound_envelope?.meta?.referral })}}"
+            }
+          ]
+        }
+      },
+      "id": "track-item-added",
+      "name": "Track Item Added",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_TRACKING_FUNNEL",
+        "mode": "fireAndForget",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "userId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "eventType",
+              "value": "cart_abandonment"
+            },
+            {
+              "name": "payload",
+              "value": "={{JSON.stringify({ cart: $json.cart, stage: $json.state?.stage, referral: $json.inbound_envelope?.meta?.referral })}}"
+            }
+          ]
+        }
+      },
+      "id": "track-abandonment",
+      "name": "Track Abandonment",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        60,
+        180
+      ]
     }
   ],
   "connections": {
@@ -571,6 +682,16 @@
           }
         ],
         [
+          {
+            "node": "track-item-added",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "track-abandonment",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "C11 - Finalize Response (default)",
             "type": "main",
@@ -744,6 +865,11 @@
     "C10 - Build Order Response": {
       "main": [
         [
+          {
+            "node": "track-order-confirmed",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "C11 - Finalize Response (default)",
             "type": "main",

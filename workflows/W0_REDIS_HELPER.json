@@ -20,6 +20,7 @@
         "operation": "set",
         "key": "={{$json.dedupeKey}}",
         "value": "={{$json.timestamp || Date.now()}}",
+        "nx": true,
         "expire": true,
         "ttl": "={{Number($json.dedupeTtl) || 86400}}"
       },

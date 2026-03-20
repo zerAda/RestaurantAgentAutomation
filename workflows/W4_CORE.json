@@ -34,6 +34,37 @@
     },
     {
       "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst secret = ($env.TENANT_CONTEXT_SECRET || 'fallback-secret-6789').toString();\nconst seal = crypto.createHmac('sha256', secret).update(JSON.stringify(ctx)).digest('hex');\nif (e.tenant_context_seal && seal !== e.tenant_context_seal) {\n  throw new Error('TENANT_CONTEXT_TAMPERED');\n}\nreturn [{json:e}];"
+      },
+      "id": "verify-seal-core",
+      "name": "B0 - Verify Tenant Context Seal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2075,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.restaurant_users (tenant_id, restaurant_id, channel, user_id, role)\nVALUES ($1, $2, $3, $4, 'customer')\nON CONFLICT (restaurant_id, channel, user_id) DO NOTHING;",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.channel, $json.userId]}}"
+        }
+      },
+      "id": "e6a4b12c-3d4f-4e5a-8b6c-7d8e9f0a1b2c",
+      "name": "Ensure Customer Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -2035,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "operation": "executeQuery",
         "query": "SELECT\n  COALESCE((SELECT state_json FROM public.conversation_state WHERE conversation_key=$1), '{}'::jsonb) AS state_json,\n  COALESCE((SELECT cart_json  FROM public.carts WHERE conversation_key=$1),  '{\"items\":[]}'::jsonb) AS cart_json,\n  (SELECT locale FROM public.customer_preferences WHERE tenant_id=$2 AND phone=$3) AS pref_locale,\n  (SELECT row_to_json(sc) FROM public.system_configs sc LIMIT 1) AS system_config,\n  COALESCE((\n    SELECT jsonb_object_agg(x.key||'::'||x.locale, x.content)\n    FROM (\n      SELECT DISTINCT ON (key, locale)\n        key, locale, content\n      FROM public.message_templates\n      WHERE (tenant_id=$2 OR tenant_id='_GLOBAL')\n        AND locale IN ('fr','ar')\n      ORDER BY key, locale, CASE WHEN tenant_id=$2 THEN 0 ELSE 1 END\n    ) x\n  ), '{}'::jsonb) AS templates_json,\n  COALESCE((\n    SELECT jsonb_object_agg(x.key||'::'||x.locale, x.variables)\n    FROM (\n      SELECT DISTINCT ON (key, locale)\n        key, locale, variables\n      FROM public.message_templates\n      WHERE (tenant_id=$2 OR tenant_id='_GLOBAL')\n        AND locale IN ('fr','ar')\n      ORDER BY key, locale, CASE WHEN tenant_id=$2 THEN 0 ELSE 1 END\n    ) x\n  ), '{}'::jsonb) AS template_vars_json;\n",
         "additionalFields": {
@@ -52,7 +83,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const event = $json;\nconst state = ($json.state_json && typeof $json.state_json === 'object') ? $json.state_json : {};\nconst cart = ($json.cart_json && typeof $json.cart_json === 'object') ? $json.cart_json : {items:[]};\nconst sys = $json.system_config || {};\n\nconst l10nEnabled = (($env.L10N_ENABLED || sys.l10n_enabled || 'false').toString().toLowerCase() === 'true');\nconst stickyArEnabled = (($env.L10N_STICKY_AR_ENABLED || 'false').toString().toLowerCase() === 'true');\nconst stickyArThreshold = parseInt(($env.L10N_STICKY_AR_THRESHOLD || '2').toString(), 10);\n\nconst prefLocaleDb = ($json.pref_locale || '').toString().trim().toLowerCase();\nconst text = (event?.message?.text || '').toString();\n\n// Arabic script detection (Unicode blocks)\nconst hasArabic = /[\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF]/.test(text);\nconst detectedLocale = hasArabic ? 'ar' : 'fr';\n\n// Persisted preference (only set by LANG command); do not overwrite based on message script.\nconst localePref = (state.localePref || state.locale || prefLocaleDb || event.metadata?.locale || 'fr').toString().trim().toLowerCase();\n\n// Sticky Arabic session rule: if user sent Arabic script N times, allow Darija (Latin) to respond in AR\nconst prevArCount = parseInt((state.arabicScriptCount || 0).toString(), 10) || 0;\nconst newArCount = (l10nEnabled && stickyArEnabled && hasArabic) ? (prevArCount + 1) : prevArCount;\nconst stickyAr = !!state.stickyAr || (l10nEnabled && stickyArEnabled && (newArCount >= (isNaN(stickyArThreshold) ? 2 : stickyArThreshold)));\n\nconst merged = {\n  stage: state.stage || 'START',               // START | COLLECTING | CONFIRMING | PLACED\n  serviceMode: state.serviceMode || null,      // sur_place | a_emporter | livraison\n  localePref,\n  locale: localePref,\n  arabicScriptCount: newArCount,\n  stickyAr: stickyAr,\n  lastIntent: state.lastIntent || null,\n  lastReplyAt: state.lastReplyAt || null,\n  attributed_campaign: state.attributed_campaign || event.metadata?.tracking_code || event.metadata?.campaign_code || null,\n  // P5-03: Omnichannel Handshake\n  handshake_id: state.handshake_id || event.metadata?.handshake_id || null,\n  platform_origin: state.platform_origin || event.channel || null\n};\n\n// P5-03: Context recovery flag\nif (!state.stage && state.handshake_id && l10nEnabled) {\n  merged._handshake_recovery_pending = true;\n}\n\nconst safeCart = {\n  serviceMode: cart.serviceMode || merged.serviceMode,\n  items: Array.isArray(cart.items) ? cart.items : [],\n  note: (cart.note || '').toString()\n};\n\n// Attach templates loaded from DB\nconst templates = ($json.templates_json && typeof $json.templates_json === 'object') ? $json.templates_json : {};\nconst templateVars = ($json.template_vars_json && typeof $json.template_vars_json === 'object') ? $json.template_vars_json : {};\n\nreturn [{\n  json: {\n    ...event,\n    state: merged,\n    cart: safeCart,\n    l10n: {\n      enabled: l10nEnabled,\n      prefLocale: localePref,\n      detectedLocale,\n      hasArabic,\n      stickyArEnabled,\n      stickyArThreshold: (isNaN(stickyArThreshold) ? 2 : stickyArThreshold),\n    },\n    templates,\n    templateVars,\n    config: sys\n  }\n}];\n"
+        "jsCode": "const event = $json;\nconst state = ($json.state_json && typeof $json.state_json === 'object') ? $json.state_json : {};\n\n// FORENSIC-FIX (SEC-009): Ghost Session Detection\n// If a state exists but belongs to a different user ID or tenant ID, it's a \"Ghost\" or Hijack attempt.\nif (state.userId && state.userId !== event.userId) {\n  state.stage = 'START'; // Force reset\n  state._ghost_detected = true;\n}\nif (state.tenantId && state.tenantId !== event.tenantId) {\n  state.stage = 'START'; // Force reset\n  state._tenant_collision_detected = true;\n}\nstate.userId = event.userId; // Sync current owner\nstate.tenantId = event.tenantId; // Sync current tenant\nconst cart = ($json.cart_json && typeof $json.cart_json === 'object') ? $json.cart_json : {items:[]};\nconst sys = $json.system_config || {};\n\nconst l10nEnabled = (($env.L10N_ENABLED || sys.l10n_enabled || 'false').toString().toLowerCase() === 'true');\nconst stickyArEnabled = (($env.L10N_STICKY_AR_ENABLED || 'false').toString().toLowerCase() === 'true');\nconst stickyArThreshold = parseInt(($env.L10N_STICKY_AR_THRESHOLD || '2').toString(), 10);\n\nconst prefLocaleDb = ($json.pref_locale || '').toString().trim().toLowerCase();\nconst text = (event?.message?.text || '').toString();\n\n// Arabic script detection (Unicode blocks)\nconst hasArabic = /[\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF]/.test(text);\nconst detectedLocale = hasArabic ? 'ar' : 'fr';\n\n// Persisted preference (only set by LANG command); do not overwrite based on message script.\nconst localePref = (state.localePref || state.locale || prefLocaleDb || event.metadata?.locale || 'fr').toString().trim().toLowerCase();\n\n// Sticky Arabic session rule: if user sent Arabic script N times, allow Darija (Latin) to respond in AR\nconst prevArCount = parseInt((state.arabicScriptCount || 0).toString(), 10) || 0;\nconst newArCount = (l10nEnabled && stickyArEnabled && hasArabic) ? (prevArCount + 1) : prevArCount;\nconst stickyAr = !!state.stickyAr || (l10nEnabled && stickyArEnabled && (newArCount >= (isNaN(stickyArThreshold) ? 2 : stickyArThreshold)));\n\nconst merged = {\n  stage: state.stage || 'START',               // START | COLLECTING | CONFIRMING | PLACED\n  serviceMode: state.serviceMode || null,      // sur_place | a_emporter | livraison\n  localePref,\n  locale: localePref,\n  arabicScriptCount: newArCount,\n  stickyAr: stickyAr,\n  lastIntent: state.lastIntent || null,\n  lastReplyAt: state.lastReplyAt || null,\n  attributed_campaign: state.attributed_campaign || event.metadata?.tracking_code || event.metadata?.campaign_code || null,\n  // P5-03: Omnichannel Handshake\n  handshake_id: state.handshake_id || event.metadata?.handshake_id || null,\n  platform_origin: state.platform_origin || event.channel || null\n};\n\n// P5-03: Context recovery flag\nif (!state.stage && state.handshake_id && l10nEnabled) {\n  merged._handshake_recovery_pending = true;\n}\n\nconst safeCart = {\n  serviceMode: cart.serviceMode || merged.serviceMode,\n  items: Array.isArray(cart.items) ? cart.items : [],\n  note: (cart.note || '').toString()\n};\n\n// Attach templates loaded from DB\nconst templates = ($json.templates_json && typeof $json.templates_json === 'object') ? $json.templates_json : {};\nconst templateVars = ($json.template_vars_json && typeof $json.template_vars_json === 'object') ? $json.template_vars_json : {};\n\nreturn [{\n  json: {\n    ...event,\n    state: merged,\n    cart: safeCart,\n    l10n: {\n      enabled: l10nEnabled,\n      prefLocale: localePref,\n      detectedLocale,\n      hasArabic,\n      stickyArEnabled,\n      stickyArThreshold: (isNaN(stickyArThreshold) ? 2 : stickyArThreshold),\n    },\n    templates,\n    templateVars,\n    config: sys\n  }\n}];\n"
       },
       "id": "fe44ee07-cb63-4764-bf72-753efa6e4cce",
       "name": "C2 - Merge State Defaults",
@@ -871,6 +902,28 @@
       ]
     },
     "C0 - Validate Event": {
+      "main": [
+        [
+          {
+            "node": "B0 - Verify Tenant Context Seal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Verify Tenant Context Seal": {
+      "main": [
+        [
+          {
+            "node": "Ensure Customer Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Customer Profile": {
       "main": [
         [
           {

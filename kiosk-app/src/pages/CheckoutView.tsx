@@ -54,15 +54,18 @@ const CheckoutView: React.FC = () => {
                 line_total_cents: item.product.price * item.quantity,
             }));
 
-            const res = await strapi.post<{ id: number }>('/api/orders', {
+            const payload = {
                 channel: 'kiosk',
                 service_mode: serviceMode,
                 status: 'NEW',
                 total_cents: total,
                 order_items: orderItems,
-            });
+                restaurant_id: import.meta.env.VITE_RESTAURANT_ID || 'default',
+            };
 
-            const id = res?.data?.id;
+            const res = await strapi.n8n<{ id: number }>('/kiosk-order', payload);
+
+            const id = res?.id;
             setOrderId(id ? `#${String(id).padStart(4, '0')}` : `#${Math.floor(Math.random() * 9000 + 1000)}`);
             clearCart();
             setStep('done');

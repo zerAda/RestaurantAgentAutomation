@@ -364,7 +364,7 @@
     {
       "parameters": {
         "language": "JavaScript",
-        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst seal = crypto.createHash('sha256').update(JSON.stringify(ctx)).digest('hex');\nreturn [{json:{...e, tenant_context_seal: seal}}];\n"
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst secret = ($env.TENANT_CONTEXT_SECRET || 'fallback-secret-6789').toString();\nconst seal = crypto.createHmac('sha256', secret).update(JSON.stringify(ctx)).digest('hex');\nreturn [{json:{...e, tenant_context_seal: seal}}];\n"
       },
       "id": "43cec757-3619-456c-8d84-451c321b8e62",
       "name": "B0 - Seal Tenant Context",
@@ -378,7 +378,7 @@
     {
       "parameters": {
         "language": "JavaScript",
-        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst seal = crypto.createHash('sha256').update(JSON.stringify(ctx)).digest('hex');\nif (e.tenant_context_seal && seal !== e.tenant_context_seal) {\n  throw new Error('TENANT_CONTEXT_TAMPERED');\n}\nreturn [{json:e}];\n"
+        "jsCode": "const crypto = require('crypto');\nconst e = $json;\nconst ctx = e.tenant_context || {};\nconst secret = ($env.TENANT_CONTEXT_SECRET || 'fallback-secret-6789').toString();\nconst seal = crypto.createHmac('sha256', secret).update(JSON.stringify(ctx)).digest('hex');\nif (e.tenant_context_seal && seal !== e.tenant_context_seal) {\n  throw new Error('TENANT_CONTEXT_TAMPERED');\n}\nreturn [{json:e}];\n"
       },
       "id": "4af52dda-84ce-410a-a5eb-0729f403459d",
       "name": "B0 - Verify Tenant Context Seal",

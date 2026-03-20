@@ -1,5 +1,5 @@
 import type { Core } from '@strapi/strapi';
-import { seedRestaurantMenu } from './bootstrap-seeds/restaurant-menu';
+import { seedRestaurantMenu } from './bootstrap-seeds/restaurant-menu.js';
 
 const MAX_PUBLIC_PERMISSIONS = 0;
 const ADMIN_EMAIL = process.env.STRAPI_SUPER_ADMIN_EMAIL || 'admin@ralphe.com';

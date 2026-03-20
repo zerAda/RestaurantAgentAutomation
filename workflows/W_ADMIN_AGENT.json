@@ -3,7 +3,8 @@
     "active": true,
     "settings": {
         "executionTimeout": 60,
-        "saveManualExecutions": true
+        "saveManualExecutions": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
     },
     "nodes": [
         {
@@ -125,7 +126,7 @@
                 "name": "KPI_Analytics",
                 "description": "Use this tool to get recent orders and sales data for analytics. Returns the last 200 orders from Strapi including status, total_cents, service_mode, and createdAt. Use this data to compute revenue, order volume, and trends.",
                 "method": "GET",
-                "url": "={{ $env.STRAPI_URL || 'http://cms:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=200&populate[0]=order_items",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=200&populate[0]=order_items",
                 "authentication": "predefinedCredentialType",
                 "nodeCredentialType": "strapiTokenApi",
                 "sendHeaders": true,
@@ -192,7 +193,7 @@
                 "name": "ROI_Calculator",
                 "description": "Use this tool to get order data from the last 14 days for ROI and revenue calculations. Returns orders with total_cents, status, and createdAt. Compute: revenue_this_week (sum total_cents/100 where createdAt > 7d ago and status=CONFIRMED), revenue_last_week (7-14d ago), orders_this_week (count last 7d), avg_order_value (avg total_cents/100 last 7d).",
                 "method": "GET",
-                "url": "={{ $env.STRAPI_URL || 'http://cms:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=500&filters[createdAt][$gte]={{ new Date(Date.now() - 14*24*60*60*1000).toISOString() }}",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?sort=createdAt:desc&pagination[pageSize]=500&filters[createdAt][$gte]={{ new Date(Date.now() - 14*24*60*60*1000).toISOString() }}",
                 "authentication": "predefinedCredentialType",
                 "nodeCredentialType": "strapiTokenApi",
                 "sendHeaders": true,

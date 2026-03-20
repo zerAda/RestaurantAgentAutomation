@@ -64,7 +64,7 @@
       "position": [-1650, -100],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },
@@ -94,7 +94,7 @@
       "position": [-1150, -100],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },
@@ -103,7 +103,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "/**\n * P1-03: Parse popped message and check if valid\n */\nconst raw = $json;\nconst config = $('B0 - Prepare Pop').first().json.config;\n\n// Redis returns null/undefined if queue is empty\nif (!raw || raw === 'nil' || raw === '' || (typeof raw === 'object' && Object.keys(raw).length === 0)) {\n  return [{ json: { empty: true, config } }];\n}\n\n// Try to parse JSON\nlet msg;\ntry {\n  msg = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  // Invalid JSON - log and skip\n  return [{ json: { empty: false, invalid: true, raw, error: e.message, config } }];\n}\n\n// Validate required fields\nif (!msg.channel || !msg.payload) {\n  return [{ json: { empty: false, invalid: true, msg, error: 'MISSING_REQUIRED_FIELDS', config } }];\n}\n\n// Calculate retry delay with exponential backoff\nconst attempts = (msg.attempts || 0) + 1;\nconst nextRetryAt = msg.nextRetryAt ? new Date(msg.nextRetryAt).getTime() : 0;\nconst now = Date.now();\n\n// Check if ready for retry\nif (nextRetryAt > now) {\n  // Not ready yet - re-queue with same data\n  return [{ json: { empty: false, notReady: true, msg, config, requeue: true } }];\n}\n\nreturn [{\n  json: {\n    empty: false,\n    invalid: false,\n    notReady: false,\n    msg: {\n      ...msg,\n      attempts\n    },\n    config\n  }\n}];\n"
+        "jsCode": "/**\n * P1-03: Parse popped message and check if valid\n * DIAMOND-FIX: Added integrity signature verification\n */\nconst crypto = require('crypto');\nconst raw = $json;\nconst config = $('B0 - Prepare Pop').first().json.config;\nconst secret = $env.TENANT_CONTEXT_SECRET || 'fallback-secret';\n\n// Redis returns null/undefined if queue is empty\nif (!raw || raw === 'nil' || raw === '' || (typeof raw === 'object' && Object.keys(raw).length === 0)) {\n  return [{ json: { empty: true, config } }];\n}\n\n// Try to parse JSON\nlet msg;\ntry {\n  msg = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  // Invalid JSON - log and skip\n  return [{ json: { empty: false, invalid: true, raw, error: e.message, config } }];\n}\n\n// DIAMOND-FIX: Integrity verification\n// Check if message has a seal. In Diamond Grade, all outbox items should be sealed by the orchestrator.\nif (msg._seal) {\n  const dataToVerify = JSON.stringify({\n    channel: msg.channel,\n    userId: msg.payload?.userId || msg.payload?.recipientId,\n    text: msg.payload?.text || msg.payload?.replyText,\n    tenantId: msg.payload?.tenantId\n  });\n  const expectedSeal = crypto.createHmac('sha256', secret).update(dataToVerify).digest('hex');\n  \n  if (msg._seal !== expectedSeal) {\n    return [{ json: { empty: false, invalid: true, msg, error: 'INTEGRITY_VIOLATION: TAMPERED_MSG', config } }];\n  }\n}\n\n// Validate required fields\nif (!msg.channel || !msg.payload) {\n  return [{ json: { empty: false, invalid: true, msg, error: 'MISSING_REQUIRED_FIELDS', config } }];\n}\n\n// Calculate retry delay with exponential backoff\nconst attempts = (msg.attempts || 0) + 1;\nconst nextRetryAt = msg.nextRetryAt ? new Date(msg.nextRetryAt).getTime() : 0;\nconst now = Date.now();\n\n// Check if ready for retry\nif (nextRetryAt > now) {\n  // Not ready yet - re-queue with same data\n  return [{ json: { empty: false, notReady: true, msg, config, requeue: true } }];\n}\n\nreturn [{\n  json: {\n    empty: false,\n    invalid: false,\n    notReady: false,\n    msg: {\n      ...msg,\n      attempts\n    },\n    config\n  }\n}];\n"
       },
       "id": "outbox-parse-msg",
       "name": "B1 - Parse Message",
@@ -170,7 +170,7 @@
       "position": [100, -300],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },
@@ -199,7 +199,7 @@
       "position": [100, -100],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },
@@ -276,7 +276,7 @@
       "position": [1350, -300],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },
@@ -324,7 +324,7 @@
       "position": [1850, -200],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },
@@ -343,7 +343,7 @@
       "position": [1850, 0],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
           "name": "Redis"
         }
       },

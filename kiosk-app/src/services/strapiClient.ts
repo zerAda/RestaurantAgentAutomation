@@ -19,7 +19,7 @@ function getToken(): string | null {
   return null;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, baseUrl?: string): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -32,7 +32,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // 10 s hard timeout — prevents kiosk UI hanging on network issues
   const signal = (options.signal as AbortSignal | undefined) ?? AbortSignal.timeout(10000);
 
-  const res = await fetch(`${STRAPI_URL}${path}`, { ...options, headers, signal });
+  const finalUrl = baseUrl !== undefined ? `${baseUrl}${path}` : `${STRAPI_URL}${path}`;
+  const res = await fetch(finalUrl, { ...options, headers, signal });
   if (!res.ok) {
     // BUG-004 FIX: Parse the Strapi error JSON body before throwing.
     // Previous code discarded the real error message (e.g. "Produit indisponible").
@@ -63,4 +64,17 @@ export const strapi = {
       method: 'PUT',
       body: JSON.stringify({ data }),
     }),
+
+  // Dedicated n8n caller for secure transactions
+  n8n: <T>(path: string, data: unknown, headers: Record<string, string> = {}) => {
+    const N8N_BASE = import.meta.env.VITE_N8N_URL || '';
+    return request<T>(path, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: {
+        ...headers,
+        'x-kiosk-secret': import.meta.env.VITE_KIOSK_SECRET || '',
+      },
+    }, N8N_BASE);
+  }
 };

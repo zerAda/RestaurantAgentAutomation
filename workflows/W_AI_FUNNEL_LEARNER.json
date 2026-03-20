@@ -28,7 +28,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/funnel-events?filters[createdAt][$gte]={{ new Date(Date.now() - 86400000).toISOString() }}&pagination[limit]=500&sort=createdAt:desc",
+                "url": "={{ $env.STRAPI_URL }}/api/funnel-events?filters[createdAt][$gte]={{ new Date(Date.now() - 86400000).toISOString() }}&pagination[limit]=500&sort=createdAt:desc",
                 "method": "GET",
                 "sendHeaders": true,
                 "headerParameters": {
@@ -52,7 +52,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[createdAt][$gte]={{ new Date(Date.now() - 86400000).toISOString() }}&pagination[limit]=200&sort=createdAt:desc",
+                "url": "={{ $env.STRAPI_URL }}/api/orders?filters[createdAt][$gte]={{ new Date(Date.now() - 86400000).toISOString() }}&pagination[limit]=200&sort=createdAt:desc",
                 "method": "GET",
                 "sendHeaders": true,
                 "headerParameters": {
@@ -147,7 +147,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ai-learnings",
+                "url": "={{ $env.STRAPI_URL }}/api/ai-learnings",
                 "method": "POST",
                 "sendHeaders": true,
                 "headerParameters": {

@@ -92,6 +92,42 @@
       "position": [
         1100,
         300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !!$json.success || !!$json.ok }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "name": "B1 - Commit Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE orders SET status = 'ERROR_INVENTORY', metadata = $2 WHERE id = $1;",
+        "additionalFields": {
+          "queryParams": "={{ [ $item(0).$node[\"Create Order (DB)\"].json.id, JSON.stringify({ ...($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {}), \"inventory_commit_failed\": true, \"error_time\": new Date().toISOString() }) ] }}"
+        }
+      },
+      "name": "E1 - Mark Inventory ERROR",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        450
       ]
     },
     {
@@ -133,11 +169,82 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/whatsapp/outbound",
+        "operation": "set",
+        "key": "={{ \"lock:finalize:\" + $json.body.customerPhone }}",
+        "value": "locked",
+        "additionalFields": {
+          "expire": 60,
+          "nx": true
+        }
+      },
+      "name": "B0 - Concurrency Lock",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        200,
+        150
+      ],
+      "credentials": {
+        "redis": {
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+          "name": "Redis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json }}",
+              "operation": "equal",
+              "value2": "OK"
+            }
+          ]
+        }
+      },
+      "name": "B0 - Lock Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        350,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"DUPLICATE_REQUEST\", \"message\": \"Une commande est déjà en cours de finalisation pour ce numéro.\" }",
+        "options": {}
+      },
+      "name": "C0 - Early Response (Duplicate)",
+      "type": "n8n-nodes-base.webhookResponse",
+      "typeVersion": 1,
+      "position": [
+        500,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
         "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.WA_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"to\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.customerPhone}}\",\n  \"message\": \"\ud83c\udfa4 Ralph\u00e9 Voice: J'ai bien enregistr\u00e9 votre commande !\\n\\n\ud83d\udcc1 Commande n\u00b0{{$item(0).$node[\\\"Create Order (DB)\\\"].json.id}}\\n\ud83d\udcb0 Total: {{($item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.totalAmount/100).toFixed(2)}} DZD\\n\\nVous recevrez une notification d\u00e8s qu'elle sera en cuisine.\"\n}",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.customerPhone}}\",\n  \"message\": \"\ud83c\udfa4 Ralph\u00e9 Voice: J'ai bien enregistr\u00e9 votre commande !\\n\\n\ud83d\udcc1 Commande n\u00b0{{$item(0).$node[\\\"Create Order (DB)\\\"].json.id}}\\n\ud83d\udcb0 Total: {{($item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.totalAmount/100).toFixed(2)}} DZD\\n\\nVous recevrez une notification d\u00e8s qu'elle sera en cuisine.\"\n}",
         "options": {}
       },
       "name": "Push Voice Summary (WA)",
@@ -154,7 +261,36 @@
       "main": [
         [
           {
+            "node": "B0 - Concurrency Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Concurrency Lock": {
+      "main": [
+        [
+          {
+            "node": "B0 - Lock Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Lock Success?": {
+      "main": [
+        [
+          {
             "node": "Trigger Inventory Reserve",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C0 - Early Response (Duplicate)",
             "type": "main",
             "index": 0
           }
@@ -209,7 +345,25 @@
       "main": [
         [
           {
+            "node": "B1 - Commit Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B1 - Commit Success?": {
+      "main": [
+        [
+          {
             "node": "Is Voice Order?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E1 - Mark Inventory ERROR",
             "type": "main",
             "index": 0
           }

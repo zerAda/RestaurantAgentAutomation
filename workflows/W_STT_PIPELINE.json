@@ -3,7 +3,8 @@
     "active": true,
     "settings": {
         "executionTimeout": 30,
-        "saveManualExecutions": true
+        "saveManualExecutions": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
     },
     "nodes": [
         {
@@ -23,6 +24,20 @@
         },
         {
             "parameters": {
+                "language": "javascript",
+                "jsCode": "const u = $json.body.audio_url;\nconst allowed = ($env.ALLOWED_AUDIO_DOMAINS || 'whatsapp.com,fbcdn.net').split(',');\n\ntry {\n  const url = new URL(u);\n  const host = url.hostname.toLowerCase();\n  const isAllowed = allowed.some(a => host === a.trim().toLowerCase() || host.endsWith('.' + a.trim().toLowerCase()));\n  \n  if (!isAllowed) {\n    throw new Error(`SSRF_BLOCK: Domain ${host} not in allowlist`);\n  }\n  return [{ json: $json }];\n} catch (e) {\n  throw new Error(`INVALID_URL: ${e.message}`);\n}"
+            },
+            "id": "validate-ssrf",
+            "name": "🛡️ SSRF Guard",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                120,
+                0
+            ]
+        },
+        {
+            "parameters": {
                 "method": "GET",
                 "url": "={{ $json.body.audio_url }}",
                 "authentication": "genericCredentialType",
@@ -35,15 +50,15 @@
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                200,
+                350,
                 0
             ]
         },
         {
             "parameters": {
                 "method": "POST",
-                "url": "https://api.openai.com/v1/audio/transcriptions",
-                "authentication": "genericCredentialType",
+                "url": "={{ $env.AI_STRATEGY === 'local' ? ($env.STT_API_URL || 'http://whisper:9000/asr') : 'https://api.openai.com/v1/audio/transcriptions' }}",
+                "authentication": "={{ $env.AI_STRATEGY === 'local' ? 'none' : 'genericCredentialType' }}",
                 "genericAuthType": "httpHeaderAuth",
                 "sendBody": true,
                 "contentType": "multipart-form-data",
@@ -51,23 +66,23 @@
                     "parameters": [
                         {
                             "name": "model",
-                            "value": "={{ $('Webhook POST /audio-inbound').item.json.body?._strapiConfig?.stt_model || 'whisper-1' }}"
+                            "value": "whisper-1"
                         },
                         {
                             "name": "language",
-                            "value": "={{ $('Webhook POST /audio-inbound').item.json.body?._strapiConfig?.stt_language || 'ar' }}"
+                            "value": "={{ $node['Webhook POST /audio-inbound'].json.body?._strapiConfig?.stt_language || 'ar' }}"
                         }
                     ]
                 },
                 "sendBinaryData": true,
                 "binaryPropertyName": "audioData:file"
             },
-            "id": "call-whisper",
-            "name": "OpenAI Whisper Transcription",
+            "id": "stt-node",
+            "name": "Speech-to-Text (Hybrid)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                400,
+                500,
                 0
             ]
         },
@@ -90,14 +105,14 @@
                 },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ data: { conversation_key: $json.body.conversation_key, audio_url: $json.body.audio_url, transcript: $json.response.text } }) }}"
+                "jsonBody": "={{ JSON.stringify({ data: { conversation_key: $node['Webhook POST /audio-inbound'].json.body.conversation_key, audio_url: $node['Webhook POST /audio-inbound'].json.body.audio_url, transcript: $json.text || $json.transcript || $json.response?.text } }) }}"
             },
             "id": "log-stt",
             "name": "Log to Strapi (voice-interactions)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
-                600,
+                750,
                 0
             ],
             "continueOnFail": true
@@ -108,20 +123,31 @@
                 "url": "={{ $env.WEBHOOK_URL || 'http://localhost:5678' }}/webhook/whatsapp",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({\n  object: 'whatsapp_business_account',\n  entry: [{\n    changes: [{\n      value: {\n        messages: [{\n          from: $json.body.from,\n          id: $json.body.message_id,\n          type: 'text',\n          text: { body: $json.response.text }\n        }]\n      }\n    }]\n  }]\n}) }}"
+                "jsonBody": "={{ JSON.stringify({\n  object: 'whatsapp_business_account',\n  entry: [{\n    changes: [{\n      value: {\n        messages: [{\n          from: $node['Webhook POST /audio-inbound'].json.body.from,\n          id: $node['Webhook POST /audio-inbound'].json.body.message_id,\n          type: 'text',\n          text: { body: $node['Speech-to-Text (Hybrid)'].json.text || $node['Speech-to-Text (Hybrid)'].json.transcript || $node['Speech-to-Text (Hybrid)'].json.response?.text }\n        }]\n      }\n    }]\n  }]\n}) }}"
             },
             "id": "forward-to-core",
             "name": "Forward to Core Webhook as Text",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                800,
+                1000,
                 0
             ]
         }
     ],
     "connections": {
         "Webhook POST /audio-inbound": {
+            "main": [
+                [
+                    {
+                        "node": "🛡️ SSRF Guard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "🛡️ SSRF Guard": {
             "main": [
                 [
                     {
@@ -136,25 +162,25 @@
             "main": [
                 [
                     {
-                        "node": "OpenAI Whisper Transcription",
+                        "node": "Speech-to-Text (Hybrid)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "OpenAI Whisper Transcription": {
+        "Speech-to-Text (Hybrid)": {
             "main": [
                 [
                     {
-                        "node": "Log to Postgres",
+                        "node": "Log to Strapi (voice-interactions)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Log to Postgres": {
+        "Log to Strapi (voice-interactions)": {
             "main": [
                 [
                     {

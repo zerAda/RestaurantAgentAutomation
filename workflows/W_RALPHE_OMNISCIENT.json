@@ -4,7 +4,8 @@
   "settings": {
     "executionTimeout": 600,
     "saveExecutionProgress": true,
-    "saveManualExecutions": true
+    "saveManualExecutions": true,
+    "errorWorkflow": "W_ERROR_HANDLER"
   },
   "nodes": [
     {
@@ -112,8 +113,32 @@
     },
     {
       "parameters": {
+        "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_URL }}/api/ai-learnings?sort=createdAt:desc&pagination[limit]=1",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-ai-learnings",
+      "name": "O0 — Fetch AI Learnings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -900,
+        300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "language": "javascript",
-        "jsCode": "// The Omniscient Intelligence Engine Core\nconst stockRes = $('O1 — Fetch Total Inventory').item.json;\nconst salesRes = $('O2 — Fetch Recent Sales Velocity').item.json;\n\nconst stock = stockRes.data || [];\nconst sales = salesRes.data || [];\n\n// 1. Find overstocked items (high quantity) and understocked\nlet overstocked = [];\nlet criticalLow = [];\nfor (const item of stock) {\n  const attr = item.attributes || item;\n  if (attr.quantity > 500) overstocked.push(attr);\n  if (attr.quantity < 20) criticalLow.push(attr);\n}\n\n// 2. Sales Velocity (What's selling fast vs slow)\nlet dishVelocity = {};\nfor (const o of sales) {\n  const attr = o.attributes || o;\n  const items = attr.order_items?.data || attr.order_items || [];\n  for (const i of items) {\n    const iAttr = i.attributes || i;\n    const label = iAttr.label || 'Unknown';\n    dishVelocity[label] = (dishVelocity[label] || 0) + (iAttr.qty || 1);\n  }\n}\n\n// Sort velocity\nconst velocityArray = Object.entries(dishVelocity).sort((a, b) => b[1] - a[1]);\nconst topSelling = velocityArray.slice(0, 3);\nconst slowSelling = velocityArray.slice(-3);\n\n// Construct the Master Brain payload\nreturn [{ json: {\n  cross_correlation: {\n    overstocked_ingredients: overstocked.map(i => `${i.name} (${i.quantity} ${i.unit})`),\n    critical_shortages: criticalLow.map(i => `${i.name} (${i.quantity} ${i.unit})`),\n    trending_dishes: topSelling.map(d => `${d[0]} (x${d[1]})`),\n    slow_dishes: slowSelling.map(d => `${d[0]} (x${d[1]})`)\n  }\n}}];"
+        "jsCode": "// The Omniscient Intelligence Engine Core - Hardened for Diamond Grade\nconst stockRes = $('O1 — Fetch Total Inventory').item?.json?.data || [];\nconst salesRes = $('O2 — Fetch Recent Sales Velocity').item?.json?.data || [];\nconst learnRes = $('O0 — Fetch AI Learnings').item?.json?.data || [];\n\n// FORENSIC-FIX (SEC-011): Handle zero-data scenarios to prevent \"Hallucination Loops\"\nif (stockRes.length === 0 && salesRes.length === 0) {\n  throw new Error(\"STRESS_TEST_FAIL: Critical Data Absence. Aborting strategy generation to prevent hallucination.\");\n}\n\nconst stock = Array.isArray(stockRes) ? stockRes : [];\nconst sales = Array.isArray(salesRes) ? salesRes : [];\nconst learnings = (learnRes.length > 0) ? (learnRes[0].attributes || learnRes[0]) : null;\n\n\n// 1. Find overstocked items (high quantity) and understocked\nlet overstocked = [];\nlet criticalLow = [];\nfor (const item of stock) {\n  const attr = item.attributes || item;\n  if (attr.quantity > 500) overstocked.push(attr);\n  if (attr.quantity < 20) criticalLow.push(attr);\n}\n\n// 2. Sales Velocity\nlet dishVelocity = {};\nfor (const o of sales) {\n  const attr = o.attributes || o;\n  const items = attr.order_items?.data || attr.order_items || [];\n  for (const i of items) {\n    const iAttr = i.attributes || i;\n    const label = iAttr.label || 'Unknown';\n    dishVelocity[label] = (dishVelocity[label] || 0) + (iAttr.qty || 1);\n  }\n}\n\n// Construct the Master Brain payload\nreturn [{ json: {\n  cross_correlation: {\n    overstocked_ingredients: overstocked.map(i => `${i.name || 'Unknown'} (${i.quantity || 0} ${i.unit || ''})`),\n    critical_shortages: criticalLow.map(i => `${i.name || 'Unknown'} (${i.quantity || 0} ${i.unit || ''})`),\n    trending_dishes: Object.entries(dishVelocity).sort((a, b) => b[1] - a[1]).map(d => `${d[0]} (x${d[1]})`).slice(0, 3),\n    conversion_learnings: learnings ? learnings.metrics_json : \"No conversion data yet\"\n  }\n}}];"
       },
       "id": "correlate-data",
       "name": "O3 — Cross-Correlate Data Vectors",
@@ -148,7 +173,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "let parsed = {};\ntry {\n  const raw = ($json.response || '').toString();\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    parsed = JSON.parse(m[0]);\n  }\n} catch(e) {}\n\nreturn [{ json: {\n  insight: `OMNISCIENT PLAN: ${parsed.secret_menu_name || 'Restructuration Menu'} - ${parsed.marketing_angle || 'Automatique'}`,\n  recommendations: `**SECRET ITEM:** ${parsed.secret_menu_description || 'N/A'}\\n\\n**WARNING:** ${parsed.operational_warning || 'None'}`,\n  metrics_json: $('O3 — Cross-Correlate Data Vectors').item.json.cross_correlation,\n  period: '12h',\n  generated_at: new Date().toISOString(),\n  source: 'W_RALPHE_OMNISCIENT'\n}}];"
+        "jsCode": "let parsed = {};\ntry {\n  // Use either Ollama direct response or generic HTTP response\n  const raw = ($json.response || $json.text || $json.body?.response || '').toString();\n  \n  // FORENSIC-PARSER (SEC-012): Robust JSON Extraction\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    parsed = JSON.parse(m[0]);\n  }\n} catch(e) {\n  parsed = {\n    secret_menu_name: \"Maintenance Strategic\",\n    marketing_angle: \"Operational Stabilization\",\n    secret_menu_description: \"Focus on existing menu core consistency.\",\n    operational_warning: \"LLM Parser error - using safe fallback strategy.\"\n  };\n}\n\nreturn [{ json: {\n  insight: `OMNISCIENT PLAN: ${parsed.secret_menu_name || 'Restructuration Menu'} - ${parsed.marketing_angle || 'Automatique'}`,\n  recommendations: `**SECRET ITEM:** ${parsed.secret_menu_description || 'N/A'}\\n\\n**WARNING:** ${parsed.operational_warning || 'None'}`,\n  metrics_json: $('O3 — Cross-Correlate Data Vectors').item.json.cross_correlation,\n  period: '12h',\n  generated_at: new Date().toISOString(),\n  source: 'W_RALPHE_OMNISCIENT'\n}}];\n"
       },
       "id": "parse-plan",
       "name": "O5 — Parse Grand Strategy",
@@ -161,7 +186,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.STRAPI_INTERNAL_URL || 'http://strapi:1337' }}/api/ai-learnings",
+        "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_URL }}/api/ai-learnings",
         "method": "POST",
         "sendBody": true,
         "contentType": "json",
@@ -171,7 +196,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.STRAPI_API_TOKEN }}"
+              "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}"
             }
           ]
         },
@@ -264,6 +289,11 @@
           },
           {
             "node": "O2 — Fetch Recent Sales Velocity",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "O0 — Fetch AI Learnings",
             "type": "main",
             "index": 0
           }

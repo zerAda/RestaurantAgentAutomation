@@ -79,31 +79,14 @@
         },
         {
             "parameters": {
-                "url": "https://api.openai.com/v1/chat/completions",
-                "method": "POST",
-                "authentication": "genericCredentialType",
-                "genericAuthType": "httpHeaderAuth",
-                "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "model",
-                            "value": "gpt-4-vision-preview"
-                        },
-                        {
-                            "name": "messages",
-                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `You are the AI Creative Director for '${$json.brand.restaurant_name}'. \n\nBRAND IDENTITY:\n- Story: ${$json.brand.brand_story}\n- Voice: ${$json.brand.voice_tone}\n- Target: ${$json.brand.target_audience}\n- USPs: ${JSON.stringify($json.brand.unique_selling_points)}\n- Signature Phrases: ${JSON.stringify($json.brand.signature_phrases)}\n\nTASK:\n1. Analyze the food image\n2. Generate a FLUX.1 Pro prompt for style '${$json.aesthetic}' that reflects our brand aesthetic\n3. Write an Instagram/TikTok caption:\n   - Tone: ${$json.brand.voice_tone}\n   - Include 1 signature phrase naturally\n   - 2-3 emojis max\n   - Mention our USP subtly\n   - Avoid: ${JSON.stringify($json.brand.prohibited_terms)}\n\nReturn JSON: { \"prompt\": \"...\", \"caption\": \"...\" }`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"image_url\",\n        \"image_url\": { \"url\": $json.asset.original_media.url }\n      }\n    ]\n  }\n] }}"
-                        },
-                        {
-                            "name": "response_format",
-                            "value": "={{ {\"type\": \"json_object\"} }}"
-                        }
-                    ]
-                }
+                "url": "={{ $node[\"Merge Context\"].json.asset.original_media.url }}",
+                "responseFormat": "file",
+                "options": {}
             },
-            "name": "AI Vision & Brand Director",
+            "id": "download-img-node",
+            "name": "Download Asset Media",
             "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "typeVersion": 4.2,
             "position": [
                 600,
                 300
@@ -111,37 +94,37 @@
         },
         {
             "parameters": {
-                "url": "https://api.replicate.com/v1/predictions",
                 "method": "POST",
-                "authentication": "genericCredentialType",
-                "genericAuthType": "httpHeaderAuth",
+                "url": "={{ $env.LLM_API_URL || 'http://ollama:11434/api/chat' }}",
                 "sendBody": true,
-                "bodyParameters": {
-                    "parameters": [
-                        {
-                            "name": "version",
-                            "value": "flux-pro-1.0-ultra"
-                        },
-                        {
-                            "name": "input",
-                            "value": "={{ {\"prompt\": $json.choices[0].message.content.prompt, \"aspect_ratio\": \"9:16\", \"safety_tolerance\": 5} }}"
-                        }
-                    ]
-                },
-                "headerParameters": {
-                    "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "Token {{ $env.REPLICATE_API_TOKEN }}"
-                        }
-                    ]
-                }
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({\n  model: $env.LOCAL_VISION_MODEL || 'llava',\n  messages: [\n    {\n      role: 'user',\n      content: `Analyze this food image for '${$node[\"Merge Context\"].json.brand.restaurant_name}'. \\nGenerate a FLUX.1 Pro prompt for style '${$node[\"Merge Context\"].json.aesthetic}' and write a ${$node[\"Merge Context\"].json.brand.voice_tone} caption. \\nReturn ONLY JSON: { \"prompt\": \"...\", \"caption\": \"...\" }`,\n      images: [$binary.data.data]\n    }\n  ],\n  stream: false,\n  format: 'json'\n}) }}",
+                "options": {}
             },
-            "name": "Generate (FLUX.1 Pro)",
+            "id": "ollama-vision-node",
+            "name": "Ollama Vision (Llava)",
             "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "typeVersion": 4.2,
             "position": [
                 800,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.AI_STRATEGY === 'local' ? ($env.SD_API_URL || 'http://stable-diffusion:7860') + '/sdapi/v1/txt2img' : 'https://api.replicate.com/v1/predictions' }}",
+                "method": "POST",
+                "authentication": "={{ $env.AI_STRATEGY === 'local' ? 'none' : 'genericCredentialType' }}",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ $env.AI_STRATEGY === 'local' ? JSON.stringify({ prompt: JSON.parse($node[\"Ollama Vision (Llava)\"].json.body.message.content).prompt, width: 720, height: 1280, steps: 25, cfg_scale: 7, sampler_name: 'Euler a' }) : JSON.stringify({ version: 'black-forest-labs/flux-1.1-pro', input: { prompt: JSON.parse($node[\"Ollama Vision (Llava)\"].json.body.message.content).prompt, aspect_ratio: '9:16', safety_tolerance: 5 } }) }}"
+            },
+            "name": "Generate Image (Hybrid)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1000,
                 300
             ]
         },
@@ -151,8 +134,8 @@
                 "collection": "creative_assets",
                 "id": "={{ $node[\"Merge Context\"].json.asset.id }}",
                 "fields": {
-                    "ai_prompt_used": "={{ $node[\"AI Vision & Brand Director\"].json.choices[0].message.content.prompt }}",
-                    "generated_caption": "={{ $node[\"AI Vision & Brand Director\"].json.choices[0].message.content.caption }}",
+                    "ai_prompt_used": "={{ JSON.parse($node[\"Ollama Vision (Llava)\"].json.body.message.content).prompt }}",
+                    "generated_caption": "={{ JSON.parse($node[\"Ollama Vision (Llava)\"].json.body.message.content).caption }}",
                     "status": "processing"
                 },
                 "filters": {
@@ -165,7 +148,7 @@
             "type": "n8n-nodes-base.strapi",
             "typeVersion": 1,
             "position": [
-                1000,
+                1200,
                 300
             ],
             "credentials": {
@@ -219,14 +202,25 @@
             "main": [
                 [
                     {
-                        "node": "AI Vision & Brand Director",
+                        "node": "Download Asset Media",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "AI Vision & Brand Director": {
+        "Download Asset Media": {
+            "main": [
+                [
+                    {
+                        "node": "Ollama Vision (Llava)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Ollama Vision (Llava)": {
             "main": [
                 [
                     {

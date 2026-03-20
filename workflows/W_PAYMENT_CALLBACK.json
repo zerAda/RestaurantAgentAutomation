@@ -49,6 +49,69 @@
         },
         {
             "parameters": {
+                "operation": "get",
+                "key": "=paid:{{ $json.checkout_id }}"
+            },
+            "id": "check-idempotency",
+            "name": "Check Idempotency",
+            "type": "n8n-nodes-base.redis",
+            "typeVersion": 1,
+            "position": [
+                600,
+                400
+            ],
+            "credentials": {
+                "redis": {
+                    "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+                    "name": "Redis"
+                }
+            },
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.value }}",
+                            "operation": "isEmpty"
+                        }
+                    ]
+                }
+            },
+            "id": "is-new-tx",
+            "name": "Is New Transaction?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                800,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "set",
+                "key": "=paid:{{ $node['Verify Signature'].json.checkout_id }}",
+                "value": "processed",
+                "expire": 86400
+            },
+            "id": "mark-processed",
+            "name": "Mark Processed",
+            "type": "n8n-nodes-base.redis",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                400
+            ],
+            "credentials": {
+                "redis": {
+                    "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+                    "name": "Redis"
+                }
+            }
+        },
+        {
+            "parameters": {
                 "conditions": {
                     "string": [
                         {
@@ -145,6 +208,25 @@
                 1500,
                 100
             ]
+        },
+        {
+            "parameters": {
+                "operation": "create",
+                "collection": "security_logs",
+                "fields": {
+                    "event_type": "PAYMENT_SIGNATURE_INVALID",
+                    "severity": "CRITICAL",
+                    "metadata_json": "={{ JSON.stringify({ headers: $node['Chargily Webhook'].json.headers, expected: $node['Verify Signature'].json.expectedSignature }) }}"
+                }
+            },
+            "id": "report-security-anomaly",
+            "name": "Report Security Anomaly",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                500,
+                500
+            ]
         }
     ],
     "connections": {
@@ -174,6 +256,35 @@
             "main": [
                 [
                     {
+                        "node": "Check Idempotency",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Report Security Anomaly",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Idempotency": {
+            "main": [
+                [
+                    {
+                        "node": "Is New Transaction?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is New Transaction?": {
+            "main": [
+                [
+                    {
                         "node": "Is Paid?",
                         "type": "main",
                         "index": 0
@@ -186,12 +297,23 @@
             "main": [
                 [
                     {
-                        "node": "Fetch Order for Validation - TENANT ISOLATED",
+                        "node": "Mark Processed",
                         "type": "main",
                         "index": 0
                     }
                 ],
                 []
+            ]
+        },
+        "Mark Processed": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Order for Validation - TENANT ISOLATED",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
             ]
         },
         "Fetch Order for Validation - TENANT ISOLATED": {

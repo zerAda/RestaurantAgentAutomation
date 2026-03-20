@@ -58,26 +58,20 @@
         },
         {
             "parameters": {
-                "content": "Tu es le manager du restaurant Ralphé. Rédige un message SMS très chaleureux à l'attention d'un client VIP qui n'a pas commandé depuis 1 mois. Le message doit contenir un code promo VIP exclusif de -20% : RALPHE-VIP20. Sois humain, montre que son absence a été remarquée.",
                 "model": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.AI.LLM_MODEL || $node[\"Fetch Strapi Config\"].json.LLM_MODEL || 'llama3.1' }}",
+                "prompt": "Tu es le manager du restaurant Ralphé. Rédige un message SMS très chaleureux à l'attention d'un client VIP qui n'a pas commandé depuis 1 mois. Le message doit contenir un code promo VIP exclusif de -20% : RALPHE-VIP20. Sois humain, montre que son absence a été remarquée.",
                 "options": {
                     "temperature": 0.8
                 }
             },
-            "id": "generate-vip-message-llm",
-            "name": "Generate Hyper-Personal Msg (LLM)",
-            "type": "@n8n/n8n-nodes-langchain.chainLlm",
-            "typeVersion": 1.4,
+            "id": "ollama-msg-node",
+            "name": "Generate Hyper-Personal Msg (Ollama)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
             "position": [
                 750,
                 0
-            ],
-            "credentials": {
-                "openAiApi": {
-                    "id": "OPENAI_CRED",
-                    "name": "OpenAI"
-                }
-            }
+            ]
         },
         {
             "parameters": {
@@ -135,14 +129,14 @@
             "main": [
                 [
                     {
-                        "node": "Generate Hyper-Personal Msg (LLM)",
+                        "node": "Generate Hyper-Personal Msg (Ollama)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Generate Hyper-Personal Msg (LLM)": {
+        "Generate Hyper-Personal Msg (Ollama)": {
             "main": [
                 [
                     {

@@ -3,7 +3,8 @@
     "active": true,
     "settings": {
         "executionTimeout": 180,
-        "saveManualExecutions": true
+        "saveManualExecutions": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
     },
     "nodes": [
         {

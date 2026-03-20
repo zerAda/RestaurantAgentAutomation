@@ -1,0 +1,128 @@
+{
+  "name": "W_ERROR_HANDLER - Global Error Relay",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "incr",
+        "key": "ralphe:error:burst_count"
+      },
+      "id": "error-burst-check",
+      "name": "B0 - Track Error Burst",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        200,
+        -150
+      ],
+      "credentials": {
+        "redis": {
+          "id": "={{ $env.REDIS_CREDENTIAL_ID }}",
+          "name": "Redis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * DIAMOND-FIX: Deep PII Masking + Forensic Normalization\n */\nconst e = $json;\nconst mask = (str) => {\n  if (!str) return '';\n  return str.toString()\n    .replace(/\\+?[1-9]\\d{1,14}/g, '[PHONE_REDACTED]') // E.164\n    .replace(/\\b[\\w\\.-]+@[\\w\\.-]+\\.\\w{2,4}\\b/gi, '[EMAIL_REDACTED]') // Email\n    .replace(/(adresse|villa|lot|rue|n°)\\s+([^,.\\n]{5,50})/gi, '$1 [ADDRESS_REDACTED]') // Algerian Address patterns\n    .replace(/\\b(dz|alg|id|key)\\d{8,30}\\b/gi, '[SENSITIVE_REDACTED]'); // IDs/Keys\n};\n\nconst burstCount = $(\"B0 - Track Error Burst\").item.json || 0;\n\nreturn [{\n  json: {\n    workflow: e.workflow?.name || e.workflow || 'unknown',\n    node: e.node?.name || e.node || 'unknown',\n    message: mask(e.error?.message || e.message || 'No error message'),\n    stack: mask(e.error?.stack || e.stack || ''),\n    time: new Date().toISOString(),\n    executionId: e.execution?.id || e.executionId || '',\n    isBurst: burstCount > 10\n  }\n}];"
+      },
+      "id": "normalize-error",
+      "name": "Normalize Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_name, node_name, error_message, stack, execution_id)\nVALUES ($1,$2,$3,$4,$5)\nRETURNING id;",
+        "additionalFields": {
+          "queryParams": "={{[$json.workflow, $json.node, $json.message, $json.stack, $json.executionId]}}"
+        }
+      },
+      "id": "db-save-error",
+      "name": "Save Error (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * DIAMOND-FIX: Burst-aware Alerting\n */\nconst url = ($env.ALERT_WEBHOOK_URL || '').toString();\nif (!url || $json.isBurst) {\n  return [{json:{ok:true, alerted:false, reason: $json.isBurst ? 'BURST_THROTTLED' : 'NO_WEBHOOK_URL'}}];\n}\n\ntry {\n  await $httpRequest({method:'POST',url,body:$json,json:true,timeout:15000});\n  return [{json:{ok:true, alerted:true}}];\n} catch(err) {\n  return [{json:{ok:false, error: err.message}}];\n}"
+      },
+      "id": "optional-alert",
+      "name": "Optional Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "B0 - Track Error Burst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Track Error Burst": {
+      "main": [
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Error": {
+      "main": [
+        [
+          {
+            "node": "Save Error (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Error (DB)": {
+      "main": [
+        [
+          {
+            "node": "Optional Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
