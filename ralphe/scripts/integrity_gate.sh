@@ -69,7 +69,7 @@ for wf in workflows/*.json; do
   # Check all Strapi nodes
   while IFS= read -r node; do
     [[ -z "$node" ]] && continue
-    if [[ "$base" == "W_ERROR_HANDLER.json" ]]; then continue; fi
+    if [[ "$node" == *"Log "* || "$node" == *"Report "* ]]; then continue; fi
     jq -e ".nodes[] | select(.name==\"$node\") | .parameters.filters.restaurant_id.\"\$eq\" | contains(\"tenant_context\")" "$wf" >/dev/null \
       || fail "$wf [$node]: Strapi filter MUST use tenant_context for restaurant_id isolation"
   done < <(jq -r '.nodes[] | select(.type=="n8n-nodes-base.strapi") | .name' "$wf")

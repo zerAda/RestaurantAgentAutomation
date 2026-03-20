@@ -28,6 +28,7 @@ jobs:
           target: "/opt/nemoclaw"
           strip_components: 1
           overwrite: true
+          timeout: 3m
 
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@master
@@ -35,6 +36,7 @@ jobs:
           host: ${{ vars.VPS_HOST }}
           username: ${{ vars.VPS_USER || 'deploy' }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 3m
           script: |
             cd /opt/nemoclaw
             docker compose pull || true
