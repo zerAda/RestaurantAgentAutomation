@@ -140,7 +140,8 @@
       "Bash(/tmp/patch_services.py:*)",
       "Bash(/tmp/start_nemoclaw.sh:*)",
       "Bash(/tmp/nemoclaw.service:*)",
-      "Skill(gsd:add-todo)"
+      "Skill(gsd:add-todo)",
+      "Bash(/tmp/fix_w2.js:*)"
     ],
     "additionalDirectories": [
       "\\tmp",

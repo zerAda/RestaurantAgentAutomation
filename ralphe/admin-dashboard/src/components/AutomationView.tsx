@@ -70,6 +70,7 @@ const WORKFLOWS: Workflow[] = [
     }
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function AutomationView({ lang: _lang }: { lang: Language }) {
     const [selectedWf, setSelectedWf] = useState<Workflow | null>(null);
     const [payload, setPayload] = useState('');
