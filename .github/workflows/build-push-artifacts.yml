@@ -61,14 +61,14 @@ jobs:
       matrix:
         image:
           - name: cms
-            context: ./ralphe/inventory-cms
-            dockerfile: ./ralphe/inventory-cms/Dockerfile
+            context: ./inventory-cms
+            dockerfile: ./inventory-cms/Dockerfile
           - name: admin
             context: ./ralphe
-            dockerfile: ./ralphe/admin-dashboard/Dockerfile
+            dockerfile: ./admin-dashboard/Dockerfile
           - name: kiosk
             context: ./ralphe
-            dockerfile: ./ralphe/kiosk-app/Dockerfile
+            dockerfile: ./kiosk-app/Dockerfile
     steps:
       - name: Lowercase owner
         id: owner

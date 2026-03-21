@@ -236,7 +236,7 @@ jobs:
           fi
 
       - name: Setup SSH
-        uses: ./ralphe/.github/actions/setup-ssh
+        uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ steps.config.outputs.vps_host }}
@@ -410,7 +410,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./ralphe/.github/actions/setup-ssh
+        uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ matrix.host }}
@@ -543,7 +543,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./ralphe/.github/actions/setup-ssh
+        uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ matrix.host }}
@@ -614,7 +614,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./ralphe/.github/actions/setup-ssh
+        uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ steps.config.outputs.vps_host }}
@@ -681,7 +681,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./ralphe/.github/actions/setup-ssh
+        uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ matrix.host }}
@@ -747,7 +747,7 @@ jobs:
 
       - name: Health check
         id: health
-        uses: ./ralphe/.github/actions/health-check
+        uses: ./.github/actions/health-check
         with:
           url: ${{ needs.preflight.outputs.health_url }}
           max-retries: ${{ env.MAX_RETRIES }}

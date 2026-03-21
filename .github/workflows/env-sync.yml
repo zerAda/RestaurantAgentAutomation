@@ -14,7 +14,7 @@ on:
     - cron: '0 8 * * 1'  # Monday 8am UTC
   pull_request:
     paths:
-      - 'ralphe/config/.env.example'
+      - 'config/.env.example'
 
 permissions:
   contents: read
