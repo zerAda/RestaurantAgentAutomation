@@ -1,6 +1,0 @@
-﻿init
-migrations
-bootstrap.sql
-schema.sql
-seed_delivery_demo.sql
-seed_poc_demo.sql
