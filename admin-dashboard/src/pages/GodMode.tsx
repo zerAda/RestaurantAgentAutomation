@@ -8,12 +8,14 @@ const ORDERS_KEY = 'ORDERS_ACCEPTANCE_ENABLED';
 
 interface PlatformSetting {
     id: number;
-    attributes: { key: string; value: string };
+    documentId: string;
+    key: string;
+    value: string;
 }
 
 export default function GodMode() {
     const [ordersPaused, setOrdersPaused] = useState(false);
-    const [settingId, setSettingId] = useState<number | null>(null);
+    const [settingId, setSettingId] = useState<string | null>(null);
     const [killLoading, setKillLoading] = useState(false);
     const [statusMsg, setStatusMsg] = useState<string | null>(null);
     const [pendingCount, setPendingCount] = useState<number>(0);
@@ -39,8 +41,8 @@ export default function GodMode() {
             })
             .then((res) => {
                 if (res.data && res.data.length > 0) {
-                    const setting = res.data[0] as unknown as { id: number; key: string; value: string };
-                    setSettingId(setting.id);
+                    const setting = res.data[0] as unknown as PlatformSetting;
+                    setSettingId(setting.documentId);
                     // Paused when value is explicitly 'false'
                     setOrdersPaused(setting.value === 'false');
                 }

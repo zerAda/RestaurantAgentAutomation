@@ -4,7 +4,8 @@
 # Leave empty (or unset) for backward-compatible no-auth mode.
 set -e
 
-ARGS="--appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru"
+# noeviction: queue jobs must never be silently dropped; returns OOM error instead of evicting data
+ARGS="--appendonly yes --maxmemory 256mb --maxmemory-policy noeviction"
 
 if [ -n "$REDIS_PASSWORD" ]; then
   echo "[redis-entrypoint] Starting Redis with password authentication"

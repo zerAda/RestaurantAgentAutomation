@@ -5,7 +5,7 @@ import { useToast } from './ToastProvider';
 import { cn } from '../lib/utils';
 
 /* ── Strapi response types ── */
-interface StrapiOrder { id: number; total_cents: number; createdAt: string; }
+interface StrapiOrder { id: number; total_amount: number; createdAt: string; }
 interface StrapiIngredient { id: number; name: string; current_stock: number; min_stock_alert: number; }
 interface StrapiWorkflowError { id: number; workflow_name: string; error_message?: string; createdAt: string; }
 
@@ -72,7 +72,7 @@ export function NotificationCenter() {
                         id: `order-${o.id}`,
                         type: 'order',
                         title: 'Command Matrix',
-                        message: `#${String(o.id).padStart(4, '0')} — ${(o.total_cents / 100).toFixed(0)} DA Linked`,
+                        message: `#${String(o.id).padStart(4, '0')} — ${(o.total_amount ?? 0).toLocaleString('fr-DZ')} DA Linked`,
                         time: o.createdAt,
                         read: seenIds.has(`order-${o.id}`),
                     });
