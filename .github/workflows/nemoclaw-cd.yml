@@ -1,0 +1,60 @@
+name: Nemoclaw CD
+
+on:
+  workflow_run:
+    workflows: ["Nemoclaw CI"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-nemoclaw
+  cancel-in-progress: false
+
+jobs:
+  validate-gate:
+    name: Validate CI Gate
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Acknowledge Green CI
+        run: echo "CI metrics clear. Promoting NemoClaw to Production VPS."
+
+  deploy-nemoclaw:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: validate-gate
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Config Push via SCP
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER || 'deploy' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "nemoclaw/docker-compose.yml"
+          target: "/opt/nemoclaw"
+          strip_components: 1
+          overwrite: true
+          timeout: 3m
+
+      - name: Hot-Swap via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER || 'deploy' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          timeout: 5m
+          script: |
+            cd /opt/nemoclaw
+            # Cleanly pull newest external images (redis/nims) locally to the VPS
+            docker compose pull || true
+            # Bring up new containers and aggressively prune orphans
+            docker compose up -d --remove-orphans
+            
+            # Master Cleanup routine to prevent EBS volume exhaustion
+            docker image prune -a -f --filter "until=24h"
+            
+            echo "NemoClaw Deployment Verified"

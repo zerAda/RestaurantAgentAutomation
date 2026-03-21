@@ -132,5 +132,8 @@ $STAGING_COMPOSE up -d --remove-orphans $STAGING_SERVICES || {
 echo "Staging services:"
 $STAGING_COMPOSE ps
 
+echo "=== Running Staging Image Cleanup ==="
+docker image prune -a -f --filter "until=24h"
+
 echo "=== Running Deep Health Check (Staging) ==="
 COMPOSE_PROJECT_NAME=resto-staging bash scripts/deep-health-check.sh

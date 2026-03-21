@@ -376,5 +376,11 @@ else
 fi
 
 echo "============================================="
+echo ">>> Step 8: Master Image Cleanup"
+echo "Pruning dangling docker images older than 24h..."
+docker image prune -a -f --filter "until=24h"
+echo "============================================="
+
+echo "============================================="
 echo "✅ Deploy complete — Role: $ROLE"
 echo "============================================="
