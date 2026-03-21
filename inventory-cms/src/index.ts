@@ -6,52 +6,9 @@ const ADMIN_EMAIL = process.env.STRAPI_SUPER_ADMIN_EMAIL || 'admin@ralphe.com';
 const ADMIN_PASS = process.env.STRAPI_SUPER_ADMIN_PASSWORD || 'ChangeMeNow!';
 
 export default {
-  register({ strapi }: { strapi: Core.Strapi }) {
-    // S-01 FIX: Register agent-chat extension using Strapi's official extension pattern
-    // Adds POST /api/agent/chat and GET /api/agent/tools endpoints
-    try {
-      // Register the agent-chat controller
-      (strapi as any).controller('api::agent-chat.agent-chat', require('./extensions/agent-chat/controllers/agent-chat').default);
-
-      // Register routes for the agent-chat extension
-      // These will be handled by Strapi's router
-      strapi.server.routes([
-        {
-          method: 'POST',
-          path: '/api/agent/chat',
-          handler: 'api::agent-chat.agent-chat.chat',
-          config: {
-            auth: { scope: ['api::agent-chat.agent-chat.chat'] },
-            policies: [],
-            middlewares: [],
-          },
-        },
-        {
-          method: 'GET',
-          path: '/api/agent/tools',
-          handler: 'api::agent-chat.agent-chat.tools',
-          config: {
-            auth: { scope: ['api::agent-chat.agent-chat.tools'] },
-            policies: [],
-            middlewares: [],
-          },
-        },
-        {
-          method: 'POST',
-          path: '/api/agent/loyalty',
-          handler: 'api::agent-chat.agent-chat.loyalty',
-          config: {
-            auth: { scope: ['api::agent-chat.agent-chat.loyalty'] },
-            policies: [],
-            middlewares: [],
-          },
-        },
-      ]);
-    } catch (err: any) {
-      // Graceful degradation: log error but don't crash Strapi startup
-      // The routes may already be registered via the api/ directory structure
-      console.warn(`[register] agent-chat extension registration warning: ${err.message}`);
-    }
+  register(_ctx: { strapi: Core.Strapi }) {
+    // STBL-01: Routes auto-discovered by Strapi 5 from src/api/system-config/routes/agent-chat.ts
+    // POST /api/agent/chat and GET /api/agent/tools are registered there — no manual registration needed.
   },
 
 
