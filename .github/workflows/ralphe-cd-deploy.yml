@@ -71,9 +71,6 @@ permissions:
   contents: read
   deployments: write
 
-defaults:
-  run:
-    working-directory: ralphe
 
 jobs:
   # ============================================================================
@@ -130,6 +127,9 @@ jobs:
     needs: validate-inputs
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: ralphe
 
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -236,7 +236,7 @@ jobs:
           fi
 
       - name: Setup SSH
-        uses: ./.github/actions/setup-ssh
+        uses: ./ralphe/.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ steps.config.outputs.vps_host }}
@@ -331,6 +331,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: preflight
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ralphe
 
     steps:
       - name: Checkout code
@@ -393,6 +396,9 @@ jobs:
     runs-on: [self-hosted, vps-primary]
     needs: [preflight, security-gate]
     timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ralphe
 
     outputs:
       staging_status: ${{ steps.staging-smoke.outputs.status }}
@@ -404,7 +410,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./.github/actions/setup-ssh
+        uses: ./ralphe/.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ matrix.host }}
@@ -526,6 +532,9 @@ jobs:
     runs-on: [self-hosted, vps-primary]
     needs: [preflight, deploy-staging]
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ralphe
 
     steps:
       - name: Checkout code
@@ -534,7 +543,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./.github/actions/setup-ssh
+        uses: ./ralphe/.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ matrix.host }}
@@ -580,6 +589,9 @@ jobs:
       needs.preflight.outputs.is_first_deploy != 'true' &&
       github.event.inputs.skip_backup != 'true'
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ralphe
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
     env:
@@ -602,7 +614,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./.github/actions/setup-ssh
+        uses: ./ralphe/.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ steps.config.outputs.vps_host }}
@@ -651,6 +663,9 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
       fail-fast: true
+    defaults:
+      run:
+        working-directory: ralphe
     outputs:
       status: ${{ steps.health.outputs.status }}
       deploy_start: ${{ steps.timer.outputs.start }}
@@ -666,7 +681,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup SSH
-        uses: ./.github/actions/setup-ssh
+        uses: ./ralphe/.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
           vps-host: ${{ matrix.host }}
@@ -732,7 +747,7 @@ jobs:
 
       - name: Health check
         id: health
-        uses: ./.github/actions/health-check
+        uses: ./ralphe/.github/actions/health-check
         with:
           url: ${{ needs.preflight.outputs.health_url }}
           max-retries: ${{ env.MAX_RETRIES }}
