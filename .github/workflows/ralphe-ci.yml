@@ -510,14 +510,14 @@ jobs:
       matrix:
         image:
           - name: cms
-            context: ./inventory-cms
-            dockerfile: ./inventory-cms/Dockerfile
+            context: ./ralphe/inventory-cms
+            dockerfile: ./ralphe/inventory-cms/Dockerfile
           - name: admin
-            context: .
-            dockerfile: ./admin-dashboard/Dockerfile
+            context: ./ralphe
+            dockerfile: ./ralphe/admin-dashboard/Dockerfile
           - name: kiosk
-            context: .
-            dockerfile: ./kiosk-app/Dockerfile
+            context: ./ralphe
+            dockerfile: ./ralphe/kiosk-app/Dockerfile
 
     steps:
       - name: Checkout code
@@ -572,7 +572,7 @@ jobs:
           restore-keys: npm-${{ matrix.app }}-
 
       - name: Install dependencies
-        working-directory: ${{ matrix.app }}
+        working-directory: ralphe/${{ matrix.app }}
         run: |
           if [ -f "package-lock.json" ]; then
             npm ci || npm install --legacy-peer-deps
@@ -581,7 +581,7 @@ jobs:
           fi
 
       - name: Lint
-        working-directory: ${{ matrix.app }}
+        working-directory: ralphe/${{ matrix.app }}
         run: |
           if [ -f "package.json" ] && grep -q '"lint"' package.json && [ -d "node_modules" ]; then
             npm run lint
@@ -590,7 +590,7 @@ jobs:
           fi
 
       - name: Build (TypeScript + Vite check)
-        working-directory: ${{ matrix.app }}
+        working-directory: ralphe/${{ matrix.app }}
         run: |
           if [ -f "package.json" ] && grep -q '"build"' package.json; then
             npm run build
