@@ -123,6 +123,7 @@ services:
       - traefik.http.services.cms.loadbalancer.server.port=1337
       - traefik.http.routers.cms.middlewares=cms-chain@docker
       - traefik.http.middlewares.cms-allowlist.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}
+      - traefik.http.middlewares.cms-auth.basicauth.usersfile=/run/secrets/traefik_usersfile
       - traefik.http.middlewares.cms-headers.headers.browserXSSFilter=true
       - traefik.http.middlewares.cms-headers.headers.contentTypeNosniff=true
       - traefik.http.middlewares.cms-headers.headers.frameDeny=true
@@ -131,7 +132,7 @@ services:
       - traefik.http.middlewares.cms-headers.headers.stsIncludeSubdomains=true
       - traefik.http.middlewares.cms-headers.headers.stsPreload=true
       - traefik.http.middlewares.cms-headers.headers.referrerPolicy=strict-origin-when-cross-origin
-      - traefik.http.middlewares.cms-chain.chain.middlewares=cms-allowlist,cms-headers
+      - traefik.http.middlewares.cms-chain.chain.middlewares=cms-allowlist,cms-auth,cms-headers
     logging:
       driver: json-file
       options:
