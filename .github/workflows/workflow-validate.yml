@@ -24,7 +24,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: ralphe
+    working-directory: .
 
 jobs:
   validate-workflows:

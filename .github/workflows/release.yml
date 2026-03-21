@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: ralphe
+        working-directory: .
 
     steps:
       - name: Checkout code
