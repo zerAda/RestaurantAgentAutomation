@@ -129,7 +129,7 @@ jobs:
     timeout-minutes: 5
     defaults:
       run:
-        working-directory: ralphe
+        
 
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -333,7 +333,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: ralphe
+        
 
     steps:
       - name: Checkout code
@@ -398,7 +398,7 @@ jobs:
     timeout-minutes: 40
     defaults:
       run:
-        working-directory: ralphe
+        
 
     outputs:
       staging_status: ${{ steps.staging-smoke.outputs.status }}
@@ -534,7 +534,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: ralphe
+        
 
     steps:
       - name: Checkout code
@@ -591,7 +591,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: ralphe
+        
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
     env:
@@ -665,7 +665,7 @@ jobs:
       fail-fast: true
     defaults:
       run:
-        working-directory: ralphe
+        
     outputs:
       status: ${{ steps.health.outputs.status }}
       deploy_start: ${{ steps.timer.outputs.start }}
