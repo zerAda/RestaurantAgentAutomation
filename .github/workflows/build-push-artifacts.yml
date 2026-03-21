@@ -64,10 +64,10 @@ jobs:
             context: ./inventory-cms
             dockerfile: ./inventory-cms/Dockerfile
           - name: admin
-            context: ./ralphe
+            context: .
             dockerfile: ./admin-dashboard/Dockerfile
           - name: kiosk
-            context: ./ralphe
+            context: .
             dockerfile: ./kiosk-app/Dockerfile
     steps:
       - name: Lowercase owner
