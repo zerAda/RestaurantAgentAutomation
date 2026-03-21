@@ -31,7 +31,7 @@ export default function KitchenDisplay() {
         if (!orders) return [];
 
         // Only take active orders
-        const activeOrders = orders.filter(o => !['DONE', 'CANCELLED'].includes(o.status));
+        const activeOrders = orders.filter(o => !['delivered', 'cancelled'].includes(o.status));
 
         const queue: KitchenItem[] = [];
         activeOrders.forEach(order => {
@@ -46,7 +46,7 @@ export default function KitchenDisplay() {
                     id: `${order.id}-${index}`,
                     orderId: order.id.replace('#', ''),
                     item: itemText,
-                    status: order.status === 'PREPARING' ? 'COOKING' : 'PENDING',
+                    status: order.status === 'preparing' ? 'COOKING' : 'PENDING',
                     startAt: formatTime(new Date(order.rawCreatedAt)),
                     eta: order.time, // using the "X min" string as a rough ETA
                     station

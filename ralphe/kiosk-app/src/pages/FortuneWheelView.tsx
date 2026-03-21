@@ -21,6 +21,7 @@ export default function FortuneWheelView() {
   const [wonReward, setWonReward] = useState<string | null>(null);
 
   const handleReviewClick = () => {
+    // TODO: Replace with actual Google Maps review URL before production deployment
     window.open('https://g.page/r/example/review', '_blank');
     setTimeout(() => {
       setHasReviewed(true);

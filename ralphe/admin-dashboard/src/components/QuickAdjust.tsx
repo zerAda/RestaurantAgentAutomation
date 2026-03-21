@@ -84,7 +84,7 @@ export function QuickAdjust() {
                                                 "px-3 py-1 rounded-lg font-mono text-xs font-black shadow-inner",
                                                 item.status === 'critical'
                                                     ? 'bg-error/10 text-error border border-error/20 animate-pulse'
-                                                    : item.status === 'warning'
+                                                    : item.status === 'low'
                                                         ? 'bg-warning/10 text-warning border border-warning/20'
                                                         : 'bg-white/5 text-zinc-400 border border-white/5'
                                             )}>

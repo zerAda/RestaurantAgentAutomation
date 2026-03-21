@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTranslation, type Language } from '../utils/i18n';
+import { type Language } from '../utils/i18n';
 import { strapi } from '../services/strapiClient';
-import { Play, X, Loader2, Activity, Palette, Code2, Zap, Cpu, HardDrive, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Play, X, Loader2, Activity, Code2, Zap, Cpu, HardDrive, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface Workflow {
@@ -70,8 +70,7 @@ const WORKFLOWS: Workflow[] = [
     }
 ];
 
-export function AutomationView({ lang }: { lang: Language }) {
-    const _t = (key: string) => getTranslation(key, lang); // eslint-disable-line @typescript-eslint/no-unused-vars
+export function AutomationView({ lang: _lang }: { lang: Language }) {
     const [selectedWf, setSelectedWf] = useState<Workflow | null>(null);
     const [payload, setPayload] = useState('');
     const [isTriggering, setIsTriggering] = useState(false);

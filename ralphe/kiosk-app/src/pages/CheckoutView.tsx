@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
+import { useNavigate } from 'react-router-dom';
 import { useCart, type CartItem } from '../context/CartContext';
 import { strapi } from '../services/strapiClient';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 type ServiceMode = 'kiosk_sur_place' | 'kiosk_a_emporter';
 
 const CheckoutView: React.FC = () => {
+    const navigate = useNavigate();
     const { items, clearCart, total } = useCart();
     const [step, setStep] = useState<'review' | 'mode' | 'confirm' | 'done'>('review');
     const [serviceMode, setServiceMode] = useState<ServiceMode>('kiosk_sur_place');
@@ -34,7 +35,7 @@ const CheckoutView: React.FC = () => {
                 </div>
                 <h2 className="text-5xl font-black text-white mb-12 uppercase italic tracking-tighter">Your matrix is empty</h2>
                 <button
-                    onClick={() => window.location.href = '/'}
+                    onClick={() => navigate('/')}
                     className="btn-quantum px-16"
                 >
                     Return to menu
@@ -137,7 +138,7 @@ const CheckoutView: React.FC = () => {
                             </div>
 
                             <div className="flex gap-6">
-                                <button onClick={() => window.location.href = '/'} className="btn-quantum-outline flex-1">
+                                <button onClick={() => navigate('/')} className="btn-quantum-outline flex-1">
                                     <ChevronLeft size={24} /> Back to Hub
                                 </button>
                                 <button onClick={() => setStep('mode')} className="btn-quantum flex-[1.5]">
@@ -270,7 +271,7 @@ const CheckoutView: React.FC = () => {
                             </div>
 
                             <button
-                                onClick={() => { window.location.href = '/'; }}
+                                onClick={() => { navigate('/'); }}
                                 className="btn-quantum px-20"
                             >
                                 Re-Initialize Interface

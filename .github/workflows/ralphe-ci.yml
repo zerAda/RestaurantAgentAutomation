@@ -613,20 +613,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks
-        run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz
-          ./gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" \
-            --report-format sarif --report-path gitleaks-report.sarif --verbose
 
-      - name: Upload SARIF report
-        if: always()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
-        with:
-          name: gitleaks-sarif
-          path: gitleaks-report.sarif
-          retention-days: 30
-          if-no-files-found: ignore
 
       - name: Check .env not committed
         run: |

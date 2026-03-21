@@ -5,9 +5,9 @@ import { ChefHat, Timer, Hash, User } from 'lucide-react';
 type KitchenStatus = 'pending' | 'preparing' | 'ready';
 
 function mapToKitchenStatus(s: OrderStatus): KitchenStatus {
-    if (s === 'NEW') return 'pending';
-    if (s === 'PREPARING') return 'preparing';
-    if (s === 'READY' || s === 'DELIVERING' || s === 'DONE') return 'ready';
+    if (s === 'pending' || s === 'confirmed') return 'pending';
+    if (s === 'preparing') return 'preparing';
+    if (s === 'ready' || s === 'delivered') return 'ready';
     return 'pending';
 }
 
@@ -16,10 +16,10 @@ export function KitchenView() {
     const updateStatus = useUpdateOrderStatus();
 
     const markReady = (documentId: string, orderId: string, currentStatus: OrderStatus) => {
-        const nextStatus: OrderStatus = currentStatus === 'NEW' ? 'PREPARING' : 'READY';
+        const nextStatus: OrderStatus = currentStatus === 'pending' ? 'preparing' : 'ready';
         updateStatus.mutate({ documentId, status: nextStatus });
 
-        if (nextStatus === 'READY' && window.speechSynthesis) {
+        if (nextStatus === 'ready' && window.speechSynthesis) {
             const msg = new SpeechSynthesisUtterance(`Order ${orderId.replace('#', '')} is ready for pickup`);
             msg.rate = 0.9;
             msg.pitch = 1.1;
@@ -27,7 +27,7 @@ export function KitchenView() {
         }
     };
 
-    const activeOrders = orders.filter(o => o.status !== 'DONE' && o.status !== 'CANCELLED');
+    const activeOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
 
     if (isLoading) {
         return (
