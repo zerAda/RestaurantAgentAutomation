@@ -413,7 +413,7 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
-          vps-host: ${{ matrix.host }}
+          vps-host: ${{ needs.preflight.outputs.vps_host }}
 
       - name: Create staging directory
         run: |
@@ -546,7 +546,7 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
-          vps-host: ${{ matrix.host }}
+          vps-host: ${{ needs.preflight.outputs.vps_host }}
 
       - name: Validate staging deployment result
         run: |
@@ -684,7 +684,7 @@ jobs:
         uses: ./.github/actions/setup-ssh
         with:
           ssh-key: ${{ secrets['VPS_SSH_KEY'] }}
-          vps-host: ${{ matrix.host }}
+          vps-host: ${{ needs.preflight.outputs.vps_host }}
 
       - name: Sync code to node
         run: |
@@ -1229,4 +1229,7 @@ jobs:
           deploy-duration: ${{ steps.config.outputs.deploy_duration }}
           repo-url: ${{ github.server_url }}/${{ github.repository }}
           run-id: ${{ github.run_id }}
+
+
+
 
