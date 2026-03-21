@@ -8,82 +8,66 @@ when_to_use:
   - Production outage or incident
 ---
 
-# Release & Rollback
-
-## Preflight (must pass before deploy)
-
-```bash
-make preflight          # integrity + lint + security
-make test-unit          # contract + l10n + template tests
-scripts/validate_go_no_go.sh  # go/no-go decision
-```
-
-- Config validation: compose syntax, Traefik labels, gateway nginx -t
-- ENV completeness: all required vars in VPS `.env`
-- DB migration plan reviewed + backup verified
-- Smoke tests ready
+# Release and Rollback (RESTO BOT)
 
 ## Release flow
 
-1. `make backup` — backup DB (verify backup file exists and size > 0)
-2. Push to main — triggers CI pipeline
-3. CI passes — triggers build-push-artifacts + cd-deploy
-4. cd-deploy: SSH to VPS, pull images, compose up, run health check
-5. Verify: `make smoke` + check health endpoints
-6. Monitor logs and queue for 10 minutes
-7. Record in PATCHLOG.md + TEST_REPORT.md
+### Preflight (must ALL pass)
 
-## Emergency rollback
+1. Config validation: `project/scripts/preflight-prod.sh`
+2. ENV completeness: all `[REQUIRED]` vars present in `.env`
+3. DB migration plan reviewed + backup ready
+4. Smoke tests ready
+5. Version bump in `project/VERSION` (currently 3.3.0)
+6. PATCHLOG.md entry written
 
-### Via GitHub Actions
-- Trigger `.github/workflows/rollback.yml` (manual dispatch)
-- Selects previous release and redeploys
+### Deploy
 
-### Manual rollback
-```bash
-ssh deploy@<vps>
-cd /opt/resto
-# Restore previous compose
-cp releases/<previous>/docker-compose.yml .
-docker compose -f docker-compose.hostinger.prod.yml up -d
-# Restore DB if needed
-scripts/restore_postgres.sh /opt/resto/backups/<latest>.sql.gz
-scripts/db_migrate_all.sh
-```
+1. SSH to VPS: `ssh deploy@72.60.190.192`
+2. Create release directory in `/opt/resto/releases/YYYYMMDD-HHMMSS-<sha>/`
+3. Sync code to release dir
+4. Run db-migrate (init container applies pending migrations)
+5. Switch symlink: `/opt/resto/current/` -> new release
+6. `docker compose -f docker-compose.hostinger.prod.yml up -d`
+7. Wait for all healthchecks to pass
 
-### Verify rollback
-```bash
-make smoke
-curl -s https://api.<domain>/v1/health
-```
+### Post-deploy verify
 
-## Incident triage decision tree
+1. Run smoke tests: `project/scripts/smoke_security.sh`
+2. Verify auth boundaries (console protected, API auth enforced)
+3. Monitor logs and queue for 5-10 minutes
+4. Record results in TEST_REPORT.md
 
-1. Is public API down? -> Check Traefik + gateway containers
-2. Is TLS broken? -> Check ACME cert, Traefik logs
-3. Gateway up but upstream failing? -> Check n8n-main, n8n-worker
-4. Queue backed up? -> Check Redis, worker logs
-5. DB failing? -> Check Postgres logs, disk space, connections
+## Rollback flow
 
-## Containment actions
-
-- Auth leak: rotate tokens immediately, tighten IP allowlist
-- DoS: increase rate limits, reduce body size caps, block IPs
-- Data breach: isolate affected service, audit access logs, rotate all secrets
+1. Identify previous good release in `/opt/resto/releases/`
+2. Switch symlink back: `/opt/resto/current/` -> previous release
+3. `docker compose -f docker-compose.hostinger.prod.yml up -d`
+4. Re-run smoke tests
+5. Verify service stability
+6. If DB migration was applied: evaluate safe roll-forward vs restore from backup
 
 ## Go/No-Go criteria
 
-| Check | Go | No-Go |
-|-------|-----|-------|
-| CI pipeline | green | any failure |
-| Smoke tests | all pass | any 5xx |
-| Health endpoint | 200 in <2s | timeout or error |
-| Queue depth | stable or decreasing | growing unbounded |
-| Error rate | <1% | >5% |
+| Check | Must be |
+| --- | --- |
+| All healthchecks green | YES |
+| Smoke tests pass | YES |
+| No error spike in logs | YES |
+| Queue depth stable | YES |
+| Auth boundaries intact | YES |
 
-## Deliverables
+## Key scripts
 
-- Preflight results
-- Release checklist (step-by-step)
-- Rollback procedure (tested or documented)
-- Post-release monitoring evidence
+- `project/scripts/preflight-prod.sh` (preflight validation)
+- `project/scripts/smoke_security.sh` (security smoke tests)
+- `project/scripts/validate_go_no_go.sh` (go/no-go decision)
+- `project/scripts/ops/rollback.sh` (emergency rollback)
+- `project/scripts/ops/deploy_staging_to_node.sh` (staging deploy)
+
+## Required output
+
+- Step-by-step release checklist
+- Emergency rollback procedure
+- PATCHLOG.md entry
+- TEST_REPORT.md entry

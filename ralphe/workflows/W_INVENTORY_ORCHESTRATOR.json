@@ -1,0 +1,222 @@
+{
+  "name": "W_INVENTORY_ORCHESTRATOR",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inventory/orchestrate",
+        "options": {}
+      },
+      "name": "Webhook - Sync Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * L0-00: Inventory Integrity Guard\n * DIAMOND-FIX: Prevents unauthorized stock manipulation\n */\nconst crypto = require('crypto');\nconst secret = $env.TENANT_CONTEXT_SECRET || 'fallback-secret';\nconst headers = $node[\"Webhook - Sync Trigger\"].json.headers;\nconst signature = headers['x-inventory-signature'];\nconst body = $node[\"Webhook - Sync Trigger\"].json.body;\n\n// Signature Verify\nconst expected = crypto.createHmac('sha256', secret).update(JSON.stringify(body || {})).digest('hex');\nif (signature !== expected) {\n  throw new Error('AUTH_FAILED: Signature d\\\\\\'inventaire invalide');\n}\n\nreturn [{ json: body }];"
+      },
+      "id": "inventory-auth-guard",
+      "name": "B0 - Auth Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "RESERVE"
+            }
+          ]
+        }
+      },
+      "name": "Action: RESERVE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $json.items.map(item => ({\n  json: {\n    id: item.id,\n    qty: item.qty,\n    variant: item.variant,\n    restaurant_id: $item(0).$node[\"B0 - Auth Guard\"].json.restaurant_id\n  }\n}));"
+      },
+      "name": "Loop Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        600,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STRAPI_URL }}/api/ingredients/{{$json.id}}",
+        "method": "PUT",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data\": {\n    \"reserved_stock\": \"={{$json.current_reserved + $json.qty}}\"\n  }\n}"
+      },
+      "name": "Atomic Reserve (Strapi)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "COMMIT"
+            }
+          ]
+        }
+      },
+      "name": "Action: COMMIT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $json.items.map(item => ({\n  json: {\n    id: item.id,\n    qty: item.qty,\n    restaurant_id: $item(0).$node[\"B0 - Auth Guard\"].json.restaurant_id\n  }\n}));"
+      },
+      "name": "Loop Items (Commit)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        600,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STRAPI_URL }}/api/ingredients/{{$json.id}}",
+        "method": "PUT",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.STRAPI_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data\": {\n    \"current_stock\": \"={{$json.current_stock - $json.qty}}\",\n    \"reserved_stock\": \"={{$json.current_reserved - $json.qty}}\"\n  }\n}"
+      },
+      "name": "Atomic Commit (Strapi)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        800,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Sync Trigger": {
+      "main": [
+        [
+          {
+            "node": "B0 - Auth Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Auth Guard": {
+      "main": [
+        [
+          {
+            "node": "Action: RESERVE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action: RESERVE?": {
+      "main": [
+        [
+          {
+            "node": "Loop Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Action: COMMIT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Items": {
+      "main": [
+        [
+          {
+            "node": "Atomic Reserve (Strapi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action: COMMIT?": {
+      "main": [
+        [
+          {
+            "node": "Loop Items (Commit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Items (Commit)": {
+      "main": [
+        [
+          {
+            "node": "Atomic Commit (Strapi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

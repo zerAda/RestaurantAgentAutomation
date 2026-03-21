@@ -9,71 +9,64 @@ when_to_use:
   - Workflow import/export
 ---
 
-# Workflow Governance
+# Workflow Governance (RESTO BOT)
 
-## Workflow inventory
+## Current state
 
-- 54 JSON files in `workflows/`
-- Naming conventions: `W<N>_<NAME>.json` (numbered) or `W_<NAME>.json` (feature-based)
-- Validated by: `scripts/integrity_gate.sh`, `.github/workflows/workflow-validate.yml`
+- **54 workflow JSON files** in `project/workflows/`
+- Validated by integrity gate in CI (`integrity-gate.yml`)
+- Deployed to n8n-main via volume mount or API import
 
-## Structural requirements (enforced by CI)
+## Naming conventions
 
-Every workflow JSON must have:
+- Prefix by domain: `inbound_`, `outbox_`, `order_`, `menu_`, `admin_`, `support_`, `fraud_`
+- Suffix: `_v1`, `_v2` for versioned workflows
+- No spaces in filenames; use underscores
 
-```json
-{
-  "name": "W<N>_<NAME>",
-  "nodes": [...],
-  "connections": {...}
-}
-```
+## Structure requirements per workflow
 
-- `.active` field is optional (null accepted)
-- `.nodes` must be an array, `.connections` must be an object
+- Must have a unique `name` field
+- Must have error handling (error workflow configured)
+- Webhook triggers must validate auth (X-API-Token or signature)
+- No hardcoded secrets in workflow JSON (use env vars or credentials)
+- Idempotency: dedupe check near ingestion point
 
-## Security checks (integrity_gate.sh)
+## Strapi integration
 
-### Inbound workflows (W1_IN_WA, W2_IN_IG, W3_IN_MSG)
+- CMS content types accessed via Strapi REST API
+- Strapi URL: `https://cms.srv1258231.hstgr.cloud`
+- CORS: admin.*, kiosk.*, cms.* allowed origins
+- Workflow nodes that call Strapi should use configurable base URL
 
-1. `B0 - Parse & Canonicalize` must contain `ALLOW_QUERY_TOKEN` gating
-2. `B0 - Token OK?` must enforce `scopeOk` (`={{$json._auth.scopeOk}}`)
-3. `B0 - Log Deny (DB)` must parameterize `event_type` with `$6`
-4. `B0 - Contract Valid?` node must exist
-5. `RESP - 200` and `RESP - 400/401` response nodes must exist
-6. `IN - Webhook` must use `responseMode: responseNode`
+## Tenant isolation (future-proofing)
 
-### W1_IN_WA specific
+- All workflows should use tenant_id where applicable
+- Avoid hard-coding single-tenant assumptions
+- Authorization layer extensible (token -> tenant scope)
 
-7. `B1a - Admin Access Validator (SECURED)` node must exist
-8. `B1 - Has Media to Fetch?` must route to validator (check `main[][]` not `main[0][]`)
+## Integrity gate checks
 
-### All Strapi nodes (P0 tenant isolation)
+- JSON valid and parseable
+- Required fields present (name, nodes, connections)
+- No embedded secrets or tokens
+- Consistent naming conventions
+- Error workflow configured
 
-9. Every `n8n-nodes-base.strapi` node must have `filters.restaurant_id.$eq` containing `tenant_context`
-10. The jq check uses `while IFS= read -r` loop (handles multi-word node names)
+## MCP integration
 
-## Common integrity gate failures and fixes
+- **n8n-mcp** server can list/create/update/execute workflows
+- **strapi-mcp** server can manage CMS content types
+- Use MCP tools for workflow management when available
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `bypass detected in B1` | jq path uses `main[0][]` | Change to `main[][]` |
-| `Strapi filter MUST use tenant_context` | Missing `restaurant_id.$eq` filter | Add `"filters": {"restaurant_id": {"$eq": "={{ $json.tenant_context?.restaurant_id }}"}}` |
-| `Missing required fields` | Workflow missing `.active` field | Ensure validator accepts null `.active` |
-| `Does not match naming convention` | File named without W prefix | Use `W<N>_` or `W_` prefix |
-| `Cannot index string with "$eq"` | `restaurant_id` is string not object | Wrap in `{"$eq": "..."}` structure |
+## Key files
 
-## Adding a new Strapi node checklist
+- `project/workflows/` (all 54 workflow JSON files)
+- `project/.github/workflows/integrity-gate.yml`
+- `project/schemas/` (JSON validation schemas)
 
-1. Add the node with operation and collection
-2. Add `filters.restaurant_id.$eq` with `tenant_context` reference
-3. Use `{"$eq": "={{ $json.tenant_context?.restaurant_id }}"}` (object, not string)
-4. Run `make integrity` locally to verify
-5. Check CI passes after push
+## Required output
 
-## Deliverables
-
-- Workflow diff (valid JSON, passes `jq -e` validation)
-- Integrity gate passes locally (`make integrity`)
-- Tenant isolation verified for all Strapi nodes
-- CI green for `workflow-validate.yml` and `ci.yml` integrity gate job
+- Workflow diff with rationale
+- Integrity gate compliance check
+- Security review (no secrets, auth enforced)
+- Tenant isolation assessment

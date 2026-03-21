@@ -1,0 +1,133 @@
+{
+  "name": "W_INCEPTION_PROTOCOL",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inception-protocol",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook - Admin Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.STRAPI_INTERNAL_URL}}/api/dishes?filters[name][$eq]={{$json.body.dish_name}}&populate=*",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.STRAPI_API_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "Strapi - Get Dish Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{$env.LLM_MODEL}}",
+        "prompt": {
+          "parameters": [
+            {
+              "name": "system",
+              "value": "You are the Ralphé TikTok Viralist. Create a 15-30s high-energy TikTok script.\nFocus on: Fast cuts, aggressive hook, 'ASMR' style dish preparation, and split-screen potential.\n\nInput: {{JSON.stringify($json.data[0])}}\n\nOutput format: JSON only\n{\n  \"hook\": \"string\",\n  \"scenes\": [{ \"action\": \"string\", \"text\": \"string\" }],\n  \"viral_tag\": \"string\"\n}"
+            }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Agent - TikTok Viralist",
+      "type": "n8n-nodes-base.ollamaChat",
+      "typeVersion": 1,
+      "position": [500, 150]
+    },
+    {
+      "parameters": {
+        "model": "={{$env.LLM_MODEL}}",
+        "prompt": {
+          "parameters": [
+            {
+              "name": "system",
+              "value": "You are the Ralphé Instagram Aesthetician. Create a 30s Luxe Reel script.\nFocus on: Slow motion, ingredient close-ups, elegant plating, and storytelling 'vibe'.\n\nInput: {{JSON.stringify($json.data[0])}}\n\nOutput format: JSON only\n{\n  \"vibe\": \"string\",\n  \"scenes\": [{ \"action\": \"string\", \"text\": \"string\" }],\n  \"aesthetic_style\": \"string\"\n}"
+            }
+          ]
+        }
+      },
+      "id": "4",
+      "name": "Agent - Insta Aesthetician",
+      "type": "n8n-nodes-base.ollamaChat",
+      "typeVersion": 1,
+      "position": [500, 450]
+    },
+    {
+      "parameters": {
+        "model": "={{$env.LLM_MODEL}}",
+        "prompt": {
+          "parameters": [
+            {
+              "name": "system",
+              "value": "You are the Ralphé Global Linguist. Localize these platform scripts into French and Moroccan Darija (transliterated).\n\nInput: {{JSON.stringify($json)}}\n\nOutput format: JSON only\n{\n  \"fr\": { \"tiktok\": \"...\", \"insta\": \"...\" },\n  \"darija\": { \"tiktok\": \"...\", \"insta\": \"...\" }\n}"
+            }
+          ]
+        }
+      },
+      "id": "5",
+      "name": "Agent - Linguist Sync",
+      "type": "n8n-nodes-base.ollamaChat",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.STRAPI_INTERNAL_URL}}/api/content-libraries",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.STRAPI_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={\n  \"dish_name\": \"{{$node[\"Strapi - Get Dish Metadata\"].json.data[0].attributes.name}}\",\n  \"status\": \"ready\",\n  \"performance_json\": {\n    \"tiktok\": {{$node[\"Agent - TikTok Viralist\"].json}},\n    \"insta\": {{$node[\"Agent - Insta Aesthetician\"].json}},\n    \"localized\": {{$node[\"Agent - Linguist Sync\"].json}}\n  }\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6",
+      "name": "Strapi - Save Multi-Platform Creative",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "1": { "main": [[{ "node": "2", "type": "main", "index": 0 }]] },
+    "2": { "main": [[{ "node": "3", "type": "main", "index": 0 }, { "node": "4", "type": "main", "index": 0 }]] },
+    "3": { "main": [[{ "node": "5", "type": "main", "index": 0 }]] },
+    "4": { "main": [[{ "node": "5", "type": "main", "index": 1 }]] },
+    "5": { "main": [[{ "node": "6", "type": "main", "index": 0 }]] }
+  }
+}

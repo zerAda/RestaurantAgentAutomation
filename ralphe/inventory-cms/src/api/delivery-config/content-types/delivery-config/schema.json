@@ -1,0 +1,77 @@
+{
+    "kind": "collectionType",
+    "collectionName": "delivery_configs",
+    "info": {
+        "singularName": "delivery-config",
+        "pluralName": "delivery-configs",
+        "displayName": "🚚 Delivery Config",
+        "description": "Delivery zone, pricing, and ETA configuration"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "attributes": {
+        "zone_name": {
+            "type": "string",
+            "required": true,
+            "description": "Human-readable zone name (e.g., Centre-ville, Bab El Oued)"
+        },
+        "polygon_geojson": {
+            "type": "json",
+            "description": "GeoJSON polygon defining the delivery zone boundary"
+        },
+        "radius_km": {
+            "type": "decimal",
+            "default": 5,
+            "description": "Radius from restaurant center for circular zones"
+        },
+        "base_fee_cents": {
+            "type": "integer",
+            "default": 200,
+            "description": "Base delivery fee in cents for this zone"
+        },
+        "per_km_fee_cents": {
+            "type": "integer",
+            "default": 50,
+            "description": "Additional fee per km beyond base radius"
+        },
+        "min_order_cents": {
+            "type": "integer",
+            "default": 50000,
+            "description": "Minimum order value in cents for delivery to this zone"
+        },
+        "eta_base_min": {
+            "type": "integer",
+            "default": 20,
+            "description": "Base ETA in minutes for this zone"
+        },
+        "eta_per_km_min": {
+            "type": "decimal",
+            "default": 3,
+            "description": "Additional minutes per km"
+        },
+        "surge_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable surge pricing for this zone"
+        },
+        "surge_multiplier": {
+            "type": "decimal",
+            "default": 1.0,
+            "description": "Current surge multiplier (1.0 = no surge)"
+        },
+        "active": {
+            "type": "boolean",
+            "default": true,
+            "description": "Is this delivery zone currently active?"
+        },
+        "schedule_json": {
+            "type": "json",
+            "description": "Operating hours per day {\"monday\": {\"open\": \"10:00\", \"close\": \"22:00\"}, ...}"
+        },
+        "restaurant_id": {
+            "type": "string",
+            "description": "Reference to the restaurant (string ID, no relation to avoid missing target)"
+        }
+    }
+}

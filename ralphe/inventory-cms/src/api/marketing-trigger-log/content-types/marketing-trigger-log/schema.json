@@ -1,0 +1,33 @@
+{
+    "kind": "collectionType",
+    "collectionName": "marketing_trigger_logs",
+    "info": {
+        "singularName": "marketing-trigger-log",
+        "pluralName": "marketing-trigger-logs",
+        "displayName": "Marketing Trigger Log",
+        "description": "Logs automated marketing actions triggered by W_MARKETING_AUTOPILOT"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "rule_name": {
+            "type": "string",
+            "required": true,
+            "description": "Name of the marketing rule that triggered (e.g. churning_vip_winback)"
+        },
+        "affected_users_count": {
+            "type": "integer",
+            "default": 0
+        },
+        "triggered_at": {
+            "type": "datetime",
+            "required": true
+        },
+        "metadata_json": {
+            "type": "json",
+            "description": "Additional context about the trigger event"
+        }
+    }
+}

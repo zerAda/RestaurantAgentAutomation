@@ -1,42 +1,39 @@
-# RESTO BOT — Skills Index v2.0
+# RESTO BOT — Skills Index
 
-## Skill map (13 active skills)
+## Core Skills (13)
 
-| # | Skill | Domain | Key files |
-|---|-------|--------|-----------|
-| 01 | repo_intelligence | Codebase orientation | All infrastructure files |
-| 02 | architecture_and_security | Invariant protection + STRIDE | CLAUDE.md, nginx.conf, compose |
-| 03 | ingress_hardening | Traefik + Nginx gateway | compose labels, infra/gateway/ |
-| 04 | n8n_queue_sre | Queue reliability, DLQ, outbox | W8_*, W15_*, W16_*, W17_* |
-| 05 | db_safety_protocol | Backups, migrations, restore | db/, scripts/backup_*, scripts/restore_* |
-| 06 | secrets_data_protection | Secrets, PII, rotation, retention | .env, security-scan.yml, integrity_gate.sh |
-| 07 | ci_cd_pipeline | 13 GHA workflows, composite actions | .github/workflows/, .github/actions/ |
-| 08 | observability | Health, logs, alerts, DORA | W16_HEALTHZ, deep-health-check.sh, notify action |
-| 09 | release_and_rollback | Deploy, verify, incident response | cd-deploy.yml, rollback.yml, smoke scripts |
-| 10 | testing_qa | Integrity gate, test battery, k6, fixtures | integrity_gate.sh, tests/, scripts/test_* |
-| 11 | workflow_governance | n8n workflow structure, tenant isolation | workflows/, integrity_gate.sh, workflow-validate.yml |
-| 12 | supply_chain_security | Cosign, SBOM, SLSA, GHCR | build-push-artifacts.yml, cosign keys |
-| 13 | vps_operations | SSH deploy, env sync, backups, VPS layout | cd-deploy.yml, /opt/resto/, scripts/ops/ |
+| # | Skill | Purpose | Strapi Impact |
+|---|-------|---------|---------------|
+| 01 | repo_intelligence | Build repo mental model, file paths, trust boundaries | Maps Strapi as critical dependency |
+| 02 | architecture_and_security | Validate system invariants, STRIDE threat model | Strapi in threat model scope |
+| 03 | ingress_hardening | Traefik TLS, Nginx gateway, /v1 API contract | cms-chain middleware (IP allowlist) |
+| 04 | n8n_queue_sre | Queue mode reliability, DLQ, outbox, worker scaling | n8n workflows call Strapi API for config |
+| 05 | db_safety_protocol | Backups, restore drills, idempotent migrations | Two DBs: `n8n` + `strapi` |
+| 06 | secrets_data_protection | Secret hygiene, rotation, PII, data retention | Strapi JWT/API token secrets |
+| 07 | ci_cd_pipeline | 13-workflow GitHub Actions CI/CD system | CMS Docker image build + push |
+| 08 | observability | Health endpoints, structured logging, alerts | CMS health: `/_health` on :1337 |
+| 09 | release_and_rollback | Safe releases with preflight, deploy, rollback | CMS must be healthy post-deploy |
+| 10 | testing_qa | Test strategy, integrity gate, k6 load tests | Strapi API integration tests |
+| 11 | workflow_governance | Govern 54 n8n workflow JSONs, Strapi nodes | Strapi REST API integration |
+| 12 | supply_chain_security | Docker signing (Cosign), SBOM, SLSA provenance | CMS image signed + attested |
+| 13 | vps_operations | VPS deploy, directory layout, env sync, backups | cms_uploads volume, strapi_db_password |
 
-## Deprecated skills (merged)
+## Strapi CMS — Central Configuration Hub
 
-- ~~14_performance_capacity_planning~~ -> 04 + 10
-- ~~15_data_privacy_compliance~~ -> 06
-- ~~16_change_management_governance~~ -> 07
-- ~~17_multi_tenant_futureproofing~~ -> 11
+Strapi is the **single source of truth** for the entire RESTO BOT platform:
 
-## Usage patterns
+- **Bot config**: Menu items, pricing, hours -> consumed by n8n workflows
+- **Agent/LLM config**: Prompts, model params -> consumed by n8n + Ollama
+- **Dashboard config**: Operational data -> consumed by admin-dashboard
+- **Kiosk config**: Menus, orders -> consumed by kiosk-app
+- **Feature flags**: Operational parameters stored as Strapi content
 
-- **First session**: `01_repo_intelligence` to build mental model
-- **Before any change**: `02_architecture_and_security` for invariant check
-- **Editing gateway/routing**: `03_ingress_hardening`
-- **Queue issues**: `04_n8n_queue_sre`
-- **Schema changes**: `05_db_safety_protocol`
-- **Adding secrets/integrations**: `06_secrets_data_protection`
-- **CI/CD pipeline work**: `07_ci_cd_pipeline`
-- **Debugging production**: `08_observability` + `09_release_and_rollback`
-- **Adding tests**: `10_testing_qa`
-- **Modifying workflows**: `11_workflow_governance`
-- **Docker image pipeline**: `12_supply_chain_security`
-- **VPS operations**: `13_vps_operations`
-- **Full release**: `05` (backup) -> `10` (tests) -> `09` (release) -> `08` (monitor)
+**All services depend on Strapi. If Strapi is down, the platform degrades.**
+
+## Usage examples
+
+- "Use 01_repo_intelligence to map the codebase, then 02_architecture_and_security for threat model."
+- "Apply 03_ingress_hardening to lock down the cms-chain middleware."
+- "Apply 05_db_safety_protocol before running Strapi schema migrations."
+- "Use 11_workflow_governance when adding Strapi nodes to n8n workflows."
+- "Apply 09_release_and_rollback to produce a release checklist with CMS health verification."

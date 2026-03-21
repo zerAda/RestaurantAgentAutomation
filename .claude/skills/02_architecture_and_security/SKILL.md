@@ -8,55 +8,51 @@ when_to_use:
   - Before exposing any new endpoint
 ---
 
-# Architecture & Security Guardian
+# Architecture Guardian + Threat Analysis
 
 ## System invariants (must remain true)
 
-1. `/v1/*` public contract is backward compatible (additive only)
-2. n8n is NOT a public API surface; gateway is the entrypoint
-3. `console.<domain>` is private (IP allowlist + BasicAuth in Traefik labels)
-4. Auth validated BEFORE upstream proxy (gateway level)
-5. Query-token auth is OFF by default (`ALLOW_QUERY_TOKEN=false`)
-6. Inbound processing is idempotent (dedupe by message/event ID)
-7. DB changes are idempotent with backup/restore capability
-8. Queue mode in prod with explicit worker concurrency
-9. All Strapi nodes enforce `tenant_context` in `restaurant_id.$eq` filter
-10. No secrets in git, logs, or workflow JSON
+1. `/v1/*` public contract remains stable (backward compatible)
+2. n8n is not a public API surface; the gateway is the entrypoint
+3. Console is private: BasicAuth + IP allowlist (never exposed by mistake)
+4. CMS and Admin Dashboard are private: IP allowlist + optional BasicAuth
+5. Inbound endpoints enforce auth before proxying/processing
+6. Query-token auth is OFF by default
+7. Inbound processing is idempotent (dedupe keys)
+8. DB changes are safe + idempotent with backup/restore drills
+9. Queue-mode in prod with explicit worker concurrency
+10. All images SHA-pinned in CI (supply-chain security)
 
-## Review gate (answer explicitly for every change)
+## STRIDE threat model scope
 
-1. Which invariant could this change weaken? (cite number)
-2. What is the auth flow end-to-end?
-3. What is the rollback plan?
-4. What is the minimal smoke test proving safety?
+- Public API: `api.srv1258231.hstgr.cloud/v1/*`
+- Private console: `console.srv1258231.hstgr.cloud`
+- Private CMS: `cms.srv1258231.hstgr.cloud`
+- Private admin: `admin.srv1258231.hstgr.cloud`
+- Public kiosk: `kiosk.srv1258231.hstgr.cloud`
+- Proxy chain: Traefik -> Nginx gateway -> upstreams
+- n8n execution + workflow imports
+- Redis queue + Postgres data
+- Strapi content API
 
-## Threat analysis (when security-relevant)
+## Review gate questions (answer explicitly)
 
-Apply STRIDE to the change scope:
+- Which invariant could this change weaken?
+- How does auth work end-to-end for this change?
+- What is the rollback plan?
+- What is the minimal proof (smoke test) that it is safe?
+- Does this change affect any trust boundary crossing?
 
-- **S**poofing: Can the auth be bypassed?
-- **T**ampering: Can request/response be modified?
-- **R**epudiation: Is the action logged?
-- **I**nfo disclosure: Does it leak secrets, PII, or internal paths?
-- **D**oS: Does it increase attack surface or remove rate limits?
-- **E**levation: Can it bypass tenant isolation or admin checks?
+## Key files to check
 
-## Evidence files for controls
+- `project/docker-compose.hostinger.prod.yml` (Traefik labels, middleware chains)
+- `project/infra/gateway/nginx.conf` (API routes, auth enforcement)
+- `project/.env` (feature flags, auth config)
+- `project/secrets/` (credential files)
 
-| Control | File |
-|---------|------|
-| Gateway auth | `infra/gateway/nginx.conf` |
-| Rate limits | Traefik labels in `docker-compose.hostinger.prod.yml` |
-| Meta signature | `workflows/W0_META_VERIFY_UNIFIED.json` |
-| Token scope | `B0 - Token OK?` in W1/W2/W3 |
-| Admin gate | `B1a - Admin Access Validator (SECURED)` in W1_IN_WA |
-| Tenant isolation | `integrity_gate.sh` (Strapi tenant filter check) |
-| Secret scan | `.github/workflows/security-scan.yml` |
-| Idempotency | dedupe key in workflow ingestion nodes |
+## Required output
 
-## Deliverables
-
-- Invariant impact assessment (pass/fail per invariant, citing evidence)
-- Threat assessment (if security-relevant)
+- Invariant impact assessment (pass/fail per invariant)
+- STRIDE threat table (if security-relevant change)
 - Safer alternative if any invariant is at risk
-- Rollback plan
+- Controls evidence map (files/configs proving controls)

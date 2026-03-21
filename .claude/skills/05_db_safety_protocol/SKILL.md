@@ -9,61 +9,56 @@ when_to_use:
   - Disaster recovery drill
 ---
 
-# DB Safety Protocol
+# DB Safety Protocol (RESTO BOT)
 
-## File layout
+## Current setup
 
-- Bootstrap: `db/bootstrap.sql` (initial schema)
-- Full schema ref: `db/schema.sql`
-- Migrations: `db/migrations/` (9 files, date-prefixed)
-- Init scripts: `db/init/01_apply_migrations.sh`, `db/init/02_create_strapi_db.sh`
-- Migrate runner: `scripts/db_migrate.sh`, `scripts/db_migrate_all.sh`
-- Backup: `scripts/backup_postgres.sh`
-- Restore: `scripts/restore_postgres.sh`
-- Fixtures: `tests/fixtures/` (seed SQL for test DB)
+- **PostgreSQL 15-alpine** with tuned parameters:
+  - shared_buffers=256MB, effective_cache_size=768MB
+  - maintenance_work_mem=128MB, max_connections=100
+  - WAL: wal_buffers=16MB, checkpoint_completion_target=0.9
+  - Logging: log_statement=ddl, log_min_duration_statement=1000ms
+- **Two databases**: `n8n` (workflows/executions), `strapi` (CMS content)
+- Resources: 1 CPU, 1GB RAM
 
-## Migration rules
+## Migration system
 
-1. File naming: `YYYY-MM-DD_<patch>_<description>.sql`
-2. Every statement must be idempotent (`IF NOT EXISTS`, `DO $$ ... END $$`)
-3. No `DROP TABLE` or `DROP COLUMN` without migration plan + backup verification
-4. Test: apply migration twice with no errors (`scripts/db_migrate.sh` is safe to re-run)
-5. CI validates: `.github/workflows/migration-validate.yml`
+- Init container: `db-migrate` (postgres:15-alpine)
+- Migrations dir: `project/db/migrations/` (SQL files, sorted alphabetically)
+- Tracking table: `schema_migrations` (filename, applied_at, checksum)
+- Bootstrap: `project/db/bootstrap.sql`
+- Init scripts: `project/db/init/01_apply_migrations.sh`, `02_create_strapi_db.sh`
+- All migrations MUST be idempotent (safe if applied twice)
 
-## Backup protocol
+## Secrets
 
-- Automated: `.github/workflows/scheduled-backup.yml` (cron schedule)
-- Manual: `make backup` or `scripts/backup_postgres.sh`
-- Redis backup: `scripts/backup_redis.sh`
-- VPS backup dir: `/opt/resto/backups/`
-- Retention: defined in `docs/DB_RETENTION.md`
+- Password: `project/secrets/postgres_password` mounted as `/run/secrets/postgres_password`
+- Connection: user=n8n, host=postgres, port=5432
 
-## Restore drill (must be reproducible)
+## Data safety rules
 
-```bash
-# 1. Stop services
-docker compose -f docker-compose.hostinger.prod.yml stop n8n-main n8n-worker
-
-# 2. Restore from backup
-scripts/restore_postgres.sh /opt/resto/backups/<backup-file>.sql.gz
-
-# 3. Re-apply pending migrations
-scripts/db_migrate_all.sh
-
-# 4. Restart and verify
-docker compose -f docker-compose.hostinger.prod.yml up -d
-make smoke
-```
+- Automated backups configured (schedule + retention)
+- Restore drill documented and reproducible
+- No destructive changes without forward-fix and/or restore plan
+- Test migrations on staging before production
 
 ## Performance hygiene
 
-- Index review: `scripts/db_explain.sh` for slow query analysis
-- Connection limits: check `max_connections` in compose Postgres config
-- Avoid long-running transactions in migrations (use `CONCURRENTLY` for indexes)
+- Index review for hot queries
+- Avoid long locks; use safe migration patterns (CREATE INDEX CONCURRENTLY)
+- Monitor slow queries (>1000ms logged automatically)
+- Connection pooling awareness (max_connections=100)
 
-## Deliverables
+## Key files
 
-- Migration SQL (idempotent)
-- Backup verification (backup exists and size > 0)
-- Restore drill result (or documented last drill date)
-- Rollback plan (forward-fix migration or restore from backup)
+- `project/docker-compose.hostinger.prod.yml` (postgres service, volumes)
+- `project/db/bootstrap.sql`
+- `project/db/migrations/`
+- `project/db/init/`
+- `project/scripts/ops/` (backup/restore scripts)
+
+## Required output
+
+- Backup + restore steps (RUNBOOK snippet)
+- Migration diff + verification SQL
+- Rollback plan (or safe roll-forward plan)

@@ -1,0 +1,158 @@
+﻿Security Scan	Run Gitleaks	´╗┐2026-03-21T06:47:40.6398746Z ##[group]Run curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6402431Z [36;1mcurl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6405558Z [36;1m./gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" \[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6407695Z [36;1m  --report-format sarif --report-path gitleaks-report.sarif --verbose[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6462555Z shell: /usr/bin/bash -e {0}
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6463805Z env:
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6464484Z   NODE_VERSION: 20
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6465259Z   PYTHON_VERSION: 3.11
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6466088Z   POSTGRES_USER: n8n
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6466932Z   POSTGRES_PASSWORD: n8npass
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6467853Z   POSTGRES_DB: n8n
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6468662Z   N8N_VERSION: 2.9.4
+Security Scan	Run Gitleaks	2026-03-21T06:47:40.6469433Z ##[endgroup]
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3200747Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3201650Z     Ôùï
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3202693Z     ÔöéÔò▓
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3203403Z     Ôöé Ôùï
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3203791Z     Ôùï Ôûæ
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3204186Z     Ôûæ    gitleaks
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.3204445Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5828657Z Finding:     KEY = '[1;3;meyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM3NzAzMC1jYTE5LTRjZDktYmVjNi1iYThlYzQ3MWE1MzciLCJ...[0m'
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5830889Z Secret:      [1;3;meyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM3NzAzMC1jYTE5LTRjZDktYmVjNi1iYThlYzQ3MWE1MzciLCJ...[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5832475Z RuleID:      jwt
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5833045Z Entropy:     5.579954
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5833507Z File:        n8n_fix_agent.py
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5833988Z Line:        3
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5834459Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5835105Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5835582Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5836139Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5836856Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:n8n_fix_agent.py:jwt:3
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5837979Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/n8n_fix_agent.py#L3
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.5838557Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6157782Z Finding:     TELEGRAM_BOT_TOKEN=[1;3;m8740905714:AAEtLrx-RL1pj8eftlsm5l1MeomP6fW6dTM[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6161974Z Secret:      [1;3;m8740905714:AAEtLrx-RL1pj8eftlsm5l1MeomP6fW6dTM[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6162731Z RuleID:      telegram-bot-api-token
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6163443Z Entropy:     4.811499
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6163875Z File:        nemoclaw/.env
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6164292Z Line:        2
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6164759Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6165352Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6165766Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6166834Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6167621Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:nemoclaw/.env:telegram-bot-api-token:2
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6168996Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/nemoclaw/.env#L2
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6169950Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6170827Z Finding:     NVIDIA_API_KEY=[1;3;mnvapi-pS0m670p197v9F42R4-0DZgxef7jFI4qaubjSwCXRPI1pJeAbAxP4U7N84YSuBis[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6172358Z Secret:      [1;3;mnvapi-pS0m670p197v9F42R4-0DZgxef7jFI4qaubjSwCXRPI1pJeAbAxP4U7N84YSuBis[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6173410Z RuleID:      generic-api-key
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6173897Z Entropy:     5.141863
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6174311Z File:        nemoclaw/.env
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6174719Z Line:        1
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6175154Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6175696Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6176096Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6176577Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6177325Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:nemoclaw/.env:generic-api-key:1
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6179080Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/nemoclaw/.env#L1
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6180013Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6201678Z Finding:     ... POSTGRES_DB=n8n -e POSTGRES_PASSWORD=[1;3;mdrillpass[0m postgres:15-alpine`
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6204539Z Secret:      [1;3;mdrillpass[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6208367Z RuleID:      postgres-password
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6209620Z Entropy:     2.725481
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6210572Z Tags:        [database password]
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6211780Z File:        .planning/scopes/general/phases/01-PLAN.md
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6213634Z Line:        216
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6216120Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6218893Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6220517Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6221367Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6223727Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:.planning/scopes/general/phases/01-PLAN.md:postgres-password:216
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6225741Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/.planning/scopes/general/phases/01-PLAN.md?plain=1#L216
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.6226967Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7258474Z Finding:     "TELEGRAM_BOT_TOKEN": "[1;3;m8740905714:AAEtLrx-RL1pj8eftlsm5l1MeomP6fW6dTM[0m"
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7283805Z Secret:      [1;3;m8740905714:AAEtLrx-RL1pj8eftlsm5l1MeomP6fW6dTM[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7284540Z RuleID:      telegram-bot-api-token
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7285048Z Entropy:     4.811499
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7285467Z File:        vps_configs.txt
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7285899Z Line:        55
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7286354Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7286945Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7287818Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7288556Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7289724Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:vps_configs.txt:telegram-bot-api-token:55
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7291406Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/vps_configs.txt#L55
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7292516Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7298752Z Finding:     "apiKey": "[1;3;mnvapi-pS0m670p197v9F42R4-0DZgxef7jFI4qaubjSwCXRPI1pJeAbAxP4U7N84YSuBis[0m"
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7300461Z Secret:      [1;3;mnvapi-pS0m670p197v9F42R4-0DZgxef7jFI4qaubjSwCXRPI1pJeAbAxP4U7N84YSuBis[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7301532Z RuleID:      generic-api-key
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7302126Z Entropy:     5.141863
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7302760Z File:        vps_configs.txt
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7303708Z Line:        14
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7304435Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7305595Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7306021Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7306510Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7307311Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:vps_configs.txt:generic-api-key:14
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7308930Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/vps_configs.txt#L14
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7310052Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7311497Z Finding:     "NVIDIA_API_KEY": "[1;3;mnvapi-pS0m670p197v9F42R4-0DZgxef7jFI4qaubjSwCXRPI1pJeAbAxP4U7N84YSuBis[0m"
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7313518Z Secret:      [1;3;mnvapi-pS0m670p197v9F42R4-0DZgxef7jFI4qaubjSwCXRPI1pJeAbAxP4U7N84YSuBis[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7314591Z RuleID:      generic-api-key
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7315182Z Entropy:     5.141863
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7315767Z File:        vps_configs.txt
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7316334Z Line:        54
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7316934Z Commit:      cd133f19437a6bc9ee639c1a2cc3eea817c5190a
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7317652Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7318205Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7319132Z Date:        2026-03-20T23:17:54Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7320111Z Fingerprint: cd133f19437a6bc9ee639c1a2cc3eea817c5190a:vps_configs.txt:generic-api-key:54
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7321746Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/cd133f19437a6bc9ee639c1a2cc3eea817c5190a/vps_configs.txt#L54
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7353088Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7799139Z Finding:     echo "POSTGRES_PASSWORD=[1;3;m$(openssl[0m rand -base64 16)"
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7804627Z Secret:      [1;3;m$(openssl[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7806549Z RuleID:      postgres-password
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7807088Z Entropy:     2.947703
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7807585Z Tags:        [database password]
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7808115Z File:        ralphe/CREDENTIALS_CHECKLIST.md
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7808631Z Line:        339
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7809094Z Commit:      9c3ff52836eecca26b021810d6b0d5d77775b299
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7809508Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7809756Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7810058Z Date:        2026-03-20T23:01:04Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7810621Z Fingerprint: 9c3ff52836eecca26b021810d6b0d5d77775b299:ralphe/CREDENTIALS_CHECKLIST.md:postgres-password:339
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7811675Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/9c3ff52836eecca26b021810d6b0d5d77775b299/ralphe/CREDENTIALS_CHECKLIST.md?plain=1#L339
+Security Scan	Run Gitleaks	2026-03-21T06:47:41.7812314Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0166792Z Finding:     echo "POSTGRES_PASSWORD=[1;3;m$(openssl[0m rand -base64 16)"
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0168559Z Secret:      [1;3;m$(openssl[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0169665Z RuleID:      postgres-password
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0170383Z Entropy:     2.947703
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0171038Z Tags:        [database password]
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0184293Z File:        CREDENTIALS_CHECKLIST.md
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0185179Z Line:        339
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0185701Z Commit:      08541c4e6f10aeab4761b9b202927674051ce069
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0186491Z Author:      zerAda
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0186966Z Email:       adel.zeriri@gmail.com
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0187421Z Date:        2026-03-20T20:55:43Z
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0188223Z Fingerprint: 08541c4e6f10aeab4761b9b202927674051ce069:CREDENTIALS_CHECKLIST.md:postgres-password:339
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0189826Z Link:        https://github.com/zerAda/RestaurantAgentAutomation/blob/08541c4e6f10aeab4761b9b202927674051ce069/CREDENTIALS_CHECKLIST.md?plain=1#L339
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.0190857Z 
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.8552526Z [90m6:47AM[0m [32mINF[0m [1m218 commits scanned.[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.8559508Z [90m6:47AM[0m [32mINF[0m [1mscanned ~19036908 bytes (19.04 MB) in 1.54s[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.8560347Z [90m6:47AM[0m [33mWRN[0m [1mleaks found: 9[0m
+Security Scan	Run Gitleaks	2026-03-21T06:47:42.8604832Z ##[error]Process completed with exit code 1.
+CI Summary	Fail if critical jobs failed	´╗┐2026-03-21T06:50:37.2161895Z ##[group]Run echo "::error::CI pipeline failed - merge blocked"
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2163657Z [36;1mecho "::error::CI pipeline failed - merge blocked"[0m
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2164863Z [36;1mexit 1[0m
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2210804Z shell: /usr/bin/bash -e {0}
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2211707Z env:
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2212530Z   NODE_VERSION: 20
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2213345Z   PYTHON_VERSION: 3.11
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2214203Z   POSTGRES_USER: n8n
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2215046Z   POSTGRES_PASSWORD: n8npass
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2215957Z   POSTGRES_DB: n8n
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2216737Z   N8N_VERSION: 2.9.4
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2217522Z ##[endgroup]
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2309861Z ##[error]CI pipeline failed - merge blocked
+CI Summary	Fail if critical jobs failed	2026-03-21T06:50:37.2319381Z ##[error]Process completed with exit code 1.

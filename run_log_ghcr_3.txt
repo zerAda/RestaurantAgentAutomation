@@ -1,0 +1,58 @@
+﻿Validate Build Inputs	Set up job	´╗┐2026-03-20T23:37:01.9624386Z Current runner version: '2.332.0'
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9648090Z ##[group]Runner Image Provisioner
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9648858Z Hosted Compute Agent
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9649368Z Version: 20260213.493
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9649882Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9650558Z Build Date: 2026-02-13T00:28:41Z
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9651123Z Worker ID: {61972600-62fa-43bc-aceb-fecb35a3ed99}
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9651765Z Azure Region: westus3
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9652295Z ##[endgroup]
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9653564Z ##[group]Operating System
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9654092Z Ubuntu
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9654538Z 24.04.3
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9654963Z LTS
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9655686Z ##[endgroup]
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9656186Z ##[group]Runner Image
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9656653Z Image: ubuntu-24.04
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9657130Z Version: 20260309.50.1
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9658037Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260309.50/images/ubuntu/Ubuntu2404-Readme.md
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9659448Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260309.50
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9660235Z ##[endgroup]
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9661280Z ##[group]GITHUB_TOKEN Permissions
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9663148Z Attestations: write
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9663669Z Contents: read
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9664120Z Metadata: read
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9664603Z Packages: write
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9665038Z ##[endgroup]
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9667282Z Secret source: Actions
+Validate Build Inputs	Set up job	2026-03-20T23:37:01.9667870Z Prepare workflow directory
+Validate Build Inputs	Set up job	2026-03-20T23:37:02.0148836Z Prepare all required actions
+Validate Build Inputs	Set up job	2026-03-20T23:37:02.0197774Z Complete job name: Validate Build Inputs
+Validate Build Inputs	Validate trigger	´╗┐2026-03-20T23:37:02.7210521Z ##[group]Run echo "Event: push"
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7211369Z [36;1mecho "Event: push"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7211962Z [36;1mecho "Ref: refs/heads/master"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7212706Z [36;1mecho "SHA: 32f4bff206869e7050acbeab393297ff9a0e7a92"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7213529Z [36;1m# Ensure we're on main branch or workflow_dispatch[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7214475Z [36;1mif [ "push" = "push" ] && [ "refs/heads/master" != "refs/heads/main" ]; then[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7215969Z [36;1m  echo "::error::Build triggered from non-main branch: refs/heads/master"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7216750Z [36;1m  exit 1[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7217286Z [36;1mfi[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7217753Z [36;1m# Validate SHA format[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7218437Z [36;1mSHA="32f4bff206869e7050acbeab393297ff9a0e7a92"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7219181Z [36;1mif [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7219896Z [36;1m  echo "::error::Invalid commit SHA: '$SHA'"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7220537Z [36;1m  exit 1[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7221155Z [36;1mfi[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7221680Z [36;1mecho "Build inputs validated"[0m
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7850576Z shell: /usr/bin/bash -e {0}
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7851593Z env:
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7852143Z   REGISTRY: ghcr.io
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7852683Z   IMAGE_NAME: zerAda/RestaurantAgentAutomation
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7853453Z   OWNER: zerAda
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.7853921Z ##[endgroup]
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.8104429Z Event: push
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.8105340Z Ref: refs/heads/master
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.8105984Z SHA: 32f4bff206869e7050acbeab393297ff9a0e7a92
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.8134879Z ##[error]Build triggered from non-main branch: refs/heads/master
+Validate Build Inputs	Validate trigger	2026-03-20T23:37:02.8151557Z ##[error]Process completed with exit code 1.
+Validate Build Inputs	Complete job	´╗┐2026-03-20T23:37:02.8255461Z Cleaning up orphan processes

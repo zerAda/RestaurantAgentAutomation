@@ -1,0 +1,40 @@
+﻿Frontend Lint (admin-dashboard)	Lint	´╗┐2026-03-21T06:54:24.5447082Z ##[group]Run if [ -f "package.json" ] && grep -q '"lint"' package.json && [ -d "node_modules" ]; then
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5447763Z [36;1mif [ -f "package.json" ] && grep -q '"lint"' package.json && [ -d "node_modules" ]; then[0m
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5448171Z [36;1m  npm run lint[0m
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5448368Z [36;1melse[0m
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5448671Z [36;1m  echo "::notice::Lint skipped for admin-dashboard"[0m
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5448968Z [36;1mfi[0m
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5499172Z shell: /usr/bin/bash -e {0}
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5499424Z env:
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5499609Z   NODE_VERSION: 20
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5499813Z   PYTHON_VERSION: 3.11
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5500018Z   POSTGRES_USER: n8n
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5500209Z   POSTGRES_PASSWORD: n8npass
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5500429Z   POSTGRES_DB: n8n
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5500609Z   N8N_VERSION: 2.9.4
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.5500783Z ##[endgroup]
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.6644683Z 
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.6645027Z > admin-dashboard@0.0.0 lint
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.6645454Z > eslint .
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:24.6645712Z 
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.1925299Z 
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.1926799Z /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation/ralphe/admin-dashboard/src/components/AutomationView.tsx
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.1960040Z ##[error]  73:40  error  '_lang' is defined but never used  @typescript-eslint/no-unused-vars
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.1969421Z 
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.1970058Z Ô£û 1 problem (1 error, 0 warnings)
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.1970430Z 
+Frontend Lint (admin-dashboard)	Lint	2026-03-21T06:54:29.2432299Z ##[error]Process completed with exit code 1.
+CI Summary	Fail if critical jobs failed	´╗┐2026-03-21T06:59:48.2501702Z ##[group]Run echo "::error::CI pipeline failed - merge blocked"
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2502333Z [36;1mecho "::error::CI pipeline failed - merge blocked"[0m
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2503020Z [36;1mexit 1[0m
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2552633Z shell: /usr/bin/bash -e {0}
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2552996Z env:
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2553230Z   NODE_VERSION: 20
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2553505Z   PYTHON_VERSION: 3.11
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2553809Z   POSTGRES_USER: n8n
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2554090Z   POSTGRES_PASSWORD: n8npass
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2554400Z   POSTGRES_DB: n8n
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2554655Z   N8N_VERSION: 2.9.4
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2554916Z ##[endgroup]
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2644339Z ##[error]CI pipeline failed - merge blocked
+CI Summary	Fail if critical jobs failed	2026-03-21T06:59:48.2653960Z ##[error]Process completed with exit code 1.

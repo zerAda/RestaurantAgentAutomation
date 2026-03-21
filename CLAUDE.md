@@ -46,6 +46,30 @@ Internet
           +---> db-migrate (init container, runs once)
 ```
 
+### Strapi CMS (CRITICAL — Central Configuration Hub)
+
+Strapi is the **single source of truth** for the entire RESTO BOT platform. All other services depend on it:
+
+- **Bot configuration**: Menu items, categories, pricing, availability, business hours
+- **n8n workflow config**: Dynamic content, response templates, order parameters
+- **LLM/Agent config**: Prompt templates, model parameters, agent behavior settings
+- **Dashboard config**: Admin dashboard reads all operational data from Strapi API
+- **Kiosk config**: Kiosk app renders menus and accepts orders via Strapi content types
+- **CI/CD variables**: Feature flags and operational parameters stored as Strapi content
+
+**If Strapi is down, the entire platform degrades** — n8n workflows cannot fetch menus, kiosk cannot display items, admin dashboard shows stale data.
+
+| Aspect | Detail |
+|--------|--------|
+| Source | `project/inventory-cms/` (Strapi 5) |
+| Database | `strapi` (separate from `n8n` DB, same PostgreSQL) |
+| URL | `https://cms.srv1258231.hstgr.cloud` |
+| Access | **Private** (IP allowlist, no public access) |
+| Health | `http://127.0.0.1:1337/_health` |
+| Secrets | `strapi_db_password`, `STRAPI_ADMIN_JWT_SECRET`, `STRAPI_JWT_SECRET`, `STRAPI_API_TOKEN_SALT` |
+| MCP | `strapi-mcp` server for programmatic content management |
+| Build | Custom Docker image, ~500MB, signed with Cosign |
+
 ### Business Logic (n8n workflows)
 - **Multi-channel**: WhatsApp, Instagram, Messenger (54 workflow JSON files)
 - **Payments**: COD, deposit, CIB, Edahabia
@@ -97,6 +121,7 @@ Internet
 8. Queue mode for n8n in prod (main + worker + redis), with explicit concurrency.
 9. No secrets in git, logs, screenshots, or patches.
 10. All Docker images SHA-pinned in CI (supply-chain security).
+11. Strapi CMS must be running and healthy — it is the central config hub for all services.
 
 ## Operating contract (always follow)
 

@@ -1,0 +1,391 @@
+﻿Integrity Gate	Set up job	´╗┐2026-03-20T23:30:51.2262264Z Current runner version: '2.332.0'
+Integrity Gate	Set up job	2026-03-20T23:30:51.2287947Z ##[group]Runner Image Provisioner
+Integrity Gate	Set up job	2026-03-20T23:30:51.2289092Z Hosted Compute Agent
+Integrity Gate	Set up job	2026-03-20T23:30:51.2289805Z Version: 20260213.493
+Integrity Gate	Set up job	2026-03-20T23:30:51.2290399Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+Integrity Gate	Set up job	2026-03-20T23:30:51.2291134Z Build Date: 2026-02-13T00:28:41Z
+Integrity Gate	Set up job	2026-03-20T23:30:51.2291844Z Worker ID: {ff97f360-925d-4710-94ff-f43ed8c9859c}
+Integrity Gate	Set up job	2026-03-20T23:30:51.2292514Z Azure Region: westus
+Integrity Gate	Set up job	2026-03-20T23:30:51.2293144Z ##[endgroup]
+Integrity Gate	Set up job	2026-03-20T23:30:51.2294565Z ##[group]Operating System
+Integrity Gate	Set up job	2026-03-20T23:30:51.2295301Z Ubuntu
+Integrity Gate	Set up job	2026-03-20T23:30:51.2295782Z 24.04.3
+Integrity Gate	Set up job	2026-03-20T23:30:51.2296234Z LTS
+Integrity Gate	Set up job	2026-03-20T23:30:51.2296738Z ##[endgroup]
+Integrity Gate	Set up job	2026-03-20T23:30:51.2297255Z ##[group]Runner Image
+Integrity Gate	Set up job	2026-03-20T23:30:51.2297825Z Image: ubuntu-24.04
+Integrity Gate	Set up job	2026-03-20T23:30:51.2298839Z Version: 20260309.50.1
+Integrity Gate	Set up job	2026-03-20T23:30:51.2299860Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260309.50/images/ubuntu/Ubuntu2404-Readme.md
+Integrity Gate	Set up job	2026-03-20T23:30:51.2301558Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260309.50
+Integrity Gate	Set up job	2026-03-20T23:30:51.2302460Z ##[endgroup]
+Integrity Gate	Set up job	2026-03-20T23:30:51.2303644Z ##[group]GITHUB_TOKEN Permissions
+Integrity Gate	Set up job	2026-03-20T23:30:51.2305478Z Contents: read
+Integrity Gate	Set up job	2026-03-20T23:30:51.2306061Z Metadata: read
+Integrity Gate	Set up job	2026-03-20T23:30:51.2306617Z PullRequests: read
+Integrity Gate	Set up job	2026-03-20T23:30:51.2307159Z ##[endgroup]
+Integrity Gate	Set up job	2026-03-20T23:30:51.2309610Z Secret source: Actions
+Integrity Gate	Set up job	2026-03-20T23:30:51.2310416Z Prepare workflow directory
+Integrity Gate	Set up job	2026-03-20T23:30:51.2729270Z Prepare all required actions
+Integrity Gate	Set up job	2026-03-20T23:30:51.2768078Z Getting action download info
+Integrity Gate	Set up job	2026-03-20T23:30:51.7153176Z Download action repository 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683' (SHA:11bd71901bbe5b1630ceea73d27597364c9af683)
+Integrity Gate	Set up job	2026-03-20T23:30:51.8564828Z Download action repository 'actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b' (SHA:0b93645e9fea7318ecaed2b359559ac225c90a2b)
+Integrity Gate	Set up job	2026-03-20T23:30:52.0964100Z Complete job name: Integrity Gate
+Integrity Gate	Checkout code	´╗┐2026-03-20T23:30:52.1684579Z ##[group]Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1685600Z with:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1686056Z   repository: zerAda/RestaurantAgentAutomation
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1686764Z   token: ***
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1687139Z   ssh-strict: true
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1687523Z   ssh-user: git
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1687901Z   persist-credentials: true
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1688552Z   clean: true
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1688980Z   sparse-checkout-cone-mode: true
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1689451Z   fetch-depth: 1
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1689838Z   fetch-tags: false
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1690241Z   show-progress: true
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1690642Z   lfs: false
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1690999Z   submodules: false
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1691401Z   set-safe-directory: true
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1692104Z env:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1692477Z   NODE_VERSION: 20
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1692865Z   PYTHON_VERSION: 3.11
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1693282Z   POSTGRES_USER: n8n
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1693692Z   POSTGRES_PASSWORD: n8npass
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1694180Z   POSTGRES_DB: n8n
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1694553Z   N8N_VERSION: 2.9.4
+Integrity Gate	Checkout code	2026-03-20T23:30:52.1694928Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2803945Z Syncing repository: zerAda/RestaurantAgentAutomation
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2805749Z ##[group]Getting Git version info
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2806648Z Working directory is '/home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation'
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2807799Z [command]/usr/bin/git version
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2913477Z git version 2.53.0
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2941203Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2958597Z Temporarily overriding HOME='/home/runner/work/_temp/bc37b6be-eac8-4e18-9467-22133c440002' before making global git config changes
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2975566Z Adding repository directory to the temporary git global config as a safe directory
+Integrity Gate	Checkout code	2026-03-20T23:30:52.2977891Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3024751Z Deleting the contents of '/home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation'
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3029456Z ##[group]Initializing the repository
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3036006Z [command]/usr/bin/git init /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3163582Z hint: Using 'master' as the name for the initial branch. This default branch name
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3164650Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3166297Z hint: to use in all of your new repositories, which will suppress this warning,
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3167591Z hint: call:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3168450Z hint:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3169331Z hint: 	git config --global init.defaultBranch <name>
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3170464Z hint:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3171346Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3172361Z hint: 'development'. The just-created branch can be renamed via this command:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3173542Z hint:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3173964Z hint: 	git branch -m <name>
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3174493Z hint:
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3175126Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3176503Z Initialized empty Git repository in /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation/.git/
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3186565Z [command]/usr/bin/git remote add origin https://github.com/zerAda/RestaurantAgentAutomation
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3233936Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3235075Z ##[group]Disabling automatic garbage collection
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3240084Z [command]/usr/bin/git config --local gc.auto 0
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3276357Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3277244Z ##[group]Setting up auth
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3287546Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3325394Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3719756Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3751006Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Integrity Gate	Checkout code	2026-03-20T23:30:52.3991584Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Integrity Gate	Checkout code	2026-03-20T23:30:52.4030780Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:52.4032092Z ##[group]Fetching the repository
+Integrity Gate	Checkout code	2026-03-20T23:30:52.4040963Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +e2115f85f3eaa3864d7c53aa4368790708d329f5:refs/remotes/origin/master
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4205675Z From https://github.com/zerAda/RestaurantAgentAutomation
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4208167Z  * [new ref]         e2115f85f3eaa3864d7c53aa4368790708d329f5 -> origin/master
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4242731Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4244622Z ##[group]Determining the checkout info
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4246683Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4251517Z [command]/usr/bin/git sparse-checkout disable
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4296903Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4328776Z ##[group]Checking out the ref
+Integrity Gate	Checkout code	2026-03-20T23:30:53.4333175Z [command]/usr/bin/git checkout --progress --force -B master refs/remotes/origin/master
+Integrity Gate	Checkout code	2026-03-20T23:30:53.6945738Z Reset branch 'master'
+Integrity Gate	Checkout code	2026-03-20T23:30:53.6946677Z branch 'master' set up to track 'origin/master'.
+Integrity Gate	Checkout code	2026-03-20T23:30:53.6959846Z ##[endgroup]
+Integrity Gate	Checkout code	2026-03-20T23:30:53.7000985Z [command]/usr/bin/git log -1 --format=%H
+Integrity Gate	Checkout code	2026-03-20T23:30:53.7024453Z e2115f85f3eaa3864d7c53aa4368790708d329f5
+Integrity Gate	Set up Python	´╗┐2026-03-20T23:30:53.7254339Z ##[group]Run actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7254846Z with:
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7255256Z   python-version: 3.11
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7255506Z   check-latest: false
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7255872Z   token: ***
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7256106Z   update-environment: true
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7256369Z   allow-prereleases: false
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7256602Z env:
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7256806Z   NODE_VERSION: 20
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7257024Z   PYTHON_VERSION: 3.11
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7257259Z   POSTGRES_USER: n8n
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7257499Z   POSTGRES_PASSWORD: n8npass
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7257748Z   POSTGRES_DB: n8n
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7257958Z   N8N_VERSION: 2.9.4
+Integrity Gate	Set up Python	2026-03-20T23:30:53.7258185Z ##[endgroup]
+Integrity Gate	Set up Python	2026-03-20T23:30:53.8869470Z ##[group]Installed versions
+Integrity Gate	Set up Python	2026-03-20T23:30:53.8989427Z Successfully set up CPython (3.11.15)
+Integrity Gate	Set up Python	2026-03-20T23:30:53.8990338Z ##[endgroup]
+Integrity Gate	Install dependencies	´╗┐2026-03-20T23:30:53.9093276Z ##[group]Run pip install jsonschema pyyaml
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9093991Z [36;1mpip install jsonschema pyyaml[0m
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9157429Z shell: /usr/bin/bash -e {0}
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9157776Z env:
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9157986Z   NODE_VERSION: 20
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9158213Z   PYTHON_VERSION: 3.11
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9158718Z   POSTGRES_USER: n8n
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9158957Z   POSTGRES_PASSWORD: n8npass
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9159211Z   POSTGRES_DB: n8n
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9159424Z   N8N_VERSION: 2.9.4
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9159723Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9160168Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9160606Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9161001Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9161389Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9161791Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+Integrity Gate	Install dependencies	2026-03-20T23:30:53.9162149Z ##[endgroup]
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.7846950Z Collecting jsonschema
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.8389565Z   Downloading jsonschema-4.26.0-py3-none-any.whl.metadata (7.6 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.8819192Z Collecting pyyaml
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.8850473Z   Downloading pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.8986389Z Collecting attrs>=22.2.0 (from jsonschema)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.9015254Z   Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.9140245Z Collecting jsonschema-specifications>=2023.03.6 (from jsonschema)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.9171252Z   Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl.metadata (2.9 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.9371123Z Collecting referencing>=0.28.4 (from jsonschema)
+Integrity Gate	Install dependencies	2026-03-20T23:30:54.9494176Z   Downloading referencing-0.37.0-py3-none-any.whl.metadata (2.8 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.1858720Z Collecting rpds-py>=0.25.0 (from jsonschema)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.1890426Z   Downloading rpds_py-0.30.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.1 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2079593Z Collecting typing-extensions>=4.4.0 (from referencing>=0.28.4->jsonschema)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2114816Z   Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2190559Z Downloading jsonschema-4.26.0-py3-none-any.whl (90 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2324439Z Downloading pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (806 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2472051Z    ÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöüÔöü 806.6/806.6 kB 73.5 MB/s  0:00:00
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2506988Z Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2565658Z Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl (18 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2619116Z Downloading referencing-0.37.0-py3-none-any.whl (26 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2675118Z Downloading rpds_py-0.30.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (390 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.2772950Z Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.3022932Z Installing collected packages: typing-extensions, rpds-py, pyyaml, attrs, referencing, jsonschema-specifications, jsonschema
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.5258938Z 
+Integrity Gate	Install dependencies	2026-03-20T23:30:55.5272236Z Successfully installed attrs-26.1.0 jsonschema-4.26.0 jsonschema-specifications-2025.9.1 pyyaml-6.0.3 referencing-0.37.0 rpds-py-0.30.0 typing-extensions-4.15.0
+Integrity Gate	Run integrity gate (10-point quality check)	´╗┐2026-03-20T23:30:55.6903334Z ##[group]Run chmod +x scripts/integrity_gate.sh
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6903738Z [36;1mchmod +x scripts/integrity_gate.sh[0m
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6904042Z [36;1mbash scripts/integrity_gate.sh[0m
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6956050Z shell: /usr/bin/bash -e {0}
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6956324Z env:
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6956491Z   NODE_VERSION: 20
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6956707Z   PYTHON_VERSION: 3.11
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6956905Z   POSTGRES_USER: n8n
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6957114Z   POSTGRES_PASSWORD: n8npass
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6957329Z   POSTGRES_DB: n8n
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6957510Z   N8N_VERSION: 2.9.4
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6957763Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6958185Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6958732Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6959089Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6959459Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6959853Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.6960156Z ##[endgroup]
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.7076342Z == RESTO BOT - Integrity Gate ==
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.7076782Z \n[1/8] Bash syntax check
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.7096888Z \n[2/8] Secret scan (forbidden placeholder CHANGE_ME)
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:55.7238150Z \n[3/8] Workflow JSON validation
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.5075682Z \n[4/8] JSON Schema unit tests
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6059145Z Schema hashes:
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6059820Z  - v1: 4b59526d7ac16dfe48505b6d8e08d3676f7fe12984805abea885c135b08b9e31
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6060481Z  - v2: 868e10b954ed5e843aef0a5a1f67c821b048faa82d24fd7aed4e0293d1a88b20
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6060966Z OK: valid_v1.json PASS as expected
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6061255Z OK: valid_v2.json PASS as expected
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6061566Z OK: invalid_missing_msg_id.json FAIL as expected
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6126956Z OK: invalid_wrong_types.json FAIL as expected
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6227130Z \n[4b] L10N unit tests (Darija + template rendering)
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6444682Z OK: Darija intent tests OK (61 phrases)
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6697397Z OK: Template render tests OK (10 cases)
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6947408Z OK: L10N script detection tests OK (20 cases)
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.6982654Z \n[5/8] DB bootstrap ordering check
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.7004310Z grep: db/bootstrap.sql: No such file or directory
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.7028651Z grep: db/bootstrap.sql: No such file or directory
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.7035408Z ÔØî db/bootstrap.sql: could not locate orders/outbound_messages definitions
+Integrity Gate	Run integrity gate (10-point quality check)	2026-03-20T23:30:56.7052398Z ##[error]Process completed with exit code 1.
+Integrity Gate	Post Checkout code	´╗┐2026-03-20T23:30:56.7165331Z Post job cleanup.
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8126124Z [command]/usr/bin/git version
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8166995Z git version 2.53.0
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8211341Z Temporarily overriding HOME='/home/runner/work/_temp/dd14c891-d1f5-44d1-8e98-508e2772db06' before making global git config changes
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8212872Z Adding repository directory to the temporary git global config as a safe directory
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8217854Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8258895Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8295222Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8558730Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8585923Z http.https://github.com/.extraheader
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8600577Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+Integrity Gate	Post Checkout code	2026-03-20T23:30:56.8637477Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Integrity Gate	Complete job	´╗┐2026-03-20T23:30:56.9008773Z Cleaning up orphan processes
+Integrity Gate	Complete job	2026-03-20T23:30:56.9298854Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683, actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+CI Summary	Set up job	´╗┐2026-03-20T23:31:02.9525647Z Current runner version: '2.332.0'
+CI Summary	Set up job	2026-03-20T23:31:02.9559039Z ##[group]Runner Image Provisioner
+CI Summary	Set up job	2026-03-20T23:31:02.9560629Z Hosted Compute Agent
+CI Summary	Set up job	2026-03-20T23:31:02.9561598Z Version: 20260213.493
+CI Summary	Set up job	2026-03-20T23:31:02.9562596Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+CI Summary	Set up job	2026-03-20T23:31:02.9563637Z Build Date: 2026-02-13T00:28:41Z
+CI Summary	Set up job	2026-03-20T23:31:02.9564832Z Worker ID: {af1d7803-5d68-40fb-9220-5181af3a94b0}
+CI Summary	Set up job	2026-03-20T23:31:02.9566042Z Azure Region: centralus
+CI Summary	Set up job	2026-03-20T23:31:02.9567045Z ##[endgroup]
+CI Summary	Set up job	2026-03-20T23:31:02.9569156Z ##[group]Operating System
+CI Summary	Set up job	2026-03-20T23:31:02.9570579Z Ubuntu
+CI Summary	Set up job	2026-03-20T23:31:02.9571355Z 24.04.3
+CI Summary	Set up job	2026-03-20T23:31:02.9572027Z LTS
+CI Summary	Set up job	2026-03-20T23:31:02.9573155Z ##[endgroup]
+CI Summary	Set up job	2026-03-20T23:31:02.9574005Z ##[group]Runner Image
+CI Summary	Set up job	2026-03-20T23:31:02.9574970Z Image: ubuntu-24.04
+CI Summary	Set up job	2026-03-20T23:31:02.9575954Z Version: 20260309.50.1
+CI Summary	Set up job	2026-03-20T23:31:02.9577800Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260309.50/images/ubuntu/Ubuntu2404-Readme.md
+CI Summary	Set up job	2026-03-20T23:31:02.9580890Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260309.50
+CI Summary	Set up job	2026-03-20T23:31:02.9582526Z ##[endgroup]
+CI Summary	Set up job	2026-03-20T23:31:02.9584539Z ##[group]GITHUB_TOKEN Permissions
+CI Summary	Set up job	2026-03-20T23:31:02.9587355Z Contents: read
+CI Summary	Set up job	2026-03-20T23:31:02.9588252Z Metadata: read
+CI Summary	Set up job	2026-03-20T23:31:02.9589366Z PullRequests: read
+CI Summary	Set up job	2026-03-20T23:31:02.9590457Z ##[endgroup]
+CI Summary	Set up job	2026-03-20T23:31:02.9593370Z Secret source: Actions
+CI Summary	Set up job	2026-03-20T23:31:02.9594618Z Prepare workflow directory
+CI Summary	Set up job	2026-03-20T23:31:03.0088554Z Prepare all required actions
+CI Summary	Set up job	2026-03-20T23:31:03.0144525Z Getting action download info
+CI Summary	Set up job	2026-03-20T23:31:03.2953183Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+CI Summary	Set up job	2026-03-20T23:31:03.5047200Z Complete job name: CI Summary
+CI Summary	Checkout code	´╗┐2026-03-20T23:31:03.5867901Z ##[group]Run actions/checkout@v4
+CI Summary	Checkout code	2026-03-20T23:31:03.5868729Z with:
+CI Summary	Checkout code	2026-03-20T23:31:03.5869199Z   repository: zerAda/RestaurantAgentAutomation
+CI Summary	Checkout code	2026-03-20T23:31:03.5870216Z   token: ***
+CI Summary	Checkout code	2026-03-20T23:31:03.5870635Z   ssh-strict: true
+CI Summary	Checkout code	2026-03-20T23:31:03.5871045Z   ssh-user: git
+CI Summary	Checkout code	2026-03-20T23:31:03.5871457Z   persist-credentials: true
+CI Summary	Checkout code	2026-03-20T23:31:03.5871919Z   clean: true
+CI Summary	Checkout code	2026-03-20T23:31:03.5872338Z   sparse-checkout-cone-mode: true
+CI Summary	Checkout code	2026-03-20T23:31:03.5872829Z   fetch-depth: 1
+CI Summary	Checkout code	2026-03-20T23:31:03.5873221Z   fetch-tags: false
+CI Summary	Checkout code	2026-03-20T23:31:03.5873638Z   show-progress: true
+CI Summary	Checkout code	2026-03-20T23:31:03.5874065Z   lfs: false
+CI Summary	Checkout code	2026-03-20T23:31:03.5874446Z   submodules: false
+CI Summary	Checkout code	2026-03-20T23:31:03.5874867Z   set-safe-directory: true
+CI Summary	Checkout code	2026-03-20T23:31:03.5875611Z env:
+CI Summary	Checkout code	2026-03-20T23:31:03.5876000Z   NODE_VERSION: 20
+CI Summary	Checkout code	2026-03-20T23:31:03.5876415Z   PYTHON_VERSION: 3.11
+CI Summary	Checkout code	2026-03-20T23:31:03.5876846Z   POSTGRES_USER: n8n
+CI Summary	Checkout code	2026-03-20T23:31:03.5877272Z   POSTGRES_PASSWORD: n8npass
+CI Summary	Checkout code	2026-03-20T23:31:03.5877729Z   POSTGRES_DB: n8n
+CI Summary	Checkout code	2026-03-20T23:31:03.5878150Z   N8N_VERSION: 2.9.4
+CI Summary	Checkout code	2026-03-20T23:31:03.5878560Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:03.6962637Z Syncing repository: zerAda/RestaurantAgentAutomation
+CI Summary	Checkout code	2026-03-20T23:31:03.6964941Z ##[group]Getting Git version info
+CI Summary	Checkout code	2026-03-20T23:31:03.6966334Z Working directory is '/home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation'
+CI Summary	Checkout code	2026-03-20T23:31:03.6968064Z [command]/usr/bin/git version
+CI Summary	Checkout code	2026-03-20T23:31:03.7051079Z git version 2.53.0
+CI Summary	Checkout code	2026-03-20T23:31:03.7077713Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:03.7093732Z Temporarily overriding HOME='/home/runner/work/_temp/b8c47f83-3297-4b06-919d-07b3a33de602' before making global git config changes
+CI Summary	Checkout code	2026-03-20T23:31:03.7096129Z Adding repository directory to the temporary git global config as a safe directory
+CI Summary	Checkout code	2026-03-20T23:31:03.7108451Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation
+CI Summary	Checkout code	2026-03-20T23:31:03.7161018Z Deleting the contents of '/home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation'
+CI Summary	Checkout code	2026-03-20T23:31:03.7164314Z ##[group]Initializing the repository
+CI Summary	Checkout code	2026-03-20T23:31:03.7169638Z [command]/usr/bin/git init /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation
+CI Summary	Checkout code	2026-03-20T23:31:03.7282771Z hint: Using 'master' as the name for the initial branch. This default branch name
+CI Summary	Checkout code	2026-03-20T23:31:03.7284115Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+CI Summary	Checkout code	2026-03-20T23:31:03.7285274Z hint: to use in all of your new repositories, which will suppress this warning,
+CI Summary	Checkout code	2026-03-20T23:31:03.7286441Z hint: call:
+CI Summary	Checkout code	2026-03-20T23:31:03.7286846Z hint:
+CI Summary	Checkout code	2026-03-20T23:31:03.7287535Z hint: 	git config --global init.defaultBranch <name>
+CI Summary	Checkout code	2026-03-20T23:31:03.7288566Z hint:
+CI Summary	Checkout code	2026-03-20T23:31:03.7289559Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+CI Summary	Checkout code	2026-03-20T23:31:03.7291381Z hint: 'development'. The just-created branch can be renamed via this command:
+CI Summary	Checkout code	2026-03-20T23:31:03.7292673Z hint:
+CI Summary	Checkout code	2026-03-20T23:31:03.7293367Z hint: 	git branch -m <name>
+CI Summary	Checkout code	2026-03-20T23:31:03.7294184Z hint:
+CI Summary	Checkout code	2026-03-20T23:31:03.7295176Z hint: Disable this message with "git config set advice.defaultBranchName false"
+CI Summary	Checkout code	2026-03-20T23:31:03.7297240Z Initialized empty Git repository in /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation/.git/
+CI Summary	Checkout code	2026-03-20T23:31:03.7300977Z [command]/usr/bin/git remote add origin https://github.com/zerAda/RestaurantAgentAutomation
+CI Summary	Checkout code	2026-03-20T23:31:03.7336405Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:03.7337590Z ##[group]Disabling automatic garbage collection
+CI Summary	Checkout code	2026-03-20T23:31:03.7341789Z [command]/usr/bin/git config --local gc.auto 0
+CI Summary	Checkout code	2026-03-20T23:31:03.7371893Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:03.7373079Z ##[group]Setting up auth
+CI Summary	Checkout code	2026-03-20T23:31:03.7379662Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+CI Summary	Checkout code	2026-03-20T23:31:03.7412672Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+CI Summary	Checkout code	2026-03-20T23:31:03.7772212Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+CI Summary	Checkout code	2026-03-20T23:31:03.7803287Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+CI Summary	Checkout code	2026-03-20T23:31:03.8034451Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+CI Summary	Checkout code	2026-03-20T23:31:03.8066339Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+CI Summary	Checkout code	2026-03-20T23:31:03.8300520Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+CI Summary	Checkout code	2026-03-20T23:31:03.8335386Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:03.8336177Z ##[group]Fetching the repository
+CI Summary	Checkout code	2026-03-20T23:31:03.8343988Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +e2115f85f3eaa3864d7c53aa4368790708d329f5:refs/remotes/origin/master
+CI Summary	Checkout code	2026-03-20T23:31:04.8056849Z From https://github.com/zerAda/RestaurantAgentAutomation
+CI Summary	Checkout code	2026-03-20T23:31:04.8061420Z  * [new ref]         e2115f85f3eaa3864d7c53aa4368790708d329f5 -> origin/master
+CI Summary	Checkout code	2026-03-20T23:31:04.8097213Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:04.8098562Z ##[group]Determining the checkout info
+CI Summary	Checkout code	2026-03-20T23:31:04.8100288Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:04.8106082Z [command]/usr/bin/git sparse-checkout disable
+CI Summary	Checkout code	2026-03-20T23:31:04.8149683Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+CI Summary	Checkout code	2026-03-20T23:31:04.8180086Z ##[group]Checking out the ref
+CI Summary	Checkout code	2026-03-20T23:31:04.8184654Z [command]/usr/bin/git checkout --progress --force -B master refs/remotes/origin/master
+CI Summary	Checkout code	2026-03-20T23:31:05.0672564Z Reset branch 'master'
+CI Summary	Checkout code	2026-03-20T23:31:05.0675453Z branch 'master' set up to track 'origin/master'.
+CI Summary	Checkout code	2026-03-20T23:31:05.0687696Z ##[endgroup]
+CI Summary	Checkout code	2026-03-20T23:31:05.0732577Z [command]/usr/bin/git log -1 --format=%H
+CI Summary	Checkout code	2026-03-20T23:31:05.0758595Z e2115f85f3eaa3864d7c53aa4368790708d329f5
+CI Summary	Generate summary	´╗┐2026-03-20T23:31:05.1001367Z ##[group]Run cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+CI Summary	Generate summary	2026-03-20T23:31:05.1002572Z [36;1mcat >> $GITHUB_STEP_SUMMARY << 'EOF'[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1003793Z [36;1m## CI Pipeline Summary[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1004719Z [36;1m[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1005582Z [36;1m| Job | Status |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1006472Z [36;1m|-----|--------|[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1007372Z [36;1m| Integrity Gate | failure |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1008340Z [36;1m| Lint & Validate | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1009297Z [36;1m| Python Tests | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1010431Z [36;1m| Integration Tests (PG15) | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1011440Z [36;1m| Integration Tests (PG16) | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1012385Z [36;1m| Docker Build | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1013286Z [36;1m| Security Scan | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1014209Z [36;1m| Frontend Lint | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1015086Z [36;1m| Test Harness | skipped |[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1015944Z [36;1m[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1016861Z [36;1m**Commit:** `e2115f85f3eaa3864d7c53aa4368790708d329f5`[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1017823Z [36;1m**Branch:** `master`[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1018635Z [36;1m**Actor:** zerAda[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1019416Z [36;1mEOF[0m
+CI Summary	Generate summary	2026-03-20T23:31:05.1072987Z shell: /usr/bin/bash -e {0}
+CI Summary	Generate summary	2026-03-20T23:31:05.1073833Z env:
+CI Summary	Generate summary	2026-03-20T23:31:05.1074546Z   NODE_VERSION: 20
+CI Summary	Generate summary	2026-03-20T23:31:05.1075274Z   PYTHON_VERSION: 3.11
+CI Summary	Generate summary	2026-03-20T23:31:05.1076038Z   POSTGRES_USER: n8n
+CI Summary	Generate summary	2026-03-20T23:31:05.1076794Z   POSTGRES_PASSWORD: n8npass
+CI Summary	Generate summary	2026-03-20T23:31:05.1077586Z   POSTGRES_DB: n8n
+CI Summary	Generate summary	2026-03-20T23:31:05.1078312Z   N8N_VERSION: 2.9.4
+CI Summary	Generate summary	2026-03-20T23:31:05.1079041Z ##[endgroup]
+CI Summary	Fail if critical jobs failed	´╗┐2026-03-20T23:31:05.1266180Z ##[group]Run echo "::error::CI pipeline failed - merge blocked"
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1267220Z [36;1mecho "::error::CI pipeline failed - merge blocked"[0m
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1268055Z [36;1mexit 1[0m
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1315568Z shell: /usr/bin/bash -e {0}
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1316319Z env:
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1316945Z   NODE_VERSION: 20
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1317633Z   PYTHON_VERSION: 3.11
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1318350Z   POSTGRES_USER: n8n
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1319046Z   POSTGRES_PASSWORD: n8npass
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1319752Z   POSTGRES_DB: n8n
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1320539Z   N8N_VERSION: 2.9.4
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1321216Z ##[endgroup]
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1410847Z ##[error]CI pipeline failed - merge blocked
+CI Summary	Fail if critical jobs failed	2026-03-20T23:31:05.1420250Z ##[error]Process completed with exit code 1.
+CI Summary	Post Checkout code	´╗┐2026-03-20T23:31:05.1559994Z Post job cleanup.
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2517179Z [command]/usr/bin/git version
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2554034Z git version 2.53.0
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2597282Z Temporarily overriding HOME='/home/runner/work/_temp/dd2968ab-68ed-40a5-a991-4925525fbea3' before making global git config changes
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2598758Z Adding repository directory to the temporary git global config as a safe directory
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2609672Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/RestaurantAgentAutomation/RestaurantAgentAutomation
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2644038Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2677347Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2923036Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2945102Z http.https://github.com/.extraheader
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2958334Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+CI Summary	Post Checkout code	2026-03-20T23:31:05.2991682Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+CI Summary	Post Checkout code	2026-03-20T23:31:05.3232980Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+CI Summary	Post Checkout code	2026-03-20T23:31:05.3265009Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+CI Summary	Complete job	´╗┐2026-03-20T23:31:05.3618790Z Cleaning up orphan processes
+CI Summary	Complete job	2026-03-20T23:31:05.4026429Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

@@ -9,83 +9,62 @@ when_to_use:
   - Verifying image integrity
 ---
 
-# Supply Chain Security
+# Supply Chain Security (RESTO BOT)
 
-## Pipeline (build-push-artifacts.yml)
+## Docker image pipeline
 
-For each image (CMS, Admin, Kiosk):
+- Build: `project/.github/workflows/build-push-artifacts.yml`
+- Registry: GitHub Container Registry (GHCR)
+- Images built: gateway, admin-dashboard, kiosk-app, cms (Strapi)
 
-1. **Build** — `docker/build-push-action@v5` with GHA cache
-2. **Push** — to `ghcr.io/<owner>/<image>:latest` and `:<sha>`
-3. **Sign** — Cosign with `COSIGN_PRIVATE_KEY` + `COSIGN_PASSWORD`
-4. **SBOM** — `anchore/sbom-action@v0` (CycloneDX JSON format)
-5. **Attest SBOM** — Cosign attestation with `--type cyclonedx`
-6. **SLSA** — `actions/attest-build-provenance@v2` with real image digest
+## Signing and attestation
 
-## Critical implementation details
+- **Cosign**: Image signing with key pair
+  - Secrets: COSIGN_PASSWORD, COSIGN_PRIVATE_KEY (GitHub Actions secrets)
+  - Verify: `cosign verify --key cosign.pub <image>`
+- **SBOM**: Software Bill of Materials generated per build
+- **SLSA Provenance**: Attestation for build reproducibility
 
-### Lowercase owner
+## SHA-pinning policy
 
-Docker/GHCR requires lowercase tags. GitHub `repository_owner` may have uppercase letters.
+- All GitHub Actions must use SHA-pinned references
+- Example: `uses: actions/checkout@sha256:...` (not `@v4`)
+- Enforced in CI lint step
 
-```yaml
-env:
-  OWNER: ${{ github.repository_owner }}
+## Version consistency
 
-steps:
-  - name: Lowercase owner
-    id: owner
-    run: echo "lc=${OWNER,,}" >> $GITHUB_OUTPUT
-```
+- `N8N_VERSION` must match across:
+  - `project/.env`
+  - `project/.github/workflows/ci.yml`
+  - `project/.github/workflows/security-scan.yml`
+- Base images pinned in Dockerfiles and compose
 
-Then use `${{ steps.owner.outputs.lc }}` everywhere instead of `${{ github.repository_owner }}`.
+## Image inventory
 
-### SLSA digest
+| Image | Source | Signed |
+| --- | --- | --- |
+| nginx:1.27-alpine | Docker Hub | N/A (upstream) |
+| n8n:1.80.0 | docker.n8n.io | N/A (upstream) |
+| postgres:15-alpine | Docker Hub | N/A (upstream) |
+| redis:7-alpine | Docker Hub | N/A (upstream) |
+| traefik:v3.6.6 | Docker Hub | N/A (upstream) |
+| ollama:0.6.2 | Docker Hub | N/A (upstream) |
+| gateway (custom) | GHCR | Cosign |
+| admin-dashboard (custom) | GHCR | Cosign |
+| kiosk-app (custom) | GHCR | Cosign |
+| cms (custom) | GHCR | Cosign |
 
-Use the real Docker image digest from the build step output, NOT the git commit SHA:
+## Key files
 
-```yaml
-# CORRECT
-subject-digest: ${{ steps.build-cms.outputs.digest }}
+- `project/.github/workflows/build-push-artifacts.yml`
+- `project/.github/workflows/security-scan.yml` (Trivy)
+- `project/admin-dashboard/Dockerfile`
+- `project/kiosk-app/Dockerfile`
+- `project/inventory-cms/Dockerfile`
 
-# WRONG (git SHA is not an image digest)
-subject-digest: sha256:${{ github.sha }}
-```
+## Required output
 
-### Cosign key management
-
-- Private key: VPS `/opt/resto/shared/cosign/cosign.key` + GitHub secret `COSIGN_PRIVATE_KEY`
-- Password: GitHub secret `COSIGN_PASSWORD`
-- Public key: VPS `/opt/resto/shared/cosign/cosign.pub` + GitHub secret `COSIGN_PUBLIC_KEY`
-- Verify key+password match: `COSIGN_PASSWORD=<pw> cosign public-key --key cosign.key`
-
-### Secret safety
-
-NEVER write secrets to `$GITHUB_OUTPUT`. Reference `${{ secrets.* }}` directly in step `env:` blocks.
-
-## Verification
-
-```bash
-# Verify image signature
-cosign verify --key cosign.pub ghcr.io/<owner>/<image>:<tag>
-
-# Verify SBOM attestation
-cosign verify-attestation --key cosign.pub --type cyclonedx ghcr.io/<owner>/<image>:<tag>
-
-# List GHCR packages
-gh api user/packages/container/<image>/versions
-```
-
-## Key rotation
-
-1. Generate new Cosign keypair on VPS: `cosign generate-key-pair`
-2. Update GitHub secrets: `COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`, `COSIGN_PUBLIC_KEY`
-3. Old images remain verifiable with old public key
-4. New pushes signed with new key
-5. Update VPS: `/opt/resto/shared/cosign/`
-
-## Deliverables
-
-- Build pipeline passes (all 3 images: build, push, sign, SBOM, attest, SLSA)
-- Image signature verifiable with public key
-- No secrets in workflow logs or step outputs
+- Signing verification evidence
+- SBOM generation confirmation
+- SHA-pin audit for GitHub Actions
+- Version consistency check

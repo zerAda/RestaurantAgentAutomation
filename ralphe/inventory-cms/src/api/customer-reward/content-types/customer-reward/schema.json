@@ -1,0 +1,49 @@
+{
+    "kind": "collectionType",
+    "collectionName": "customer_rewards",
+    "info": {
+        "singularName": "customer-reward",
+        "pluralName": "customer-rewards",
+        "displayName": "Customer Reward",
+        "description": "Rewards won by customers from gamification campaigns (fortune wheel spins)"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "customer_phone": {
+            "type": "string",
+            "required": true,
+            "description": "Customer phone number or 'GUEST'"
+        },
+        "reward_type": {
+            "type": "string",
+            "required": true,
+            "description": "Type of reward won (e.g. 'Drink', 'Dessert', 'Lost')"
+        },
+        "coupon_code": {
+            "type": "string",
+            "description": "Generated coupon code (null if 'Lost')"
+        },
+        "is_redeemed": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the coupon has been used"
+        },
+        "redeemed_at": {
+            "type": "datetime",
+            "description": "When the coupon was redeemed"
+        },
+        "campaign": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::reward-campaign.reward-campaign",
+            "description": "Link to the campaign this reward came from"
+        },
+        "restaurant_id": {
+            "type": "string",
+            "description": "Tenant isolation"
+        }
+    }
+}

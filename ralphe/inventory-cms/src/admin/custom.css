@@ -1,0 +1,156 @@
+/* 
+  Quantum Design System injection for Strapi 5 
+  Professional SaaS OS aesthetics
+*/
+
+:root {
+    --brand-primary: #FF3366;
+    --glass-bg: rgba(0, 0, 0, 0.4);
+    --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+/* Base Body Styling - Cinematic Backdrop */
+/* Note: We target the specific Strapi login and admin wrappers */
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    background-color: #000 !important;
+}
+
+/* Custom Scrollbars - Precision Matrix */
+::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--brand-primary);
+}
+
+/* High-Density Tables - Tactical Data */
+div[data-strapi-header] {
+    padding-bottom: 2rem !important;
+}
+
+table {
+    border-collapse: separate !important;
+    border-spacing: 0 4px !important;
+}
+
+table th {
+    text-transform: uppercase !important;
+    font-size: 10px !important;
+    letter-spacing: 0.2em !important;
+    font-weight: 900 !important;
+    color: #666 !important;
+    padding: 12px 20px !important;
+    border: none !important;
+}
+
+table tr {
+    background: rgba(255, 255, 255, 0.02) !important;
+    transition: all 0.3s ease !important;
+}
+
+table tr:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    transform: translateX(4px);
+}
+
+table td {
+    padding: 12px 20px !important;
+    border: none !important;
+    font-size: 13px !important;
+}
+
+/* Sidebar Branding - Immersive Glass */
+nav[aria-label="Side Navigation"] {
+    background: #000 !important;
+    border-right: 1px solid var(--glass-border) !important;
+}
+
+nav a[aria-current="page"] {
+    background: rgba(255, 51, 102, 0.1) !important;
+    border-right: 2px solid var(--brand-primary) !important;
+}
+
+/* Login Screen Modernization - Neural Entrance */
+div[data-testid="login-wrapper"] {
+    background: #000 !important;
+    position: relative;
+    overflow: hidden;
+}
+
+div[data-testid="login-wrapper"]::before {
+    content: '';
+    position: absolute;
+    top: -10%;
+    left: -10%;
+    width: 50%;
+    height: 50%;
+    background: rgba(255, 51, 102, 0.1);
+    filter: blur(120px);
+    border-radius: 50%;
+    z-index: 0;
+}
+
+div[data-testid="login-wrapper"] div[role="main"] {
+    background: rgba(255, 255, 255, 0.02) !important;
+    backdrop-filter: blur(60px) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 32px !important;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8) !important;
+    padding: 60px !important;
+    position: relative;
+    z-index: 1;
+}
+
+div[data-testid="login-wrapper"] h1 {
+    font-weight: 900 !important;
+    letter-spacing: -0.05em !important;
+    font-style: italic !important;
+    text-transform: uppercase !important;
+    font-size: 42px !important;
+}
+
+div[data-testid="login-wrapper"] button[type="submit"] {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 16px !important;
+    border-radius: 16px !important;
+    font-weight: 900 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1em !important;
+    font-style: italic !important;
+    border: none !important;
+    transition: all 0.3s ease !important;
+}
+
+div[data-testid="login-wrapper"] button[type="submit"]:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+}
+
+/* Professional Badge */
+.quantum-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 100px;
+    background: rgba(255, 51, 102, 0.1);
+    border: 1px solid rgba(255, 51, 102, 0.2);
+    color: var(--brand-primary);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+}

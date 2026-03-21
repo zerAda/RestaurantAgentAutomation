@@ -1,0 +1,915 @@
+{
+  "name": "W4.2 - CART & ORDER MANAGER",
+  "active": false,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-2s4zkj",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH current_cart AS (\n  SELECT updated_at FROM public.carts WHERE conversation_key = $1\n),\nup_state AS (\n  INSERT INTO public.conversation_state (conversation_key, tenant_id, restaurant_id, channel, user_id, state_json)\n  VALUES ($1,$2,$3,$4,$5,$6::jsonb)\n  ON CONFLICT (conversation_key) DO UPDATE\n    SET state_json=EXCLUDED.state_json, updated_at=now()\n  RETURNING 1\n),\nup_cart AS (\n  UPDATE public.carts \n  SET cart_json=$7::jsonb, updated_at=now()\n  WHERE conversation_key = $1 \n    AND (updated_at = $10 OR $10 IS NULL) -- FORENSIC-FIX: Optimistic Lock Check\n  RETURNING 1\n),\nins_cart AS (\n  INSERT INTO public.carts (conversation_key, cart_json)\n  SELECT $1, $7::jsonb\n  WHERE NOT EXISTS (SELECT 1 FROM public.carts WHERE conversation_key = $1)\n  RETURNING 1\n),\nup_pref AS (\n  INSERT INTO public.customer_preferences(tenant_id, phone, locale)\n  SELECT $2, $5, $9\n  WHERE COALESCE($8::boolean,false) = true\n    AND $9 IS NOT NULL\n    AND length(trim($9)) > 0\n  ON CONFLICT (tenant_id, phone) DO UPDATE\n    SET locale=EXCLUDED.locale, updated_at=now()\n  RETURNING 1\n)\nSELECT (CASE WHEN EXISTS (SELECT 1 FROM up_cart) OR EXISTS (SELECT 1 FROM ins_cart) THEN 1 ELSE 0 END) AS ok;\n",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey,$json.tenantId,$json.restaurantId,$json.channel,$json.userId, JSON.stringify($json.state), JSON.stringify($json.cart), !!$json.l10nPersistLocale, ($json.state && $json.state.localePref) ? $json.state.localePref : null, $json.state?.last_cart_update]}}"
+        }
+      },
+      "id": "c627f006-396c-4b8c-a695-6bfd1389e349",
+      "name": "C7 - Save State+Cart (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.action === 'CHECKOUT' || $json.intent === 'CHECKOUT'}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "efa1099f-a828-4814-b426-a736c33991da",
+      "name": "C8 - Action CHECKOUT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "DELIVERY_QUOTE"
+            }
+          ]
+        }
+      },
+      "id": "C8A_DELIVERY_QUOTE",
+      "name": "C8A - Action DELIVERY_QUOTE?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "ADDRESS_AMBIGUOUS"
+            }
+          ]
+        }
+      },
+      "id": "C8B_ADDRESS_AMBIGUOUS",
+      "name": "C8B - Action ADDRESS_AMBIGUOUS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM public.delivery_quote($1::uuid,$2::text,$3::text,$4::int);",
+        "additionalFields": {
+          "queryParams": "={{[$json.restaurantId, $json.state.delivery.wilaya, $json.state.delivery.commune, ($json.state.lastTotalCents || 0)]}}"
+        }
+      },
+      "id": "DQ1_DELIVERY_QUOTE_DB",
+      "name": "DQ1 - Delivery Quote (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ ($json.config?.delivery_slots_enabled ?? ($env.DELIVERY_SLOTS_ENABLED === 'true')) }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "DQ2_SLOTS_ENABLED",
+      "name": "DQ2 - Slots enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.slot_id, to_char(s.start_time,'HH24:MI') AS start_time, to_char(s.end_time,'HH24:MI') AS end_time, s.capacity,\n       GREATEST(s.capacity - COALESCE(r.cnt,0),0) AS remaining\nFROM public.delivery_time_slots s\nLEFT JOIN (SELECT slot_id, count(*) cnt FROM public.delivery_slot_reservations GROUP BY slot_id) r ON r.slot_id=s.slot_id\nWHERE s.restaurant_id=$1::uuid\n  AND s.day_of_week = EXTRACT(DOW FROM (now() at time zone 'Europe/Paris'))::int\n  AND s.is_active=true\nORDER BY s.start_time ASC\nLIMIT 6;",
+        "additionalFields": {
+          "queryParams": "={{[$json.restaurantId]}}"
+        }
+      },
+      "id": "DQ3_LIST_SLOTS_DB",
+      "name": "DQ3 - List Slots (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst row = ($items(\"DQ1 - Delivery Quote (DB)\")[0]?.json || {});\nconst strictAr = (($env.STRICT_AR_OUT || 'true').toString().toLowerCase() === 'true');\nconst msgIn = ((e.message?.text || '') + ' ' + (e.userText || '')).toString();\nconst hasArabic = /[؀-ۿݐ-ݿࢠ-ࣿ]/.test(msgIn);\nconst locHint = (e.debug?.responseLocale || e.state?.localePref || e.state?.locale || 'fr').toString().toLowerCase();\nconst locale = (strictAr && hasArabic) ? 'ar' : (locHint.startsWith('ar') ? 'ar' : 'fr');\n\nconst ok = (row.reason === 'OK');\nif (!e.state) e.state = {};\nif (!e.state.delivery) e.state.delivery = {};\ne.state.delivery.quote_shown = true;\n\nfunction money(cents) {\n  const n = Number(cents || 0);\n  return (n/100).toFixed(2);\n}\n\nlet reply = '';\nlet buttons = [];\n\nif (!ok) {\n  const code = (row.reason || 'DELIVERY_ZONE_NOT_FOUND').toString();\n  if (locale === 'ar') {\n    if (code === 'DELIVERY_ZONE_NOT_FOUND') reply = '🚫 التوصيل غير متوفر لهذه المنطقة. أرسل: الولاية / البلدية / العنوان / الهاتف.';\n    else if (code === 'DELIVERY_ZONE_INACTIVE') reply = '🚫 التوصيل غير متوفر حالياً لهذه المنطقة. اختر: في المطعم أو للطلب الخارجي.';\n    else if (code === 'DELIVERY_MIN_ORDER') reply = `🛵 الحد الأدنى للتوصيل هو ${money(row.min_order_cents)}. أضف للطلب أو غيّر طريقة الخدمة.`;\n    else reply = `🚫 التوصيل غير متوفر (${code}). أعد إرسال: الولاية / البلدية / العنوان / الهاتف.`;\n    buttons = [\n      {id:'MODE_A_EMPORTER',title:'🛍️ للطلب الخارجي'},\n      {id:'MODE_SUR_PLACE',title:'🍽️ في المطعم'},\n      {id:'CONFIRM_NO',title:'✏️ تعديل'}\n    ];\n  } else {\n    if (code === 'DELIVERY_ZONE_NOT_FOUND') reply = '🚫 Livraison indisponible pour cette zone. Envoie : Wilaya / Commune / Adresse / Tel.';\n    else if (code === 'DELIVERY_ZONE_INACTIVE') reply = '🚫 Livraison indisponible sur cette zone (inactive). Choisis : sur place ou à emporter.';\n    else if (code === 'DELIVERY_MIN_ORDER') reply = `🛵 Minimum livraison : ${money(row.min_order_cents)}. Ajoute au panier ou change de mode.`;\n    else reply = `🚫 Livraison indisponible (${code}). Envoie : Wilaya / Commune / Adresse / Tel.`;\n    buttons = [\n      {id:'MODE_A_EMPORTER',title:'🛍️ À emporter'},\n      {id:'MODE_SUR_PLACE',title:'🍽️ Sur place'},\n      {id:'CONFIRM_NO',title:'✏️ Modifier'}\n    ];\n  }\n} else {\n  const fee = Number(row.final_fee_cents||0);\n  const minO = Number(row.min_order_cents||0);\n  const etaMin = row.eta_min ?? '';\n  const etaMax = row.eta_max ?? '';\n  const feeTxt = (fee === 0)\n    ? (locale === 'ar' ? 'مجاني' : 'Gratuit')\n    : money(fee);\n\n  if (locale === 'ar') {\n    reply = `🚚 التوصيل متاح ✅\\nرسوم التوصيل: ${feeTxt}\\nالحد الأدنى: ${money(minO)}\\nالوقت المتوقع: ${etaMin}-${etaMax} دقيقة`;\n  } else {\n    reply = `🚚 Livraison OK ✅\\nFrais : ${feeTxt}\\nMin commande : ${money(minO)}\\nETA : ${etaMin}-${etaMax} min`;\n  }\n\n  const slotsEnabled = ($json.config?.delivery_slots_enabled ?? ($env.DELIVERY_SLOTS_ENABLED === 'true'));\n  if (slotsEnabled) {\n    const slots = $items(\"DQ3 - List Slots (DB)\").map(i => i.json).filter(s => Number(s.remaining||0)>0);\n    if (slots.length) {\n      e.state.stage = 'DELIVERY_SLOT_PICK';\n      reply += (locale === 'ar') ? `\\n\\nاختر وقت التوصيل:` : `\\n\\nChoisis un créneau :`;\n      buttons = slots.slice(0,4).map(s => ({\n        id:`SLOT_${s.slot_id}`,\n        title:`🕒 ${s.start_time}-${s.end_time} (${s.remaining})`\n      }));\n      buttons.push({id:'CONFIRM_NO',title: (locale==='ar' ? '✏️ تعديل' : '✏️ Modifier')});\n    } else {\n      reply += (locale === 'ar') ? `\\n\\nلا توجد أوقات متاحة اليوم.` : `\\n\\nPlus de créneaux disponibles aujourd’hui.`;\n      buttons = [{id:'CHECKOUT',title:(locale==='ar'?'✅ تأكيد':'✅ Valider')},{id:'CONFIRM_NO',title:(locale==='ar'?'✏️ تعديل':'✏️ Modifier')}];\n    }\n  } else {\n    buttons = [{id:'CHECKOUT',title:(locale==='ar'?'✅ تأكيد':'✅ Valider')},{id:'CONFIRM_NO',title:(locale==='ar'?'✏️ تعديل':'✏️ Modifier')}];\n  }\n}\n\ne.response = {replyText: reply, buttons};\ne.debug = {...(e.debug||{}), deliveryQuoteReason: (row.reason||null), responseLocale: locale};\nreturn [{json: e}];"
+      },
+      "id": "DQ4_BUILD_QUOTE_RESP",
+      "name": "DQ4 - Build Delivery Quote Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH up_state AS (\n      INSERT INTO conversation_state (conversation_key, tenant_id, restaurant_id, channel, user_id, state_json)\n      VALUES ($1,$2,$3,$4,$5,$6::jsonb)\n      ON CONFLICT (conversation_key) DO UPDATE\n        SET state_json=EXCLUDED.state_json, updated_at=now()\n      RETURNING 1\n    ),\n    up_cart AS (\n      INSERT INTO carts (conversation_key, cart_json)\n      VALUES ($1, $7::jsonb)\n      ON CONFLICT (conversation_key) DO UPDATE\n        SET cart_json=EXCLUDED.cart_json, updated_at=now()\n      RETURNING 1\n    )\n    SELECT 1 AS ok;",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey,$json.tenantId,$json.restaurantId,$json.channel,$json.userId, JSON.stringify($json.state), JSON.stringify($json.cart)]}}"
+        }
+      },
+      "id": "DQ5_SAVE_STATE",
+      "name": "DQ5 - Save State (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        2280,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.address_clarification_requests (order_id, conversation_key, missing_fields, attempts, status)\nVALUES (NULL, $1::text, to_jsonb(string_to_array($2::text,',')), 1, 'PENDING')\nON CONFLICT DO NOTHING;",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey, ($json.missing_fields || []).join(',')]}}"
+        }
+      },
+      "id": "CA1_UPSERT_CLARIFY",
+      "name": "CA1 - Upsert Clarification (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.security_events (tenant_id, restaurant_id, conversation_key, user_id, event_type, details) VALUES ($1::uuid,$2::uuid,$3::text,$4::text,'ADDRESS_AMBIGUOUS', jsonb_build_object('missing_fields',$5::jsonb));",
+        "additionalFields": {
+          "queryParams": "={{[$json.tenantId, $json.restaurantId, $json.conversationKey, $json.userId, JSON.stringify($json.missing_fields || [])]}}"
+        }
+      },
+      "id": "CA2_SECURITY_EVENT",
+      "name": "CA2 - Log ADDRESS_AMBIGUOUS (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM create_order($1);",
+        "additionalFields": {
+          "queryParams": "={{[$json.conversationKey]}}"
+        }
+      },
+      "id": "0863c74e-f55c-4de1-9ea3-d38d7d392fda",
+      "name": "C9 - Create Order (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst row = $json; // create_order returns columns on current item\nconst orderId = row.order_id || row.orderid || row.id;\nconst total = Number(row.total_cents || 0);\nconst summary = row.summary || '';\n\nconst replyText = `✅ Commande confirmée !\\nID: ${orderId}\\n${summary}\\nTotal: ${(total/100).toFixed(2)}€\\nMerci 🙏`;\n\nreturn [{json:{\n  ...e,\n  response: {\n    replyText,\n    buttons: [{id:'FEEDBACK_LATER',title:'⭐ Donner un avis'}]\n  },\n  actions: { sendToKitchen: true },\n  debug: { ...(e.debug||{}), orderId, totalCents: total }\n}}];"
+      },
+      "id": "965859ef-70ec-4350-9883-29de839728e1",
+      "name": "C10 - Build Order Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_INVENTORY_SYNC",
+        "mode": "invokeAnotherWorkflow"
+      },
+      "id": "INV_SYNC_TRIGGER",
+      "name": "Trigger Inventory Sync",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        60,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_TRACKING_FUNNEL",
+        "mode": "fireAndForget",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "userId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "eventType",
+              "value": "order_confirmed"
+            },
+            {
+              "name": "payload",
+              "value": "={{JSON.stringify({ order_id: $json.debug?.orderId, total_cents: $json.debug?.totalCents, referral: $json.inbound_envelope?.meta?.referral })}}"
+            }
+          ]
+        }
+      },
+      "id": "track-order-confirmed",
+      "name": "Track Order Confirmed",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/upsell",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $json.userId, cart: $json.state?.cart || [], session_id: $json.conversationKey }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "UPSELL_TRIGGER",
+      "name": "Trigger Upsell Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        260,
+        -300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nconst resp = e.response || { replyText: 'OK', buttons: [] };\n\nconst darijaPatterns = [\n  'chno kayn','chnou kayen','wach kayn','wesh kayn','ash kayn','fin menu',\n  'nchouf','warini','bghit','wakha','wah','iyeh','mzyan','zwina',\n  'kml','kammel','kmel','ncommandi','sift','salam','slm','labas',\n  'jib','khassni','haja','makla','ftour','ghda','asha','atini','zid'\n];\nconst out = {\n  channel: e.channel,\n  tenantId: e.tenantId || '',\n  restaurantId: e.restaurantId,\n  conversationKey: e.conversationKey || '',\n  userId: e.userId,\n  orderId: e.debug?.orderId || null,\n  replyText: resp.replyText || '',\n  buttons: Array.isArray(resp.buttons) ? resp.buttons : [],\n  attachments: Array.isArray(resp.attachments) ? resp.attachments : [],\n  actions: e.actions || { sendToKitchen:false },\n  debug: {\n    traceId: e.metadata?.msgId || '',\n    intent: e.intent || '',\n    riskFlags: e.debug?.riskFlags || []\n  }\n};\nreturn [{json: out}];\n"
+      },
+      "id": "561fff75-d491-4d33-8295-4d8e5b56425c",
+      "name": "C11 - Finalize Response (default)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const crypto = require('crypto');\nconst out = $json;\n\nconst ch = (out.channel || '').toString();\nconst orderId = out.orderId ? out.orderId.toString() : '';\nconst traceId = (out.debug?.traceId || '').toString();\n\nconst dedupeKey = orderId\n  ? `order:${orderId}:${ch}:reply`\n  : `msg:${ch}:${traceId || crypto.randomUUID()}`;\n\nconst payload = {\n  channel: ch,\n  to: out.userId,\n  restaurantId: out.restaurantId,\n  text: out.replyText,\n  buttons: out.buttons || [],\n  attachments: out.attachments || [],\n  meta: { intent: out.debug?.intent || '' }\n};\n\nreturn [{\n  json: {\n    ...out,\n    outbox_dedupe_key: dedupeKey,\n    outbox_template: 'reply',\n    outbox_payload: payload\n  }\n}];\n"
+      },
+      "id": "42e4a69d-d415-45d9-81e3-23c68d422d9b",
+      "name": "C12 - Enqueue Outbox (P0)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO outbound_messages(dedupe_key, tenant_id, restaurant_id, conversation_key, channel, user_id, order_id, template, payload_json, status, next_retry_at, updated_at)\nVALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING', now(), now())\nON CONFLICT (dedupe_key) DO UPDATE\n  SET payload_json=EXCLUDED.payload_json,\n      status = CASE WHEN outbound_messages.status='SENT' THEN outbound_messages.status ELSE 'PENDING' END,\n      updated_at=now()\nRETURNING outbound_id, status;",
+        "additionalFields": {
+          "queryParams": "={{[$json.outbox_dedupe_key, $json.tenantId, $json.restaurantId, $json.conversationKey, $json.channel, $json.userId, $json.orderId, $json.outbox_template, $json.outbox_payload]}}"
+        }
+      },
+      "id": "4c47eb41-69d2-48e4-a924-0f95623bbd65",
+      "name": "C12b - Outbox Enqueue (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const e = $json;\nreturn [{\n  json: {\n    ...e,\n    _send: {\n      ok: true,\n      queued: true,\n      outboundId: e.outbound_id || e.outboundid || e.outbound_id,\n      status: e.status || 'PENDING'\n    }\n  }\n}];"
+      },
+      "id": "91548ca5-94ad-4c09-8dc5-a2c6208636cd",
+      "name": "C12c - Outbox Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/kitchen-print",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_id: $json.state?.lastOrderId || $json.debug?.orderId || $json.order_id || $json.orderid || $node['C9 - Create Order (DB)'].json.order_id }) }}",
+        "options": {
+          "timeout": 3000
+        }
+      },
+      "id": "CLOUD_PRINT_TRIGGER",
+      "name": "Trigger Cloud Print",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        460,
+        -480
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL || 'http://supabase:8000' }}/rest/v1/kds_tickets",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_id: $node['C9 - Create Order (DB)'].json.order_id, status: 'PENDING', payload: $node['C9 - Create Order (DB)'].json.summary, total_cents: $node['C9 - Create Order (DB)'].json.total_cents }) }}",
+        "options": {
+          "timeout": 3000
+        }
+      },
+      "id": "KDS_SYNC_TRIGGER",
+      "name": "Sync to KDS (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        460,
+        -660
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || 'http://n8n:5678' }}/webhook/kitchen-print",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_id: $json.state?.lastOrderId || $json.debug?.orderId || $json.order_id || $json.orderid || $node['C9 - Create Order (DB)'].json.order_id }) }}",
+        "options": {
+          "timeout": 3000
+        }
+      },
+      "id": "CLOUD_PRINT_TRIGGER",
+      "name": "Trigger Cloud Print",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        460,
+        -480
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL || 'http://supabase:8000' }}/rest/v1/kds_tickets",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_id: $node['C9 - Create Order (DB)'].json.order_id, status: 'PENDING', payload: $node['C9 - Create Order (DB)'].json.summary, total_cents: $node['C9 - Create Order (DB)'].json.total_cents }) }}",
+        "options": {
+          "timeout": 3000
+        }
+      },
+      "id": "KDS_SYNC_TRIGGER",
+      "name": "Sync to KDS (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        460,
+        -660
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "workflowId": "W5_OUT_WA",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "userId",
+              "value": "={{ $json.config?.admin_phone_number || $env.ADMIN_PHONE_NUMBER }}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{ $json.restaurantId }}"
+            },
+            {
+              "name": "replyText",
+              "value": "={{ `🔔 NOUVELLE COMMANDE #${$node['C9 - Create Order (DB)'].json.order_id}\\n💰 Total: ${($node['C9 - Create Order (DB)'].json.total_cents/100).toFixed(2)}€\\n📍 Client: ${$json.userId}\\n🗺️ Zone: ${$json.state?.serviceMode}` }}"
+            }
+          ]
+        }
+      },
+      "id": "MANAGER_ALERT_TRIGGER",
+      "name": "Trigger Manager Alert",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -820
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT link_customer_identity($1, $2, $3, $4);",
+        "additionalFields": {
+          "queryParams": "={{[$json.state.restaurantId || $json.restaurantId || $json.restaurant_id || $node['C9 - Create Order (DB)'].json.restaurant_id, $json.channel || $json.state.channel, $json.userId || $json.state.userId || $json.state.user_id, $json.state.phone]}}"
+        }
+      },
+      "id": "link-identity-db-node",
+      "name": "Link Identity (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        200,
+        -100
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "workflowId": "W_TRACKING_FUNNEL",
+        "mode": "fireAndForget",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "userId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "eventType",
+              "value": "item_added"
+            },
+            {
+              "name": "payload",
+              "value": "={{JSON.stringify({ cart: $json.cart, last_item: $json.cart?.items?.[$json.cart?.items?.length - 1], referral: $json.inbound_envelope?.meta?.referral })}}"
+            }
+          ]
+        }
+      },
+      "id": "track-item-added",
+      "name": "Track Item Added",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_TRACKING_FUNNEL",
+        "mode": "fireAndForget",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "values": [
+            {
+              "name": "tenantId",
+              "value": "={{$json.tenantId}}"
+            },
+            {
+              "name": "restaurantId",
+              "value": "={{$json.restaurantId}}"
+            },
+            {
+              "name": "userId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "eventType",
+              "value": "cart_abandonment"
+            },
+            {
+              "name": "payload",
+              "value": "={{JSON.stringify({ cart: $json.cart, stage: $json.state?.stage, referral: $json.inbound_envelope?.meta?.referral })}}"
+            }
+          ]
+        }
+      },
+      "id": "track-abandonment",
+      "name": "Track Abandonment",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        60,
+        180
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "C7 - Save State+Cart (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C7 - Save State+Cart (DB)": {
+      "main": [
+        [
+          {
+            "node": "C8A - Action DELIVERY_QUOTE?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C8 - Action CHECKOUT?": {
+      "main": [
+        [
+          {
+            "node": "C9 - Create Order (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "track-item-added",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "track-abandonment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C8A - Action DELIVERY_QUOTE?": {
+      "main": [
+        [
+          {
+            "node": "DQ1 - Delivery Quote (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C8B - Action ADDRESS_AMBIGUOUS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C8B - Action ADDRESS_AMBIGUOUS?": {
+      "main": [
+        [
+          {
+            "node": "CA1 - Upsert Clarification (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C8 - Action CHECKOUT?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ1 - Delivery Quote (DB)": {
+      "main": [
+        [
+          {
+            "node": "DQ2 - Slots enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ2 - Slots enabled?": {
+      "main": [
+        [
+          {
+            "node": "DQ3 - List Slots (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DQ4 - Build Delivery Quote Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ3 - List Slots (DB)": {
+      "main": [
+        [
+          {
+            "node": "DQ4 - Build Delivery Quote Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ4 - Build Delivery Quote Response": {
+      "main": [
+        [
+          {
+            "node": "DQ5 - Save State (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DQ5 - Save State (DB)": {
+      "main": [
+        [
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CA1 - Upsert Clarification (DB)": {
+      "main": [
+        [
+          {
+            "node": "CA2 - Log ADDRESS_AMBIGUOUS (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CA2 - Log ADDRESS_AMBIGUOUS (DB)": {
+      "main": [
+        [
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C9 - Create Order (DB)": {
+      "main": [
+        [
+          {
+            "node": "Link Identity (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Identity (DB)": {
+      "main": [
+        [
+          {
+            "node": "C10 - Build Order Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trigger Inventory Sync",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trigger Cloud Print",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sync to KDS (Supabase)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trigger Manager Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C10 - Build Order Response": {
+      "main": [
+        [
+          {
+            "node": "track-order-confirmed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "C11 - Finalize Response (default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C11 - Finalize Response (default)": {
+      "main": [
+        [
+          {
+            "node": "C12 - Enqueue Outbox (P0)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C12 - Enqueue Outbox (P0)": {
+      "main": [
+        [
+          {
+            "node": "C12b - Outbox Enqueue (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C12b - Outbox Enqueue (DB)": {
+      "main": [
+        [
+          {
+            "node": "C12c - Outbox Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "collectionType",
+  "collectionName": "delivery_zones",
+  "info": {
+    "singularName": "delivery-zone",
+    "pluralName": "delivery-zones",
+    "displayName": "Delivery Zone"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "polygon_kml": {
+      "type": "text"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "price_cents": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}

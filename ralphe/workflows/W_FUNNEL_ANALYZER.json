@@ -1,0 +1,108 @@
+{
+  "name": "W_FUNNEL_ANALYZER",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "trigger-daily",
+      "name": "F1 — Trigger Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.STRAPI_INTERNAL_URL}}/api/funnel-events?pagination[limit]=1000&sort=createdAt:desc",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.STRAPI_API_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-events",
+      "name": "F2 — Fetch Latest Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const events = $input.item.json.data || [];\n\nlet funnel = {\n  page_view: 0,\n  click: 0,\n  add_to_cart: 0,\n  checkout: 0,\n  purchase: 0\n};\n\nfor (const e of events) {\n  const type = e.attributes.event_type;\n  if (funnel[type] !== undefined) funnel[type]++;\n}\n\n// Calculate conversion heat (Predictive metric)\nconst totalViews = funnel.page_view || 1;\nconst heatScore = ((funnel.purchase * 5 + funnel.add_to_cart * 2 + funnel.click) / totalViews * 10).toFixed(2);\n\nreturn [{\n  json: {\n    raw: funnel,\n    metrics: {\n      ctr: (funnel.click / totalViews * 100).toFixed(1),\n      cartRate: (funnel.add_to_cart / (funnel.click || 1) * 100).toFixed(1),\n      conversionRate: (funnel.purchase / totalViews * 100).toFixed(2),\n      funnel_heat: heatScore\n    }\n  }\n}];"
+      },
+      "id": "predictive-logic",
+      "name": "F3 — Predictive Logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "model": "={{$env.LLM_MODEL}}",
+        "prompt": {
+          "parameters": [
+            {
+              "name": "system",
+              "value": "You are the Ralphé Predictive AI. Analyze this funnel and forecast revenue potential for the next 48h.\n\nData: {{JSON.stringify($json)}}\n\nOutput format: JSON only\n{\n  \"forecast\": \"string\",\n  \"revenue_potential\": \"high\" | \"medium\" | \"low\",\n  \"critical_fix\": \"string\"\n}"
+            }
+          ]
+        }
+      },
+      "id": "ollama-predictive",
+      "name": "F4 — Predictive AI",
+      "type": "n8n-nodes-base.ollamaChat",
+      "typeVersion": 1,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.STRAPI_INTERNAL_URL}}/api/ai-learnings",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={\n  \"insight\": \"Predictive Analytics \" + new Date().toISOString(),\n  \"recommendations\": \"{{$json.forecast}}\",\n  \"metrics_json\": {{$node[\"F3 — Predictive Logic\"].json}},\n  \"source\": \"REVOLUTION_ENGINE\",\n  \"period\": \"48h_FORECAST\"\n}"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.STRAPI_API_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "save-learning",
+      "name": "F5 — Save Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 0]
+    }
+  ],
+  "connections": {
+    "trigger-daily": { "main": [[{ "node": "fetch-events", "type": "main", "index": 0 }]] },
+    "fetch-events": { "main": [[{ "node": "predictive-logic", "type": "main", "index": 0 }]] },
+    "predictive-logic": { "main": [[{ "node": "ollama-predictive", "type": "main", "index": 0 }]] },
+    "ollama-predictive": { "main": [[{ "node": "save-learning", "type": "main", "index": 0 }]] }
+  }
+}

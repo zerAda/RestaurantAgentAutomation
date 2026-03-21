@@ -14,10 +14,14 @@ on:
     - cron: '0 8 * * 1'  # Monday 8am UTC
   pull_request:
     paths:
-      - 'config/.env.example'
+      - 'ralphe/config/.env.example'
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    working-directory: ralphe
 
 concurrency:
   group: env-sync

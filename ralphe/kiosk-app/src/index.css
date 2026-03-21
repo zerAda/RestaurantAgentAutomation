@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: oklch(0.65 0.24 350);
+  /* #FF3366 */
+  --color-brand-accent: oklch(0.75 0.15 250);
+  --color-success: oklch(0.72 0.16 154);
+  --color-warning: oklch(0.84 0.18 77);
+  --color-error: oklch(0.62 0.22 28);
+
+  --shadow-quantum-glass: 0 20px 50px rgba(0,0,0,0.5);
+  --shadow-quantum-btn: 0 20px 40px rgba(255,255,255,0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 antialiased overflow-hidden select-none touch-none;
+    font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  }
+
+  /* Cinematic Quantum Backdrop */
+  .quantum-backdrop {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+}
+
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+  opacity: 0.12;
+  filter: contrast(150%) brightness(150%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@layer components {
+
+  /* Quantum Glass System (Kiosk Optimized) */
+  .quantum-glass {
+    @apply bg-white/[0.03] backdrop-blur-[40px] border border-white/10 shadow-quantum-glass;
+  }
+
+  .quantum-card {
+    @apply bg-white/[0.02] backdrop-blur-3xl border border-white/5 rounded-[2.5rem] overflow-hidden transition-all duration-500 hover:bg-white/[0.04] hover:border-white/10 shadow-2xl;
+  }
+
+  /* Kiosk Exclusive - Cinematic Backgrounds */
+  .cinematic-mesh {
+    background: radial-gradient(circle at 0% 0%, var(--color-brand-primary) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, #4F46E5 0%, transparent 50%),
+      #000;
+    opacity: 0.15;
+    filter: blur(140px);
+  }
+
+  /* Interaction Elements */
+  .btn-quantum {
+    @apply px-10 py-5 rounded-[2rem] bg-white text-black font-black text-xl tracking-tight shadow-quantum-btn active:scale-90 transition-all hover:bg-zinc-100 flex items-center justify-center gap-4 uppercase italic;
+  }
+
+  .btn-quantum-outline {
+    @apply px-10 py-5 rounded-[2rem] bg-white/5 border-2 border-white/10 text-white font-black text-xl tracking-tight backdrop-blur-xl active:scale-90 transition-all hover:bg-white/10 flex items-center justify-center gap-4 uppercase italic;
+  }
+
+  /* Scrims & Overlays */
+  .scrim-bottom {
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 50%, transparent 100%);
+  }
+
+  .scrim-top {
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 4s ease-in-out infinite;
+  }
+
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+  }
+}

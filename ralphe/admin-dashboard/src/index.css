@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: oklch(0.58 0.19 255);
+  /* Electric Indigo */
+  --color-brand-secondary: oklch(0.7 0.2 290);
+  /* Neon Purple */
+  --color-success: oklch(0.8 0.2 150);
+  /* Emerald Glow */
+  --color-warning: oklch(0.8 0.15 80);
+  /* Amber Soft */
+  --color-error: oklch(0.6 0.2 25);
+  /* Vivid Crimson */
+
+  --radius-quantum: 24px;
+  --radius-quantum-sm: 12px;
+
+  --shadow-quantum: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --shadow-quantum-glow: 0 0 20px rgba(99, 102, 241, 0.2);
+}
+
+@layer base {
+  body {
+    @apply bg-black text-zinc-100 antialiased selection:bg-brand-primary/30 overflow-x-hidden;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+  }
+
+  /* Cinematic Quantum Backdrop */
+  .quantum-backdrop {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .quantum-glow-halo {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(160px);
+    opacity: 0.4;
+    animation: pulse-subtle 8s ease-in-out infinite;
+  }
+
+  .grain-overlay {
+    position: fixed;
+    inset: 0;
+    background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+    opacity: 0.12;
+    filter: contrast(150%) brightness(150%);
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+@keyframes pulse-subtle {
+
+  0%,
+  100% {
+    transform: scale(1) translate(0, 0);
+    opacity: 0.3;
+  }
+
+  50% {
+    transform: scale(1.1) translate(20px, -20px);
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 10s ease-in-out infinite;
+}
+
+@layer components {
+  .quantum-card {
+    @apply bg-zinc-900/40 backdrop-blur-xl border border-white/10 shadow-quantum transition-all duration-500 rounded-quantum hover:border-white/20;
+  }
+
+  .quantum-glass {
+    @apply bg-white/5 backdrop-blur-2xl border border-white/10 shadow-quantum;
+  }
+
+  .nav-item-active {
+    @apply bg-brand-primary/20 text-white border border-brand-primary/40 shadow-quantum-glow font-semibold;
+  }
+
+  .btn-quantum {
+    @apply px-5 py-2.5 rounded-quantum-sm bg-brand-primary hover:bg-brand-primary/90 text-white font-bold transition-all hover:scale-[1.03] active:scale-[0.97] shadow-quantum-glow;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-secondary;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full animate-pulse;
+  }
+}
+
+/* ── Custom Animations ── */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.5);
+  }
+}
+
+.quantum-glow {
+  animation: glow-pulse 3s infinite;
+}
+
+/* ── Scrollbar Custom ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+}

@@ -8,60 +8,63 @@ when_to_use:
   - Setting up alerting
 ---
 
-# Observability & Health
+# Observability (RESTO BOT)
 
-## Health infrastructure
+## Health endpoints
 
-| Component | Health mechanism |
-|-----------|-----------------|
-| n8n | `W16_HEALTHZ.json` (webhook endpoint) |
-| Monitoring | `W17_HEALTH_MONITOR.json` (active checks) |
-| Deep check | `scripts/deep-health-check.sh` (all services) |
-| CI health | `.github/workflows/health-monitor.yml` (scheduled) |
-| CI action | `.github/actions/health-check/action.yml` (retry + response time) |
+| Service | Endpoint | Check |
+| --- | --- | --- |
+| gateway | `http://127.0.0.1:8080/healthz` | wget |
+| n8n-main | `http://127.0.0.1:5678/healthz` | wget |
+| n8n-worker | `pgrep -f 'n8n worker'` | process check |
+| postgres | `pg_isready -U n8n -d n8n` | pg_isready |
+| redis | `redis-cli ping` | redis-cli |
+| cms (Strapi) | `http://127.0.0.1:1337/_health` | wget |
+| admin-dashboard | `http://127.0.0.1:80/` | wget |
+| kiosk-app | `http://127.0.0.1:80/` | wget |
 
-## Logging requirements
+## Logging configuration
 
-- Structured JSON logs with: timestamp, level, service, correlation_id, route, status, latency_ms
-- Correlation ID: propagated from gateway (`X-Request-ID`) through workflows to DB writes
-- Token/PII redaction in all log outputs
-- Nginx access log: custom format in `infra/gateway/nginx.conf` (verify no token logging)
+All services use `json-file` driver with rotation:
+- Critical services (n8n, postgres, redis, gateway, cms): max-size=10m, max-file=5
+- Frontend (admin-dashboard, kiosk-app): max-size=5m, max-file=3
 
-## Monitoring endpoints
+## Log masking
 
-```bash
-# Gateway health
-curl https://api.<domain>/v1/health
+`LOG_MASK_PATTERNS=token,password,secret,api_key,authorization,x-api-token,x-webhook-token,bearer`
 
-# n8n healthz workflow
-curl https://api.<domain>/webhook/healthz
+## Structured logging schema
 
-# Deep health (all services)
-scripts/deep-health-check.sh
-```
+Target fields for every log entry:
+- timestamp, level, service, correlation_id
+- route, status, latency_ms, error_code (where applicable)
 
-## Alert hooks
+## Correlation ID propagation
 
-- Slack: via `.github/actions/notify/` composite action (Block Kit format)
-- Discord: via same action (embed format, optional)
-- Configured per-workflow with `webhook-url` and `discord-webhook-url` inputs
+Flow: gateway (X-Request-ID) -> n8n workflows -> DB writes
 
-## DORA metrics
+## SLO monitoring (n8n env vars)
 
-- Tracked by `scripts/dora_metrics.sh`
-- Dashboard: `docs/DORA_DASHBOARD.md`
-- Metrics: deployment frequency, lead time, MTTR, change failure rate
+- `SLO_WINDOW_MIN=15` (sliding window)
+- `SLO_INBOUND_TO_OUTBOX_P95_MS=2000` (2s target)
+- `SLO_OUTBOX_PENDING_AGE_MAX_SEC=600` (10min max pending)
+- `SLO_DLQ_RATE_MAX=0.05` (5% max failure rate)
+- `SLO_DLQ_COUNT_MAX=5` (absolute DLQ cap)
 
-## Incident triage (first 10 minutes)
+## Alert hook
 
-1. `curl -s https://api.<domain>/v1/health` — is API responding?
-2. `ssh deploy@<vps> docker ps --format "table {{.Names}}\t{{.Status}}"` — containers up?
-3. `ssh deploy@<vps> docker logs --tail 50 gateway` — gateway errors?
-4. `ssh deploy@<vps> docker logs --tail 50 n8n-main` — n8n errors?
-5. `ssh deploy@<vps> redis-cli -a <pw> LLEN bull:default:wait` — queue depth?
+`ALERT_WEBHOOK_URL` env var (can point to Slack, Discord, or monitoring webhook)
 
-## Deliverables
+## Key files
 
-- Health endpoints verified (expected output documented)
-- Log redaction confirmed (no secrets/PII in logs)
-- Alert hook tested (notification received)
+- `project/docker-compose.hostinger.prod.yml` (healthchecks, logging config)
+- `project/.env` (SLO_*, ALERT_*, LOG_MASK_PATTERNS)
+- `project/infra/gateway/nginx.conf` (access log format, redaction)
+- `project/scripts/smoke_security.sh` (health check validation)
+
+## Required output
+
+- Health endpoints list + expected outputs
+- Logging schema documented
+- Smoke tests extended to include health checks
+- Incident "what to look at first" checklist

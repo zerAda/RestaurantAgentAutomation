@@ -8,7 +8,7 @@ name: Build and Push Artifacts (GHCR)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 env:
@@ -36,9 +36,9 @@ jobs:
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
           echo "SHA: ${{ github.sha }}"
-          # Ensure we're on main branch or workflow_dispatch
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "::error::Build triggered from non-main branch: ${{ github.ref }}"
+          # Ensure we're on master branch or workflow_dispatch
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            echo "::error::Build triggered from non-master branch: ${{ github.ref }}"
             exit 1
           fi
           # Validate SHA format
@@ -61,14 +61,14 @@ jobs:
       matrix:
         image:
           - name: cms
-            context: ./inventory-cms
-            dockerfile: ./inventory-cms/Dockerfile
+            context: ./ralphe/inventory-cms
+            dockerfile: ./ralphe/inventory-cms/Dockerfile
           - name: admin
-            context: .
-            dockerfile: ./admin-dashboard/Dockerfile
+            context: ./ralphe
+            dockerfile: ./ralphe/admin-dashboard/Dockerfile
           - name: kiosk
-            context: .
-            dockerfile: ./kiosk-app/Dockerfile
+            context: ./ralphe
+            dockerfile: ./ralphe/kiosk-app/Dockerfile
     steps:
       - name: Lowercase owner
         id: owner

@@ -1,0 +1,54 @@
+{
+  "mcpServers": {
+    "ruflo": {
+      "command": "ruflo",
+      "args": []
+    },
+    "n8n-mcp": {
+      "command": "npx",
+      "args": [
+        "n8n-mcp"
+      ],
+      "env": {
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true",
+        "N8N_API_URL": "https://n8n.srv1258231.hstgr.cloud"
+      }
+    },
+    "strapi-mcp": {
+      "command": "npx",
+      "args": [
+        "strapi-mcp"
+      ],
+      "env": {
+        "STRAPI_URL": "https://cms.srv1258231.hstgr.cloud",
+        "STRAPI_EMAIL": "adel.zeriri@gmail.com",
+        "STRAPI_PASSWORD": "RestoBot2026!"
+      }
+    },
+    "postgres-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://n8n:n8npass@72.60.190.192:5432/n8n"
+      ]
+    },
+    "fetch-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-fetch"
+      ]
+    },
+    "axon-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "Axon.MCP.Server",
+        "serve"
+      ]
+    }
+  }
+}

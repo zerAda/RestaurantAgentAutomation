@@ -1,0 +1,147 @@
+{
+    "name": "W30 - Voice Call Initialization (RAG)",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "saveExecutionProgress": true
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "v1/voice/inbound-call",
+                "responseMode": "responseNode",
+                "options": {
+                    "rawBody": true
+                }
+            },
+            "id": "trigger-voice-call",
+            "name": "IN - Vapi/Retell Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM customers WHERE phone = $1 LIMIT 1;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.body.message.call.customer.number]}}"
+                }
+            },
+            "id": "get-customer-context",
+            "name": "Identify Caller (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                250,
+                0
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
+                    "name": "Postgres"
+                }
+            },
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT id, name, price, is_available FROM products WHERE is_available = true AND category IN ('Burger', 'Sides', 'Drinks');"
+            },
+            "id": "get-safe-menu",
+            "name": "Fetch Grounded Menu (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                500,
+                0
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
+                    "name": "Postgres"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "const menuItems = $node[\"Fetch Grounded Menu (DB)\"].all();\nconst categories = {};\nmenuItems.forEach(i => {\n  const cat = i.json.category || 'Autres';\n  if (!categories[cat]) categories[cat] = [];\n  categories[cat].push(`${i.json.name} (${i.json.price}DZD)`);\n});\n\nlet menuStr = '';\nfor (const [cat, items] of Object.entries(categories)) {\n  menuStr += `\\n### ${cat}\\n- ${items.join('\\n- ')}`;\n}\n\nconst caller = $('Identify Caller (DB)').first()?.json || { name: 'Client' };\n\nconst systemPrompt = `Tu es Ralphé Voice, l'agent IA premium de prise de commande.\n\nCONTEXTURE :\n- Client : ${caller.name}\n- Menu Actuel : ${menuStr}\n\nDIRECTIVES :\n1. Accueil : Salue chaleureusement le client.\n2. Menu : Ne propose QUE les articles listés ci-dessus. Si un article est indisponible, excuse-toi.\n3. Clôture : Une fois la commande prise, récapitule les articles et utilise 'finalizeOrder'.\n4. Style : Sois efficace, courtois et utilise un ton naturel (Français/Darja possible).`;\n\nreturn [{\n  json: {\n    assistantId: 'ralphe_voice_v1',\n    dynamicSystemPrompt: systemPrompt,\n    voice: { name: 'french-natural', speed: 1.05 },\n    metadata: { \n      customerPhone: $('IN - Vapi/Retell Webhook').first().json.body?.message?.call?.customer?.number, \n      platform: 'voice' \n    }\n  }\n}];"
+            },
+            "id": "format-rag-prompt",
+            "name": "Format System Prompt",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                750,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{JSON.stringify($json)}}",
+                "options": {}
+            },
+            "id": "return-to-voice-engine",
+            "name": "Inject RAG back to Voice Engine",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1000,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "IN - Vapi/Retell Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Identify Caller (DB)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Identify Caller (DB)": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Grounded Menu (DB)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Grounded Menu (DB)": {
+            "main": [
+                [
+                    {
+                        "node": "Format System Prompt",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format System Prompt": {
+            "main": [
+                [
+                    {
+                        "node": "Inject RAG back to Voice Engine",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

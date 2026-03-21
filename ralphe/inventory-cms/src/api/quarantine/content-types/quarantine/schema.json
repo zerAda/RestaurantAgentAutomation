@@ -1,0 +1,28 @@
+{
+  "kind": "collectionType",
+  "collectionName": "quarantines",
+  "info": {
+    "singularName": "quarantine",
+    "pluralName": "quarantines",
+    "displayName": "Quarantine"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "conversation_key": {
+      "type": "string",
+      "required": true
+    },
+    "reason": {
+      "type": "text"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "expires_at": {
+      "type": "datetime"
+    }
+  }
+}

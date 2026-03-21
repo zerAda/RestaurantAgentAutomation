@@ -1,256 +1,209 @@
 # Architecture
 
-**Analysis Date:** 2026-03-14
+**Analysis Date:** 2026-03-18
 
 ## Pattern Overview
 
-**Overall:** Multi-tier distributed system with external gateway isolation, headless CMS hub, queue-based orchestration, and dual-frontend pattern
+**Overall:** Multi-tier microservices architecture with API gateway pattern, event-driven workflows, and content management hub.
 
 **Key Characteristics:**
-- **Gateway-first design**: Public API surface via Nginx at `api.srv1258231.hstgr.cloud/v1/*` shields internal services
-- **Strapi as central config hub**: CMS is single source of truth for all services (menus, settings, workflows, agent config)
-- **n8n queue-mode choreography**: 77 workflows orchestrate multi-channel messaging, payment, fraud, LLM, and delivery
-- **Dual-frontend SPAs**: Admin dashboard (React) for operations; kiosk app (React) for public ordering
-- **PostgreSQL dual-database pattern**: Separate `n8n` and `strapi` databases (shared instance) with migrations via `db-migrate` init container
-- **Redis pub/sub + Bull queues**: Real-time subscriptions and async job processing for n8n workers
+- Public API gateway (Nginx) that terminates inbound channels (WhatsApp, Instagram, Messenger)
+- Private orchestration layer (n8n with queue mode) for workflow execution
+- Central configuration hub (Strapi CMS) that serves as source of truth for all services
+- Separate databases for n8n and Strapi business logic
+- Private admin/management interfaces protected by BasicAuth + IP allowlist
+- Public kiosk and customer-facing applications
 
 ## Layers
 
-**Public API Gateway (Nginx):**
-- Purpose: Rate-limited, security-hardened public entrypoint for Meta webhooks (WhatsApp, Instagram, Messenger) and kiosk menu/ordering
-- Location: `infra/gateway/nginx.conf`
-- Contains: Request validation, rate limiting zones (by IP for meta_inbound, by token for internal), CORS handling, security headers, payload size limits
-- Depends on: n8n upstream (localhost:5678), Strapi CMS (localhost:1337)
-- Used by: Internet → Traefik → gateway → n8n/Strapi
+**Gateway Layer:**
+- Purpose: Single entry point for all public traffic; route validation, rate limiting, and security checks
+- Location: `project/infra/gateway/nginx.conf`
+- Contains: Nginx proxy rules, rate-limiting zones, security headers, method validation
+- Depends on: n8n (upstream), Strapi CMS (for kiosk/admin proxies), Traefik (TLS termination)
+- Used by: All public and private clients (kiosk, admin, inbound webhooks)
 
-**Traefik TLS/Routing Layer:**
-- Purpose: HTTPS termination, Let's Encrypt cert management, routing by subdomain to backend services
-- Location: Configured in `docker-compose.hostinger.prod.yml`
-- Contains: Router rules (host-based), middleware chains (BasicAuth, IP allowlist, security headers), TLS certificate resolver
-- Depends on: Let's Encrypt DNS challenge, Docker labels from services
-- Used by: Internet → Traefik → all services (`console.*`, `cms.*`, `admin.*`, `kiosk.*`, `api.*`)
+**Orchestration Layer:**
+- Purpose: Execute business logic workflows (n8n); respond to incoming events and trigger outbound actions
+- Location: `project/workflows/` (54+ JSON workflow definitions)
+- Contains: Multi-channel adapters (WhatsApp, Instagram, Messenger), fulfillment workflows, fraud detection, LLM agents
+- Depends on: PostgreSQL (n8n DB), Redis (queue), Strapi CMS (config/menus), external APIs (Stripe, Edahabia)
+- Used by: Gateway (receives webhook calls), Admin Dashboard (workflow config), n8n UI (workflow editing)
 
-**n8n Queue-Mode Orchestration:**
-- Purpose: Stateful workflow execution for inbound events, outbound delivery, LLM intent routing, payment processing, fraud checks
-- Location: `workflows/` (77 JSON files), `docker-compose.hostinger.prod.yml` (n8n-main + n8n-worker)
-- Contains: Event handlers (W1-W3 inbound adapters), core business logic (W4_CORE, W4.1 routing, W4.2 cart, W4.3 FAQ), outbound worker (W15), admin support console (W14), health monitoring (W16-W17)
-- Depends on: PostgreSQL (n8n DB for execution history), Redis (Bull queue for task distribution), credentials (API keys, Strapi tokens)
-- Used by: Gateway webhooks, Strapi CMS (via calls to n8n API), admin-dashboard (agent chat → W_ADMIN_AGENT)
+**CMS/Configuration Layer:**
+- Purpose: Central source of truth for menu items, pricing, business hours, prompt templates, order schemas
+- Location: `project/inventory-cms/` (Strapi 5 application)
+- Contains: 40+ content types (products, orders, customers, drivers, payment configs, system settings)
+- Depends on: PostgreSQL (strapi DB), Redis (optional caching)
+- Used by: Kiosk (read menu/products), Admin Dashboard (CRUD operations), n8n (workflow config fetch)
 
-**Strapi CMS Content Hub:**
-- Purpose: Central configuration, content management, and API for products, orders, settings, permissions
-- Location: `inventory-cms/` (source), `docker-compose.hostinger.prod.yml` (cms service)
-- Contains: 41 content types (product, order, ingredient, customer, restaurant-brand, system-config, platform-setting, etc.), role-based access control, custom routes/controllers
-- Depends on: PostgreSQL strapi DB, Redis (for SSE realtime), n8n for workflow config reading (W0_CONFIG_READER pulls settings)
-- Used by: Admin dashboard, kiosk app (menu/product read), n8n workflows (config/data reads), gateway proxy (`/v1/strapi/*`)
+**Frontend Layers:**
 
-**Admin Dashboard (React SPA):**
-- Purpose: Staff operations hub for stock, orders, analytics, automation, brand, AI agent chat, control plane
-- Location: `admin-dashboard/src/`
-- Contains: View components (StockView, KitchenView, MarketingView, AnalyticsView, ControlPlaneView, AiObservatoryView, etc.), strapiClient for CMS API calls, authService for Users-Permissions login, real-time WebSocket listeners
-- Depends on: Strapi CMS (API calls via `/api/` endpoints), n8n agent endpoint (`/webhook/admin/chat`), localStorage/sessionStorage for session tokens
-- Used by: Staff at `admin.srv1258231.hstgr.cloud` (behind Traefik BasicAuth + IP allowlist)
+*Admin Dashboard:*
+- Purpose: Operator/manager interface for business operations and analytics
+- Location: `project/admin-dashboard/src`
+- Contains: React/TypeScript components (KitchenView, StockView, AnalyticsView, AI agents)
+- Depends on: Strapi API (`/api/*`), n8n webhooks (via gateway), localStorage/sessionStorage for auth tokens
+- Used by: Internal staff (admin account with BasicAuth + IP allowlist)
 
-**Kiosk App (React SPA):**
-- Purpose: Public-facing touchscreen ordering terminal
-- Location: `kiosk-app/src/`
-- Contains: VerticalVideoFeed (marketing videos), MenuGrid, Cart management, CheckoutView, FortuneWheelView (gamification), configService, menuService
-- Depends on: Gateway proxy at `/v1/strapi/` (menu items, products, platform settings), Strapi public role permissions
-- Used by: Customers at `kiosk.srv1258231.hstgr.cloud` (public HTTPS, rate-limited)
+*Kiosk App:*
+- Purpose: Public self-service ordering terminal
+- Location: `project/kiosk-app/src`
+- Contains: React/TypeScript components (MenuGrid, Cart, CheckoutView)
+- Depends on: Strapi API (via gateway `/v1/strapi/` proxy), Vite build system
+- Used by: Customers (public, rate-limited)
 
-**PostgreSQL Data Layer:**
-- Purpose: Persistent storage for n8n execution history, Strapi CMS content, operational events
-- Location: Docker service in `docker-compose.hostinger.prod.yml`
-- Contains: Two databases (`n8n`, `strapi`), 40+ tables (orders, customers, conversation_state, carts, products, templates, etc.)
-- Depends on: Migrations applied by `db-migrate` init container
-- Used by: n8n (execution logs, credentials), Strapi (content storage), n8n workflows (SQL queries for state/cart/config reads)
-
-**Redis Cache & Pub/Sub:**
-- Purpose: Bull queue for n8n worker task distribution, pub/sub for real-time subscriptions (order updates → Strapi SSE), rate-limit counters
-- Location: Docker service in `docker-compose.hostinger.prod.yml`
-- Contains: Queue for active jobs, pub/sub channels (order_updates), session cache, rate-limit buckets
-- Depends on: Nothing (standalone)
-- Used by: n8n queue mode (main publishes jobs, workers consume), Strapi realtime (SSE subscriptions), gateway (rate-limit zones)
-
-**Optional AI/Voice Layer:**
-- Purpose: LLM inference (Ollama with llama3.1) and speech-to-text (Whisper)
-- Location: Docker service `ollama` in `docker-compose.hostinger.prod.yml --profile ai`
-- Contains: llama3.1 model (4.9 GB), Whisper STT
-- Depends on: Nothing (standalone)
-- Used by: 13 workflows (W4_CORE, W_LLM_INTENT, W4.1_ROUTER, W31_VOICE_ORDER_CONFIRM, etc.) via HTTP to `http://ollama:11434/api/chat`
+**Data Layer:**
+- Purpose: Persistence for workflows and business logic
+- Location: `project/db/` (migrations, bootstrap scripts)
+- Contains: PostgreSQL 15-alpine with two databases (n8n, strapi); Redis 7-alpine for queue/caching
+- Depends on: Docker volumes for data persistence
+- Used by: n8n (workflow state, executions), Strapi (content), db-migrate init container
 
 ## Data Flow
 
-**Inbound Message Flow (WhatsApp → Order):**
+**Inbound Event Flow (e.g., WhatsApp message):**
 
-1. Meta sends webhook POST to `https://api.srv1258231.hstgr.cloud/v1/inbound/whatsapp`
-2. Nginx gateway validates (Content-Type, size, token headers), rate-limits by IP, proxies to `n8n-main:5678/webhook/v1/inbound/whatsapp`
-3. W1_IN_WA workflow receives event:
-   - Validates required fields (channel, tenantId, userId, conversationKey, message)
-   - Queries PostgreSQL: conversation_state, carts, customer_preferences, message_templates, system_configs
-   - Calls W0_CONFIG_READER (sub-workflow, Redis-cached 60s) to fetch platform-setting
-4. W4_CORE orchestrates:
-   - L10N detection: Arabic script detection + sticky locale preference
-   - Intent routing via W4.1_ROUTER (LLM if ollama available, fallback heuristics)
-   - Cart management via W4.2_CART_MANAGER
-   - State persistence: INSERT/UPDATE conversation_state, carts tables
-5. W5-W7_OUT workflows (outbound) receive routed message:
-   - Format response templates (Strapi template system with locale substitution)
-   - Rate-limit check + fraud detection (flood, high-order threshold)
-   - Send via Meta API (WhatsApp, Instagram, or Messenger)
-   - Exponential backoff retry (max 7 attempts via W15_OUTBOX_WORKER)
-6. Conversation state persisted in PostgreSQL for next message continuity
+1. Meta sends webhook to `https://api.srv1258231.hstgr.cloud/v1/inbound/whatsapp`
+2. Nginx gateway validates: method (GET/POST), Content-Type (JSON), X-Api-Token header if internal
+3. Rate-limited by IP (meta_inbound zone: 10r/s burst 20)
+4. Proxied to n8n webhook: `/webhook/v1/inbound/whatsapp`
+5. n8n workflow (W1 - IN WhatsApp Adapter) processes the message:
+   - Deduplicates based on message ID (idempotency key)
+   - Enriches with Strapi product/customer data
+   - Calls LLM agent (Ollama llama3.1) for intent classification
+   - Stores conversation state in Strapi `conversation-state` collection
+   - Enqueues outbound action to response workflow (W4 - OUT Outbound Dispatcher)
+6. Outbound workflow sends response via WhatsApp Business API
+7. Event logged to Strapi `inbound-message` and `funnel-event` collections
+8. Dead letter queue (DLQ) captures failures for manual review
 
-**Kiosk Checkout Flow:**
+**Order Creation Flow (Kiosk → CMS → n8n):**
 
-1. Customer orders via kiosk app (React)
-2. POST to `https://api.srv1258231.hstgr.cloud/v1/strapi/api/orders` (gateway proxy to CMS)
-3. Strapi validates order via public role (product.find, order.create perms)
-4. Order created in `orders` table, triggers webhook or n8n listener
-5. W12_ADMIN_ORDERS or custom listener processes order:
-   - Payment method validation (COD, CIB, EDAHABIA, DEPOSIT)
-   - Fraud detection (same user ordering 5+ times/min → quarantine)
-   - Kitchen ticket generation + notification
-6. Admin dashboard updates in real-time via Strapi SSE (Redis pub/sub on `order_updates` channel)
+1. Kiosk user submits order via `POST https://api.srv1258231.hstgr.cloud/v1/strapi/api/orders`
+2. Nginx gateway validates method (POST), Content-Type, CORS headers
+3. Rate-limited by IP (kiosk_menu zone: 30r/s)
+4. Proxied to Strapi CMS: `POST /api/orders`
+5. Strapi validates schema, creates order in database
+6. Strapi emits webhook to n8n: `POST https://console.srv1258231.hstgr.cloud/api/orders` (internal)
+7. n8n workflow (W12 - KIOSK_ORDER) triggers:
+   - Validates order against inventory/delivery zones
+   - Calculates delivery fee from Strapi `system-config`
+   - Triggers payment processing workflow (W20 - PAYMENT_PROCESSOR)
+   - Enqueues fulfillment task
+8. Admin dashboard updates in real-time via Strapi subscriptions
 
-**Admin Chat Agent Flow:**
+**Admin Dashboard → Strapi Flow:**
 
-1. Admin dashboard sends POST `/api/agent/chat` to Strapi
-2. Strapi strapiClient route calls `POST http://n8n-main:5678/webhook/admin/chat`
-3. W_ADMIN_AGENT workflow executes:
-   - User auth check (admin JWT scope)
-   - RAG context assembly: queries Strapi for products, orders, customers, metrics (17 context slices)
-   - Ollama LLM call: `POST http://ollama:11434/api/chat` with llama3.1 (if available)
-   - Response formatting + streaming back to dashboard
-4. Admin dashboard receives real-time response via fetch streaming
+1. Manager logs in with email/password
+2. Request: `POST /api/auth/local` with `{identifier, password}`
+3. Strapi validates via Users-Permissions plugin
+4. Returns JWT token (stored in sessionStorage for XSS protection)
+5. Manager clicks "View Orders" → `GET /api/orders?populate=customer,payment`
+6. Nginx gateway proxies via `/v1/portal/api/orders` (internal_token rate limit: 20r/s)
+7. Strapi queries from `strapi` database, applies role-based permissions
+8. Dashboard renders with real-time updates via WebSocket (Strapi Real-time plugin)
 
 **State Management:**
-
-- **Conversation state**: PostgreSQL `conversation_state` table (one row per conversation_key), JSON document with stage, serviceMode, locale, cart reference
-- **Cart state**: PostgreSQL `carts` table (denormalized from conversation_state), tracks items, service_mode, notes
-- **Config state**: Redis cache (60s TTL) from W0_CONFIG_READER reading Strapi `platform-setting` singleType → all workflows read unified config
-- **Session state**: Admin dashboard session token in sessionStorage/localStorage, n8n execution history in PostgreSQL
-- **Real-time subscriptions**: Strapi SSE via Redis pub/sub channel `order_updates` → connected admin dashboards
+- **n8n Execution State:** Stored in PostgreSQL `execution` table; Redis queue for pending tasks
+- **User Session:** JWT in sessionStorage (admin/kiosk); renewed on each request
+- **Conversation State:** Stored in Strapi `conversation-state` collection (customer context, preferences)
+- **Order State:** Stored in Strapi `order` collection with lifecycle hooks (created → submitted → payment_pending → delivered)
 
 ## Key Abstractions
 
-**n8n Workflow as Service Unit:**
-- Purpose: Encapsulates business logic as async, event-driven, auditable units
-- Examples: `workflows/W4_CORE.json` (main conversation logic), `workflows/W4.1_ROUTER.json` (intent router), `workflows/W15_OUTBOX_WORKER.json` (retry engine)
-- Pattern: Trigger → validation/normalization → DB state load → business logic → state save → external API calls
+**Adapter Pattern (Channels):**
+- Purpose: Normalize incoming messages from different platforms (WhatsApp, Instagram, Messenger) into unified internal format
+- Examples: `project/workflows/W_IN_WHATSAPP_ADAPTER.json`, `project/workflows/W_IN_INSTAGRAM_ADAPTER.json`
+- Pattern: Each adapter maps platform-specific payload → `{sender_id, channel, message, timestamp, media}` → shared processing queue
 
-**Strapi Content Type as API Contract:**
-- Purpose: Defines data shape, permissions, routes for each business domain
-- Examples: `inventory-cms/src/api/product/`, `inventory-cms/src/api/order/`, `inventory-cms/src/api/platform-setting/`
-- Pattern: Each content type has routes/ (HTTP API), controllers/ (handlers), services/ (business logic) following Strapi MVC pattern
+**Outbox Pattern (Reliability):**
+- Purpose: Ensure messages are delivered even if service crashes between commit and send
+- Examples: `project/workflows/W_OUT_OUTBOUND_DISPATCHER.json` (retries up to 7 times with exponential backoff)
+- Pattern: Write outbound event to Strapi `outbound-message` table → n8n polls → sends → marks complete
 
-**Gateway Route as Security Boundary:**
-- Purpose: Isolates internal services, enforces auth/rate-limits, validates payloads
-- Examples: `/v1/inbound/*` (public webhooks), `/v1/strapi/*` (kiosk proxy), `/v1/admin/*` (private internal), `/v1/customer/*` (reserved)
-- Pattern: Each location block in nginx.conf has explicit method allowlist, rate limit zone, timeout, and error page routing
+**Content Type Router:**
+- Purpose: Route API requests to correct Strapi content type based on URL path
+- Examples: `/api/orders` → order service, `/api/products` → product service, `/api/system-config` → system config
+- Pattern: Strapi routes (src/api/*/routes/*.ts) map HTTP methods to controllers; controllers delegate to services
 
-**Credential as Encrypted Secret:**
-- Purpose: n8n credentials table stores encrypted API keys, DB passwords, Strapi tokens
-- Examples: RedisConnection (id 43SDqJYMGa6RvFqW), PostgreSQL (1mZZJEscADgQ8InR), StrapiTokenAPI (sT8kApXwN2mFqUvR)
-- Pattern: Workflow nodes reference credential ID, n8n decrypts at runtime, never exposed in logs
+**Rate Limiting Zones (Nginx):**
+- Purpose: Prevent abuse of public endpoints while allowing legitimate traffic
+- Examples: `meta_inbound` (10r/s by IP), `internal_token` (20r/s by token), `kiosk_menu` (30r/s by IP)
+- Pattern: Nginx limit_req_zone + conditional rate limit checks per route
+
+**Strapi Hooks (Lifecycle):**
+- Purpose: Trigger side effects when content is created/updated (e.g., notify n8n, update cache)
+- Examples: `project/inventory-cms/src/api/order/content-types/order/lifecycles.ts` (beforeCreate, afterCreate)
+- Pattern: Hook runs inside Strapi transaction; can throw to rollback
 
 ## Entry Points
 
-**Internet Ingress:**
-- Location: Traefik reverse proxy (port 80/443 on host)
-- Triggers: HTTPS requests to `*.srv1258231.hstgr.cloud`
-- Responsibilities: TLS termination, subdomain routing, middleware chaining (auth, IP allowlist, security headers)
+**Public API Endpoints:**
+- Location: `project/infra/gateway/nginx.conf` (routes 1-444)
+- Triggers: HTTP requests from external clients
+- Responsibilities:
+  - `/v1/inbound/whatsapp` (GET for verify, POST for events) → n8n W1
+  - `/v1/inbound/instagram` (GET/POST) → n8n W2
+  - `/v1/inbound/messenger` (GET/POST) → n8n W3
+  - `/v1/strapi/*` (GET only for kiosk read) → Strapi CMS
 
-**Webhook Ingress (Meta):**
-- Location: `infra/gateway/nginx.conf` `/v1/inbound/{whatsapp|instagram|messenger}`
-- Triggers: POST from Meta with X-Hub-Signature header, GET for webhook verify challenge
-- Responsibilities: Signature validation (in n8n W0_META_VERIFY_UNIFIED), rate-limit enforcement (10 req/s by IP for meta_inbound zone), payload parsing
+**Private Admin Endpoints:**
+- Location: `project/infra/gateway/nginx.conf` (routes 323-438)
+- Triggers: HTTPS requests from internal staff (BasicAuth + IP allowlist at Traefik)
+- Responsibilities:
+  - `/v1/customer/*` → n8n customer service endpoints
+  - `/v1/internal/*` → n8n internal service endpoints
+  - `/v1/admin/*` → n8n admin service endpoints
+  - `/v1/portal/*` → Strapi CMS (admin dashboard full CRUD)
 
-**API Client (Internal):**
-- Location: `infra/gateway/nginx.conf` `/v1/internal/*`, `/v1/admin/*`, `/v1/customer/*`
-- Triggers: Requests with X-Api-Token header from internal services
-- Responsibilities: Rate-limit by token (20 req/s), method allowlist (POST for admin operations), response formatting
+**Application Entry Points:**
+- `project/admin-dashboard/src/App.tsx` - React root; checks auth before rendering views
+- `project/kiosk-app/src/main.tsx` - React root; loads menu and cart context
+- `project/inventory-cms/src/index.ts` - Strapi bootstrap; loads plugins, middlewares, content types
 
-**Kiosk Public Display:**
-- Location: `kiosk-app/` entry point at `kiosk.srv1258231.hstgr.cloud`
-- Triggers: Customer interaction (menu browse, order create)
-- Responsibilities: Fetch menu from `/v1/strapi/api/products`, submit order to `/v1/strapi/api/orders`, idle timer (120s default) to reset to welcome
+**Database Entry Points:**
+- `project/db/migrations/` - Applied by db-migrate init container on first run
+- `project/db/bootstrap.sql` - Strapi DB schema and initial data
+- `project/db/init/` - Setup scripts for n8n and shared configurations
 
-**Admin Operations:**
-- Location: `admin-dashboard/` entry point at `admin.srv1258231.hstgr.cloud`
-- Triggers: Staff authentication via `/api/auth/local` (Strapi Users-Permissions), navigation to views
-- Responsibilities: RBAC check (authenticated role required), Strapi API queries, real-time order/metric updates, agent chat invocation
-
-**Database Migrations:**
-- Location: `db-migrate` init container (runs once on startup)
-- Triggers: Compose service `depends_on: condition: service_completed_successfully`
-- Responsibilities: Apply all .sql files in `db/migrations/` (idempotent), create indexes, seed core data
+**n8n Workflow Entry Points:**
+- `project/workflows/W_*_ADAPTER.json` - Inbound webhook handlers
+- `project/workflows/W_*_DISPATCHER.json` - Async outbound processors
+- `project/workflows/W_*_AGENT.json` - AI-driven decision makers
 
 ## Error Handling
 
-**Strategy:** Layered error resilience with explicit fallbacks
+**Strategy:** Multi-layer error recovery with dead-letter queue and manual review.
 
 **Patterns:**
-
-1. **Validation Errors (400):** Nginx rejects malformed payloads (Content-Type, size) → 415 Unsupported Media Type or 400 Bad Request
-   - File: `infra/gateway/nginx.conf` lines 154-165
-
-2. **Rate Limit Errors (429):** Nginx rate-limit zones drop excess requests or queue them
-   - File: `infra/gateway/nginx.conf` lines 35-44 (zones), lines 168, 215, 261 (zone application)
-
-3. **Auth Errors (401/403):** Strapi auto-logs out on 401 (missing role in up_users_role_lnk table)
-   - File: `admin-dashboard/src/services/strapiClient.ts` lines 63-72 (clears token, dispatches event, redirects to login)
-
-4. **Timeout Errors (504):** Workflows have execution timeouts; nginx has proxy_read_timeout
-   - File: `infra/gateway/nginx.conf` lines 76-80 (5s connect, 10s send, 30s read)
-   - File: workflows (executionTimeout: 300s in W4_CORE)
-
-5. **Dead-Letter Queue (DLQ):** Failed messages after max 7 retries go to quarantine table
-   - File: `workflows/W15_OUTBOX_WORKER.json` (outbox pattern with exponential backoff)
-   - Table: `quarantine` in PostgreSQL
-
-6. **Fallback Config:** If Strapi unreachable or config read fails, workflows use environment variables as fallback
-   - File: `workflows/W0_CONFIG_READER.json` (Redis TTL cache + env fallback)
+- **Webhook Validation:** Gateway rejects invalid requests at Nginx level (returns 400/401/415) before passing to n8n
+- **Idempotency Keys:** n8n workflows check `webhook_entity` table (n8n 2.x) for duplicate message IDs; skip if already processed
+- **Exponential Backoff:** Outbox pattern retries failed sends with delays: 1s, 2s, 4s, 8s, 16s, 32s, 64s (max 7 attempts)
+- **Dead-Letter Queue:** Failed outbound messages after 7 retries stored in Strapi `quarantine` collection for manual intervention
+- **Strapi Validation:** Content type schema validation; returns 400 with field errors if data invalid
+- **Session Recovery:** Admin dashboard detects 401 (token expired); redirects to login while preserving current route in sessionStorage
+- **Network Timeout:** All browser requests timeout at 10s (configurable per request); shows "network error" toast
 
 ## Cross-Cutting Concerns
 
-**Logging:** Structured JSON via Nginx `json_audit` format (time, addr, proxy_ip, method, uri, status, bytes, ua, rt)
-- File: `infra/gateway/nginx.conf` lines 46-55
-- Aggregated by: CloudWatch or ELK stack (configured at VPS ops level)
+**Logging:**
+- Nginx access log: JSON format at `/var/log/nginx/access.json` with timing and real IP
+- n8n: Structured logs (timestamp, workflow ID, execution ID, step name, error details)
+- Strapi: Console logs (colorized for dev, JSON for prod via Winston)
+- Dashboard: Browser console logs + network request logs (developer tools)
 
-**Validation:** Multi-layer schema enforcement
-- Nginx body size (1MB max)
-- n8n Code nodes perform type coercion + normalization (see W4_CORE C0_Validate Event)
-- Strapi Users-Permissions plugin validates field types per content type
-- JSON schema files in `schemas/inbound/` for contract validation
+**Validation:**
+- Gateway: HTTP method, Content-Type header, body size (max 1MB)
+- Strapi: Content type schema (JSON Schema), role-based permission checks per API call
+- n8n: Type validation in node inputs, deduplication key format, required field checks
 
-**Authentication:** Multi-token model
-- Traefik BasicAuth for `console.*`, `admin.*` subdomains (username:password in htpasswd file)
-- Strapi Users-Permissions JWT for dashboard login + role RBAC
-- n8n API key (from n8n user_api_keys table) for workflow execution via HTTP
-- Bearer token enforcement in gateway for internal API routes
-
-**Rate Limiting:** Zone-based per Nginx location
-- Meta inbound webhooks: 10 req/s per IP (meta_inbound zone)
-- Internal API clients: 20 req/s per token (internal_token zone)
-- Kiosk menu reads: 30 req/s per IP (kiosk_menu zone)
-- Connection limit: 50 concurrent connections per IP (conn_per_ip zone)
-
-**Security Headers:** Applied by Nginx middleware
-- HSTS (31536000s), X-Frame-Options DENY, X-Content-Type-Options nosniff, X-XSS-Protection
-- File: `infra/gateway/nginx.conf` lines 84-93 (global headers), compose labels for per-route middleware
-
-**Multi-Tenancy:** Via tenant_id foreign key in all business tables
-- Restaurants scoped to tenant_id
-- Workflows check tenant_id in all queries
-- Strapi content can be tenant-scoped (custom middleware)
-
-**Internationalization (L10N):** Sticky locale preference + script detection
-- Arabic script auto-detection in W4_CORE C2_Merge State Defaults
-- User preference persisted in `customer_preferences.locale`
-- Strapi templates stored per locale (fr, ar)
-- Kiosk app uses `i18n.ts` utility for view translations
+**Authentication:**
+- Public endpoints: No auth (rate-limited by IP)
+- Internal endpoints: X-Api-Token header (rate-limited by token)
+- Admin UI: JWT token from Strapi `/api/auth/local` → stored in sessionStorage
+- Strapi API: Role-based permissions (Authenticated, Public, Admin roles with associated permissions)
 
 ---
 
-*Architecture analysis: 2026-03-14*
+*Architecture analysis: 2026-03-18*

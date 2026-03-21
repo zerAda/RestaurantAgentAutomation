@@ -1,0 +1,22 @@
+[
+  {"label":"latin_only","text":"bonjour","hasArabic":false},
+  {"label":"arabic_word","text":"مرحبا","hasArabic":true},
+  {"label":"mixed","text":"salut من فضلك","hasArabic":true},
+  {"label":"arabic_indic_digits","text":"١٢٣","hasArabic":true},
+  {"label":"arabic_punctuation","text":"؟","hasArabic":true},
+  {"label":"arabic_with_latin_codes","text":"P01 x2 من فضلك","hasArabic":true},
+  {"label":"darija_translit","text":"chno kayn","hasArabic":false},
+  {"label":"emoji_only","text":"👍","hasArabic":false},
+  {"label":"empty","text":"","hasArabic":false},
+  {"label":"arabic_extended","text":"ݐ","hasArabic":true},
+  {"label":"arabic_supplement","text":"ࢠ","hasArabic":true},
+  {"label":"latin_with_arabic_digit","text":"test ٣","hasArabic":true},
+  {"label":"numbers_only","text":"123","hasArabic":false},
+  {"label":"hebrew_not_arabic","text":"שלום","hasArabic":false},
+  {"label":"persian_arabic_block","text":"سلام","hasArabic":true},
+  {"label":"arabic_tashkeel","text":"مُحَمَّد","hasArabic":true},
+  {"label":"newline_mixed","text":"hello\nمرحبا","hasArabic":true},
+  {"label":"arabic_url","text":"https://مثال.اختبار","hasArabic":true},
+  {"label":"latin_with_arabic_name","text":"anis الميري","hasArabic":true},
+  {"label":"arabic_quote","text":"قال: \"مرحبا\"","hasArabic":true}
+]

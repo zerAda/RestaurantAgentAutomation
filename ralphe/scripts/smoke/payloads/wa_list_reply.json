@@ -1,0 +1,48 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15551234567",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Nadia Amrani"
+                },
+                "wa_id": "213555333444"
+              }
+            ],
+            "messages": [
+              {
+                "context": {
+                  "from": "15551234567",
+                  "id": "wamid.context67890"
+                },
+                "from": "213555333444",
+                "id": "wamid.HBgNMjEzNTU1MzMzNDQ0FQIAEhggTElTVDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2",
+                "timestamp": "__TIMESTAMP__",
+                "type": "interactive",
+                "interactive": {
+                  "type": "list_reply",
+                  "list_reply": {
+                    "id": "pizza_margherita",
+                    "title": "Pizza Margherita",
+                    "description": "Tomate, mozzarella, basilic"
+                  }
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

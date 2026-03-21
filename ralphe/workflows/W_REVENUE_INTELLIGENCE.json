@@ -1,0 +1,178 @@
+{
+  "name": "W_REVENUE_INTELLIGENCE — Daily KPI Digest",
+  "active": true,
+  "settings": {
+    "executionTimeout": 180,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+        }
+      },
+      "id": "schedule-8am",
+      "name": "IN — Daily 08:00 KPI Digest",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [-1200, 0]
+    },
+    {
+        "parameters": {
+            "workflowId": "W0_CONFIG_READER",
+            "workflowInputs": {
+                "parameters": []
+            }
+        },
+        "id": "fetch-strapi-config",
+        "name": "Fetch Strapi Config",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1,
+        "position": [
+            -1200,
+            200
+        ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_URL }}/api/orders?sort=createdAt:desc&pagination[limit]=300&filters[createdAt][$gte]={{ (() => { const d = new Date(); d.setDate(d.getDate()-1); d.setHours(0,0,0,0); return d.toISOString(); })() }}&filters[createdAt][$lte]={{ (() => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); })() }}&populate=attributed_campaign",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}" }]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-yesterday",
+      "name": "R1 — Fetch Yesterday Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-980, -80],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_URL }}/api/ingredients?filters[quantity][$lte]=10&pagination[limit]=20",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}" }]
+        },
+        "options": { "timeout": 8000 }
+      },
+      "id": "fetch-stock-alerts",
+      "name": "R2 — Fetch Low Stock Alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-980, 80],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Compute daily KPIs with Cross-Channel tracking\nconst ordersRes = $('R1 — Fetch Yesterday Orders').item.json;\nconst stockRes = $('R2 — Fetch Low Stock Alerts').item.json;\n\nconst orders = ordersRes.data || [];\nconst stockAlerts = stockRes.data || [];\n\nlet revenue = 0;\nlet orderCount = orders.length;\nconst statusCounts = {};\nconst dishSales = {};\nconst channelBreakdown = {};\n\nfor (const o of orders) {\n  const attr = o.attributes || o;\n  const amount = Number(attr.total_amount || 0);\n  revenue += amount;\n  \n  const s = attr.status || 'unknown';\n  statusCounts[s] = (statusCounts[s] || 0) + 1;\n\n  const chan = attr.customer_channel || 'whatsapp';\n  channelBreakdown[chan] = channelBreakdown[chan] || { revenue: 0, orders: 0 };\n  channelBreakdown[chan].revenue += amount;\n  channelBreakdown[chan].orders += 1;\n\n  const items = attr.order_items?.data || attr.order_items || [];\n  for (const item of items) {\n    const its = item.attributes || item;\n    const label = its.label || 'Unknown';\n    dishSales[label] = (dishSales[label] || 0) + Number(its.qty || 1);\n  }\n}\n\nconst topDish = Object.entries(dishSales).sort((a,b) => b[1]-a[1])[0];\nconst avgBasket = orderCount > 0 ? Math.round(revenue / orderCount) : 0;\nconst cancelRate = orderCount > 0 ? Math.round(((statusCounts.cancelled || 0) / orderCount) * 100) : 0;\n\nconst yesterday = new Date();\nyesterday.setDate(yesterday.getDate() - 1);\n\nreturn [{ json: {\n  date: yesterday.toLocaleDateString('fr-FR'),\n  kpis: {\n    revenue,\n    orderCount,\n    avgBasket,\n    cancelRate,\n    topDish: topDish ? topDish[0] : 'N/A',\n    topDishCount: topDish ? topDish[1] : 0,\n    statusBreakdown: statusCounts,\n    channelBreakdown\n  },\n  stockAlerts: stockAlerts.map(s => ({\n    name: (s.attributes || s).name,\n    quantity: (s.attributes || s).quantity,\n    unit: (s.attributes || s).unit\n  }))\n}}];"
+      },
+      "id": "compute-kpis",
+      "name": "R3 — Compute Daily KPIs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-760, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.AI.LLM_API_URL }}/api/generate",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    model: $node[\"Fetch Strapi Config\"].json.SCOPES.AI.LLM_MODEL || 'llama3.1',\n    prompt: `Génère un digest quotidien pour un restaurant algérien premium. Analyse particulièrement la performance par canal.\n\nKPIs du ${$json.date}:\n- Revenus: ${$json.kpis.revenue} DA (${$json.kpis.orderCount} commandes)\n- Breakdown Canaux: ${JSON.stringify($json.kpis.channelBreakdown)}\n- Panier moyen: ${$json.kpis.avgBasket} DA\n- Taux d'annulation: ${$json.kpis.cancelRate}%\n- Meilleure vente: ${$json.kpis.topDish} (x${$json.kpis.topDishCount})\n\nRéponds en JSON: {\"headline\": \"1 phrase clé sur la croissance\", \"narrative\": \"Analyse rapide (2 phrases) incluant le canal le plus rentable\", \"action_required\": \"Action prioritaire ou null\"}`,\n    stream: false,\n    options: { temperature: 0.3, num_predict: 400 }\n  })\n}}",
+        "options": { "timeout": 45000 }
+      },
+      "id": "ollama-digest",
+      "name": "R4 — Ollama Generate Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-540, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_URL }}/api/orders?sort=createdAt:desc&pagination[limit]=1000&filters[createdAt][$gte]={{ (() => { const d = new Date(); d.setDate(d.getDate()-7); return d.toISOString(); })() }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $node[\"Fetch Strapi Config\"].json.SCOPES.CORE.STRAPI_API_TOKEN }}" }]
+        }
+      },
+      "id": "fetch-7d-history",
+      "name": "R6 — Fetch 7D History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-100, -100]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const history = $('R6 — Fetch 7D History').item.json.data || [];\nconst yesterday = $('R3 — Compute Daily KPIs').item.json.kpis.revenue;\n\n// Compute average daily revenue over 7 days\nlet total = 0;\nconst days = {};\nhistory.forEach(o => {\n  const date = (o.attributes || o).createdAt.split('T')[0];\n  days[date] = (days[date] || 0) + Number((o.attributes || o).total_amount || 0);\n});\n\nconst counts = Object.values(days);\nconst avg = counts.length > 0 ? counts.reduce((a,b) => a+b, 0) / counts.length : 0;\n\n// Determine yield sentiment\nconst performance = avg > 0 ? (yesterday / avg) : 1;\nlet sentiment = 'STABLE';\nif (performance < 0.8) sentiment = 'UNDERPERFORMING';\nif (performance > 1.2) sentiment = 'PEAKING';\n\nreturn [{ json: { avg, yesterday, performance, sentiment } }];"
+      },
+      "id": "compute-yield",
+      "name": "R7 — Compute Yield Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [120, -100]
+    },
+    {
+      "parameters": {
+        "workflowId": "W_CORTEX_REGISTRY",
+        "workflowInputs": {
+          "parameters": [
+            { "name": "action", "value": "SET" },
+            { "name": "key", "value": "REVENUE_YIELD" },
+            { "name": "value", "value": "={{$json}}" },
+            { "name": "ttl", "value": 86400 }
+          ]
+        }
+      },
+      "id": "sync-yield-cortex",
+      "name": "R8 — Sync Yield to Cortex",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [340, -100]
+    }
+  ],
+  "connections": {
+    "IN — Daily 08:00 KPI Digest": {
+      "main": [[
+        { "node": "Fetch Strapi Config", "type": "main", "index": 0 }
+      ]]
+    },
+    "Fetch Strapi Config": {
+      "main": [[
+        { "node": "R1 — Fetch Yesterday Orders", "type": "main", "index": 0 },
+        { "node": "R2 — Fetch Low Stock Alerts", "type": "main", "index": 0 }
+      ]]
+    },
+    "R1 — Fetch Yesterday Orders": {
+      "main": [[{ "node": "R3 — Compute Daily KPIs", "type": "main", "index": 0 }]]
+    },
+    "R2 — Fetch Low Stock Alerts": {
+      "main": [[{ "node": "R3 — Compute Daily KPIs", "type": "main", "index": 0 }]]
+    },
+    "R3 — Compute Daily KPIs": {
+      "main": [[
+        { "node": "R4 — Ollama Generate Digest", "type": "main", "index": 0 },
+        { "node": "R6 — Fetch 7D History", "type": "main", "index": 0 }
+      ]]
+    },
+    "R4 — Ollama Generate Digest": {
+      "main": [[{ "node": "R5 — Save Digest to Strapi", "type": "main", "index": 0 }]]
+    },
+    "R6 — Fetch 7D History": {
+      "main": [[{ "node": "R7 — Compute Yield Score", "type": "main", "index": 0 }]]
+    },
+    "R7 — Compute Yield Score": {
+      "main": [[{ "node": "R8 — Sync Yield to Cortex", "type": "main", "index": 0 }]]
+    }
+  }
+}

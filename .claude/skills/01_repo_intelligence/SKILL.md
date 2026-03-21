@@ -7,67 +7,81 @@ when_to_use:
   - Diagnosing incidents or onboarding
 ---
 
-# Repo Intelligence Protocol
+# Repo Intelligence Protocol (RESTO BOT v3.3.0)
 
 ## Goal
-Produce a verified map of the system grounded in actual file paths.
 
-## Extraction checklist (must cite file:line)
+Create an evidence-based map of the full system: components, routes, domains, auth boundaries, data flows, and operational controls.
 
-### 1. Entry points & domains
-- `docker-compose.hostinger.prod.yml` — Traefik labels define all public routes
-- `api.<domain>/v1/*` — public API via `infra/gateway/nginx.conf`
-- `console.<domain>` — n8n UI (IP allowlist + BasicAuth via Traefik labels)
-- `cms.<domain>` — Strapi CMS
-- `admin.<domain>` — Admin dashboard (IP allowlist + BasicAuth)
-- `kiosk.<domain>` — Kiosk app (public, rate-limited)
+## Extraction checklist (with file evidence)
+
+### 1. Entry points and domains
+
+- `api.srv1258231.hstgr.cloud` -> gateway (nginx) -> `/v1/*` routes
+- `console.srv1258231.hstgr.cloud` -> n8n-main (BasicAuth + IP allowlist)
+- `cms.srv1258231.hstgr.cloud` -> Strapi CMS (IP allowlist)
+- `admin.srv1258231.hstgr.cloud` -> Admin Dashboard (BasicAuth + IP allowlist)
+- `kiosk.srv1258231.hstgr.cloud` -> Kiosk App (public, rate-limited)
+- Config: `project/docker-compose.hostinger.prod.yml` (Traefik labels)
 
 ### 2. Proxy chain
+
+```text
+Internet -> Traefik v3.6.6 (:80/:443) -> proxy network
+  -> gateway (nginx:1.27) -> n8n-main (upstream, internal network)
+  -> n8n-main -> console (direct Traefik route)
+  -> cms -> Strapi (direct Traefik route)
+  -> admin-dashboard (direct Traefik route)
+  -> kiosk-app (direct Traefik route)
 ```
-Internet -> Traefik (TLS termination, middlewares) -> Nginx gateway -> n8n/Strapi/apps
-```
-- Traefik: Docker CLI flags + labels only (no separate config files)
-- Gateway: `infra/gateway/nginx.conf` + `infra/gateway/proxy_params`
 
 ### 3. Auth mechanisms
-- Header token: `x-webhook-token` validated in gateway before proxy
-- Meta signature: verified in `workflows/W0_META_VERIFY_UNIFIED.json`
-- Token scope: `B0 - Token OK?` node with `scopeOk` enforcement
-- Admin validator: `B1a - Admin Access Validator (SECURED)` in W1_IN_WA
-- Tenant isolation: `restaurant_id.$eq` with `tenant_context` on all Strapi nodes
+
+- Gateway: `X-API-Token` header or Bearer token validated pre-proxy
+- Console: BasicAuth + IP allowlist middleware chain
+- CMS: IP allowlist (no BasicAuth on CMS itself)
+- Admin Dashboard: BasicAuth + IP allowlist
+- Query token: **disabled by default**
 
 ### 4. n8n topology
-- Queue mode: `n8n-main` (webhook receiver) + `n8n-worker` (execution) + `redis`
-- DLQ: `W8_DLQ_HANDLER.json`, `W8_DLQ_REPLAY.json`
-- Outbox: `W15_OUTBOX_WORKER.json`
-- Health: `W16_HEALTHZ.json`, `W17_HEALTH_MONITOR.json`
+
+- Queue mode: `n8n-main` (webhook receiver) + `n8n-worker` (execution)
+- Redis 7-alpine as Bull queue backend (AOF, 256MB, allkeys-lru)
+- Worker concurrency: `QUEUE_BULL_MAX_CONCURRENCY` (default: 2)
+- 54 workflow JSON files in `project/workflows/`
 
 ### 5. Data layer
-- Bootstrap: `db/bootstrap.sql`
-- Migrations: `db/migrations/` (date-prefixed, idempotent)
-- Init: `db/init/01_apply_migrations.sh`, `db/init/02_create_strapi_db.sh`
-- Schemas: `schemas/inbound/v1.json`, `schemas/inbound/v2.json`
 
-### 6. Workflows
-- Workflow JSON files in `workflows/` (count with `ls workflows/*.json | wc -l`)
-- Naming: `W<N>_<NAME>.json` or `W_<NAME>.json`
-- Validated by `scripts/integrity_gate.sh` (10-point check)
-- Contracts validated by `scripts/validate_contracts.py`
+- PostgreSQL 15-alpine with two databases: `n8n` and `strapi`
+- Bootstrap: `project/db/bootstrap.sql`
+- Init scripts: `project/db/init/01_apply_migrations.sh`, `02_create_strapi_db.sh`
+- Migrations: `project/db/migrations/` (tracked in `schema_migrations` table)
+- Schemas: `project/schemas/` mounted at `/opt/resto/schemas`
+
+### 6. Frontend apps
+
+- **inventory-cms/**: Strapi headless CMS for menu/inventory
+- **admin-dashboard/**: Vite-based admin UI (VITE_DOMAIN, VITE_STRAPI_URL)
+- **kiosk-app/**: Vite-based customer kiosk (VITE_DOMAIN, VITE_STRAPI_URL)
 
 ### 7. Ops primitives
-- Task runner: `Makefile` (up, down, up-prod, migrate, backup, lint, integrity, smoke, ci)
-- Backup: `scripts/backup_postgres.sh`, `scripts/backup_redis.sh`, `scripts/backup_media.sh`
-- Restore: `scripts/restore_postgres.sh`
-- Smoke: `scripts/smoke.sh`, `scripts/smoke_security_gateway.sh`
-- Tests: `scripts/test_harness.sh`, `scripts/test_battery.sh`, `tests/k6-load-test.js`
-- CI: 13 GitHub Actions workflows in `.github/workflows/`
+
+- Compose: `project/docker-compose.hostinger.prod.yml`
+- Scripts: `project/scripts/` (preflight, smoke, validate, deploy, rollback)
+- CI/CD: 12 workflows in `project/.github/workflows/`, 4 composite actions
+- Secrets: `project/secrets/` (postgres_password, n8n_encryption_key, redis_password, traefik_usersfile)
+- VPS: `deploy@72.60.190.192`, project at `/opt/resto/current/`
+
+### 8. MCP servers
+
+- **ruflo** (Claude Flow v3.5.2): Multi-agent orchestration
+- **n8n-mcp**: n8n workflow/execution management (needs API key)
+- **strapi-mcp**: Strapi CMS content management (needs admin credentials)
 
 ## Required output
-- Repo Map (bullet list with file paths)
-- Trust Boundary Diagram (ASCII)
-- Public Surface Map (endpoint -> method -> auth -> upstream)
-- Failure Impact Table (component -> failure -> user impact -> mitigation)
 
-## Verification
-- Every claim must reference an actual file path
-- Run `make preflight` to confirm operational state
+- Repo Map (bullets with file paths)
+- Trust Boundary Diagram (ASCII)
+- Public Surface Map (endpoints + methods + auth)
+- Failure Impact Table (component -> failure -> user impact -> mitigation)
+- Deploy and verify checklist

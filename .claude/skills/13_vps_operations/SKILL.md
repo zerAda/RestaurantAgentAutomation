@@ -9,114 +9,109 @@ when_to_use:
   - Environment sync checks
 ---
 
-# VPS Operations
+# VPS Operations (RESTO BOT)
 
 ## VPS details
 
-- Provider: Hostinger
-- OS: Ubuntu 24.04
-- Domain: `srv1258231.hstgr.cloud` (or custom domain)
-- Users: `root` (admin), `deploy` (deployment, docker group)
-- SSH: `deploy@<vps-ip>` with ed25519 key
+- **Host**: 72.60.190.192 (Hostinger VPS)
+- **SSH**: `ssh deploy@72.60.190.192` (key auth, no password)
+- **OS**: Linux (Ubuntu-based)
+- **Docker**: Available at `/usr/bin/docker`
 
 ## Directory layout
 
-```
+```text
 /opt/resto/
-  releases/          # Timestamped release directories
-  staging/           # Pre-deploy staging area
-  shared/
-    .env             # Production environment file
-    secrets/         # Additional secret files
-    cosign/          # Cosign keypair (cosign.key, cosign.pub)
-  backups/           # DB and Redis backup files
-  docker-compose.hostinger.prod.yml  # Production compose (symlinked or copied)
-
-/var/log/resto-bot/  # Application logs
+  current/          -> symlink to active release
+  releases/
+    YYYYMMDD-HHMMSS-<sha>/    -> each release
+  backups/          -> DB dumps
+  secrets/          -> credential files (on VPS only)
 ```
 
-## Deployment flow (cd-deploy.yml)
-
-1. Setup SSH via `.github/actions/setup-ssh/` composite action
-2. SSH to VPS as `deploy` user
-3. Pull latest Docker images from GHCR
-4. Run `docker compose -f docker-compose.hostinger.prod.yml up -d`
-5. Run health check via `.github/actions/health-check/`
-6. Notify via `.github/actions/notify/` (Slack + Discord)
-
-## Environment management
-
-- Template: `config/.env.example` (614 lines, 27 sections)
-- VPS file: `/opt/resto/shared/.env`
-- Sync check: `.github/workflows/env-sync.yml`
-- Manual sync check: `scripts/env_sync_check.sh`
-- NEVER commit `.env` to git (gitignored)
-
-## Backup operations
+## Production compose
 
 ```bash
-# SSH to VPS
-ssh deploy@<vps-ip>
-
-# DB backup
-/opt/resto/scripts/backup_postgres.sh
-
-# Redis backup
-/opt/resto/scripts/backup_redis.sh
-
-# Verify backup
-ls -la /opt/resto/backups/
-
-# Restore (requires CONFIRM_RESTORE=yes)
-CONFIRM_RESTORE=yes /opt/resto/scripts/restore_postgres.sh /opt/resto/backups/<file>.sql.gz
+cd /opt/resto/current
+docker compose -f docker-compose.hostinger.prod.yml up -d
 ```
 
-## GitHub Actions configuration
-
-### Secrets
-
-| Secret | Purpose |
-|--------|---------|
-| `VPS_SSH_KEY` | ed25519 private key for `deploy` user |
-| `COSIGN_PRIVATE_KEY` | Image signing key |
-| `COSIGN_PASSWORD` | Cosign key decryption password |
-
-### Variables
-
-| Variable | Value |
-|----------|-------|
-| `VPS_HOST` | VPS IP address |
-| `VPS_USER` | `deploy` |
-| `PROJECT_DIR` | `/opt/resto` |
-| `BACKUP_DIR` | `/opt/resto/backups` |
-| `LOG_DIR` | `/var/log/resto-bot` |
-| `DOMAIN` | `srv1258231.hstgr.cloud` |
-| `HEALTH_URL` | `https://api.<domain>/v1/health` |
-
-## Troubleshooting
+## External networks (must exist)
 
 ```bash
-# Check all containers
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-# Check specific service logs
-docker logs --tail 100 n8n-main
-docker logs --tail 100 gateway
-docker logs --tail 100 traefik
-
-# Check disk space
-df -h /opt/resto /var/lib/docker
-
-# Check Redis queue depth
-docker exec redis redis-cli -a <password> LLEN bull:default:wait
-
-# Restart a service
-docker compose -f docker-compose.hostinger.prod.yml restart <service>
+docker network create proxy 2>/dev/null || true
+docker network create internal 2>/dev/null || true
 ```
 
-## Deliverables
+## External volumes (must exist)
 
-- VPS state verification (all services running, health check passing)
-- Backup verification (recent backup exists, size > 0)
-- Env sync check passes
-- SSH access verified
+```bash
+for vol in cms_uploads n8n_data ollama_data postgres_data redis_data traefik_data; do
+  docker volume create "$vol" 2>/dev/null || true
+done
+```
+
+## Secrets on VPS
+
+Located at `/opt/resto/current/secrets/`:
+- `n8n_encryption_key`
+- `postgres_password`
+- `redis_password`
+- `strapi_db_password`
+- `traefik_usersfile`
+
+## Backup procedures
+
+### PostgreSQL backup
+
+```bash
+ssh deploy@72.60.190.192 'cd /opt/resto/current && \
+  docker compose -f docker-compose.hostinger.prod.yml exec -T postgres \
+  pg_dump -U n8n -d n8n --format=custom > /opt/resto/backups/n8n_$(date +%Y%m%d_%H%M%S).dump'
+```
+
+### PostgreSQL restore
+
+```bash
+docker compose -f docker-compose.hostinger.prod.yml exec -T postgres \
+  pg_restore -U n8n -d n8n --clean --if-exists < /opt/resto/backups/<backup_file>.dump
+```
+
+## Operational scripts
+
+| Script | Purpose |
+| --- | --- |
+| `project/scripts/ops/deploy_staging_to_node.sh` | Deploy staging to VPS |
+| `project/scripts/ops/rollback.sh` | Emergency rollback |
+| `project/scripts/ops/provision_vps.sh` | Initial VPS setup |
+| `project/scripts/preflight-prod.sh` | Pre-deploy validation |
+| `project/scripts/smoke_security.sh` | Post-deploy smoke tests |
+| `project/scripts/validate_cicd.sh` | CI/CD + VPS connectivity test |
+| `project/scripts/validate_go_no_go.sh` | Go/no-go decision |
+
+## Disk space warning
+
+- VPS disk can fill up quickly (monitor with `df -h /`)
+- Docker logs rotate (configured in compose)
+- Clean old releases: keep last 3 in `/opt/resto/releases/`
+- Clean Docker: `docker system prune -f` (never prune volumes)
+
+## Environment sync
+
+- Local `.env` must match VPS `.env` for all [REQUIRED] vars
+- Secrets are VPS-only (not in git)
+- Use `project/scripts/validate_cicd.sh --vps` to test connectivity
+
+## Key files
+
+- `project/docker-compose.hostinger.prod.yml`
+- `project/.env`
+- `project/scripts/ops/` (all ops scripts)
+- `project/scripts/preflight-prod.sh`
+
+## Required output
+
+- Deploy log with timestamps
+- Smoke test results
+- PATCHLOG.md entry
+- Rollback plan (always)

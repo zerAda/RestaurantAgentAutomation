@@ -1,0 +1,370 @@
+time="2026-03-20T13:35:09Z" level=warning msg="project has been loaded without an explicit name from a symlink. Using name \"current\""
+time="2026-03-20T13:35:10Z" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-03-20T13:35:10Z" level=warning msg="The \"REDIS_PASSWORD\" variable is not set. Defaulting to a blank string."
+ Image current-cms Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 553B done
+#1 DONE 0.1s
+
+#2 [internal] load build definition from Dockerfile
+#2 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 2.67kB 0.5s done
+#2 DONE 3.2s
+
+#3 [internal] load metadata for docker.io/library/node:20.20.0-alpine
+#3 DONE 2.9s
+
+#4 [internal] load .dockerignore
+#4 transferring context:
+#4 transferring context: 134B done
+#4 DONE 2.2s
+
+#5 [internal] load build context
+#5 DONE 0.0s
+
+#6 [build 1/7] FROM docker.io/library/node:20.20.0-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+#6 resolve docker.io/library/node:20.20.0-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+#6 resolve docker.io/library/node:20.20.0-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8 5.9s done
+#6 DONE 6.3s
+
+#6 [build 1/7] FROM docker.io/library/node:20.20.0-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+#6 DONE 6.3s
+
+#5 [internal] load build context
+#5 transferring context:
+#5 transferring context: 689.50kB 5.2s
+#5 ...
+
+#6 [build 1/7] FROM docker.io/library/node:20.20.0-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+#6 DONE 16.4s
+
+#5 [internal] load build context
+#5 transferring context: 1.13MB 8.9s done
+#5 DONE 11.8s
+
+#7 [build 2/7] WORKDIR /app
+#7 DONE 1.4s
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 ...
+
+#9 [build 3/7] RUN apk add --no-cache python3 make g++
+#9 44.40 ( 1/29) Installing libstdc++-dev (15.2.0-r2)
+#9 ...
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 45.30 (  1/213) Upgrading zlib (1.3.1-r2 -> 1.3.2-r0)
+#8 45.60 (  2/213) Installing libstdc++-dev (15.2.0-r2)
+#8 54.40 (  3/213) Installing jansson (2.14.1-r0)
+#8 55.01 (  4/213) Installing zstd-libs (1.5.7-r2)
+#8 55.01 (  5/213) Installing binutils (2.45.1-r0)
+#8 ...
+
+#9 [build 3/7] RUN apk add --no-cache python3 make g++
+#9 55.50 ( 2/29) Installing jansson (2.14.1-r0)
+#9 56.00 ( 3/29) Installing zstd-libs (1.5.7-r2)
+#9 56.00 ( 4/29) Installing binutils (2.45.1-r0)
+#9 59.10 ( 5/29) Installing libgomp (15.2.0-r2)
+#9 59.10 ( 6/29) Installing libatomic (15.2.0-r2)
+#9 59.10 ( 7/29) Installing gmp (6.3.0-r4)
+#9 59.60 ( 8/29) Installing isl26 (0.26-r1)
+#9 60.19 ( 9/29) Installing mpfr4 (4.2.2-r0)
+#9 60.19 (10/29) Installing mpc1 (1.3.1-r1)
+#9 60.19 (11/29) Installing gcc (15.2.0-r2)
+#9 ...
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 58.00 (  6/213) Installing libgomp (15.2.0-r2)
+#8 58.50 (  7/213) Installing libatomic (15.2.0-r2)
+#8 59.01 (  8/213) Installing gmp (6.3.0-r4)
+#8 59.50 (  9/213) Installing isl26 (0.26-r1)
+#8 60.40 ( 10/213) Installing mpfr4 (4.2.2-r0)
+#8 60.40 ( 11/213) Installing mpc1 (1.3.1-r1)
+#8 60.91 ( 12/213) Installing gcc (15.2.0-r2)
+#8 ...
+
+#9 [build 3/7] RUN apk add --no-cache python3 make g++
+#9 107.3 (12/29) Installing musl-dev (1.2.5-r21)
+#9 109.0 (13/29) Installing g++ (15.2.0-r2)
+#9 ...
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 112.3 ( 13/213) Installing musl-dev (1.2.5-r21)
+#8 115.2 ( 14/213) Installing g++ (15.2.0-r2)
+#8 ...
+
+#9 [build 3/7] RUN apk add --no-cache python3 make g++
+#9 120.5 (14/29) Installing make (4.4.1-r3)
+#9 120.5 (15/29) Installing libbz2 (1.0.8-r6)
+#9 120.5 (16/29) Installing libexpat (2.7.5-r0)
+#9 120.5 (17/29) Installing libffi (3.5.2-r0)
+#9 120.7 (18/29) Installing gdbm (1.26-r0)
+#9 121.5 (19/29) Installing xz-libs (5.8.2-r0)
+#9 121.5 (20/29) Installing mpdecimal (4.0.1-r0)
+#9 121.5 (21/29) Installing ncurses-terminfo-base (6.5_p20251123-r0)
+#9 121.9 (22/29) Installing libncursesw (6.5_p20251123-r0)
+#9 122.3 (23/29) Installing libpanelw (6.5_p20251123-r0)
+#9 122.3 (24/29) Installing readline (8.3.1-r0)
+#9 122.3 (25/29) Installing sqlite-libs (3.51.2-r0)
+#9 123.2 (26/29) Installing python3 (3.12.12-r0)
+#9 ...
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 126.5 ( 15/213) Installing make (4.4.1-r3)
+#8 126.6 ( 16/213) Installing libbz2 (1.0.8-r6)
+#8 127.1 ( 17/213) Installing libexpat (2.7.5-r0)
+#8 127.1 ( 18/213) Installing libffi (3.5.2-r0)
+#8 127.1 ( 19/213) Installing gdbm (1.26-r0)
+#8 127.1 ( 20/213) Installing xz-libs (5.8.2-r0)
+#8 127.3 ( 21/213) Installing mpdecimal (4.0.1-r0)
+#8 127.4 ( 22/213) Installing ncurses-terminfo-base (6.5_p20251123-r0)
+#8 127.9 ( 23/213) Installing libncursesw (6.5_p20251123-r0)
+#8 128.2 ( 24/213) Installing libpanelw (6.5_p20251123-r0)
+#8 128.2 ( 25/213) Installing readline (8.3.1-r0)
+#8 128.2 ( 26/213) Installing sqlite-libs (3.51.2-r0)
+#8 129.3 ( 27/213) Installing python3 (3.12.12-r0)
+#8 137.4 ( 28/213) Installing python3-pycache-pyc0 (3.12.12-r0)
+#8 ...
+
+#9 [build 3/7] RUN apk add --no-cache python3 make g++
+#9 131.3 (27/29) Installing python3-pycache-pyc0 (3.12.12-r0)
+#9 135.6 (28/29) Installing pyc (3.12.12-r0)
+#9 135.6 (29/29) Installing python3-pyc (3.12.12-r0)
+#9 135.6 Executing busybox-1.37.0-r30.trigger
+#9 135.9 OK: 301.2 MiB in 47 packages
+#9 DONE 142.2s
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 ...
+
+#10 [build 4/7] COPY package.json package-lock.json ./
+#10 ...
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 143.2 ( 29/213) Installing pyc (3.12.12-r0)
+#8 143.2 ( 30/213) Installing python3-pyc (3.12.12-r0)
+#8 143.2 ( 31/213) Installing libintl (0.24.1-r1)
+#8 143.2 ( 32/213) Installing libeconf (0.8.3-r0)
+#8 143.2 ( 33/213) Installing libblkid (2.41.2-r0)
+#8 143.9 ( 34/213) Installing libmount (2.41.2-r0)
+#8 144.6 ( 35/213) Installing pcre2 (10.47-r0)
+#8 144.6 ( 36/213) Installing glib (2.86.3-r0)
+#8 145.1 ( 37/213) Installing openexr-libiex (3.4.2-r0)
+#8 145.2 ( 38/213) Installing openexr-libilmthread (3.4.2-r0)
+#8 145.2 ( 39/213) Installing imath (3.1.12-r0)
+#8 145.6 ( 40/213) Installing libdeflate (1.25-r0)
+#8 145.6 ( 41/213) Installing openexr (3.4.2-r0)
+#8 145.9 ( 42/213) Installing openexr-libopenexrcore (3.4.2-r0)
+#8 146.1 ( 43/213) Installing openexr-libopenexr (3.4.2-r0)
+#8 146.5 ( 44/213) Installing acl-libs (2.3.2-r1)
+#8 146.5 ( 45/213) Installing lz4-libs (1.10.0-r0)
+#8 146.5 ( 46/213) Installing libarchive (3.8.5-r0)
+#8 146.7 ( 47/213) Installing libxau (1.0.12-r0)
+#8 147.0 ( 48/213) Installing libmd (1.1.0-r0)
+#8 147.0 ( 49/213) Installing libbsd (0.12.2-r0)
+#8 147.2 ( 50/213) Installing libxdmcp (1.1.5-r1)
+#8 147.3 ( 51/213) Installing libxcb (1.17.0-r1)
+#8 148.9 ( 52/213) Installing libx11 (1.8.12-r1)
+#8 150.9 ( 53/213) Installing libxext (1.3.6-r2)
+#8 ...
+
+#10 [build 4/7] COPY package.json package-lock.json ./
+#10 DONE 8.7s
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 151.4 ( 54/213) Installing libxrender (0.9.12-r0)
+#8 151.4 ( 55/213) Installing brotli-libs (1.2.0-r0)
+#8 151.8 ( 56/213) Installing libpng (1.6.55-r0)
+#8 152.2 ( 57/213) Installing freetype (2.14.1-r0)
+#8 152.2 ( 58/213) Installing fontconfig (2.17.1-r0)
+#8 153.0 ( 59/213) Installing pixman (0.46.4-r0)
+#8 153.7 ( 60/213) Installing cairo (1.18.4-r0)
+#8 153.7 ( 61/213) Installing c-ares (1.34.6-r0)
+#8 153.7 ( 62/213) Installing libunistring (1.4.1-r0)
+#8 154.3 ( 63/213) Installing libidn2 (2.3.8-r0)
+#8 154.3 ( 64/213) Installing nghttp2-libs (1.68.0-r0)
+#8 154.3 ( 65/213) Installing nghttp3 (1.13.1-r0)
+#8 154.3 ( 66/213) Installing libpsl (0.21.5-r3)
+#8 154.5 ( 67/213) Installing libcurl (8.17.0-r1)
+#8 154.7 ( 68/213) Installing cfitsio (4.6.3-r0)
+#8 155.2 ( 69/213) Installing cgif (0.5.0-r1)
+#8 155.2 ( 70/213) Installing libexif (0.6.25-r0)
+#8 155.5 ( 71/213) Installing fftw-double-libs (3.3.10-r7)
+#8 156.6 ( 72/213) Installing libhwy (1.3.0-r0)
+#8 156.6 ( 73/213) Installing libimagequant (4.2.2-r0)
+#8 156.6 ( 74/213) Installing libjpeg-turbo (3.1.2-r0)
+#8 156.9 ( 75/213) Installing lcms2 (2.17-r0)
+#8 157.5 ( 76/213) Installing openjpeg (2.5.4-r1)
+#8 157.5 ( 77/213) Installing libxft (2.3.9-r0)
+#8 157.8 ( 78/213) Installing fribidi (1.0.16-r2)
+#8 158.1 ( 79/213) Installing graphite2 (1.3.14-r6)
+#8 158.1 ( 80/213) Installing harfbuzz (12.2.0-r0)
+#8 158.1 ( 81/213) Installing pango (1.56.4-r0)
+#8 158.3 ( 82/213) Installing libdav1d (1.5.2-r0)
+#8 159.9 ( 83/213) Installing pkgconf (2.5.1-r0)
+#8 159.9 ( 84/213) Installing libxml2 (2.13.9-r0)
+#8 159.9 ( 85/213) Installing shared-mime-info (2.4-r6)
+#8 160.4 ( 86/213) Installing libsharpyuv (1.6.0-r0)
+#8 160.4 ( 87/213) Installing libwebp (1.6.0-r0)
+#8 160.5 ( 88/213) Installing tiff (4.7.1-r0)
+#8 160.6 ( 89/213) Installing gdk-pixbuf (2.44.4-r0)
+#8 160.8 ( 90/213) Installing librsvg (2.61.2-r0)
+#8 ...
+
+#11 [build 5/7] RUN npm config set fetch-retries 5 &&     npm config set fetch-retry-mintimeout 60000 &&     npm config set fetch-retry-maxtimeout 300000 &&     npm config set fetch-timeout 600000 &&     npm ci --legacy-peer-deps
+#11 ...
+
+#8 [stage-1  3/12] RUN apk add --no-cache vips-dev python3 make g++
+#8 162.0 ( 91/213) Installing libspng (0.7.4-r1)
+#8 162.4 ( 92/213) Installing libwebpdemux (1.6.0-r0)
+#8 162.4 ( 93/213) Installing libwebpmux (1.6.0-r0)
+#8 162.4 ( 94/213) Installing vips (8.17.3-r1)
+#8 163.0 ( 95/213) Installing vips-cpp (8.17.3-r1)
+#8 163.0 ( 96/213) Installing libdeflate-static (1.25-r0)
+#8 163.1 ( 97/213) Installing openexr-libopenexrutil (3.4.2-r0)
+#8 163.2 ( 98/213) Installing boost1.84-python3 (1.84.0-r3)
+#8 163.3 ( 99/213) Installing py3-imath (3.1.12-r0)
+#8 165.8 (100/213) Installing imath-dev (3.1.12-r0)
+#8 166.4 (101/213) Installing libdeflate-dev (1.25-r0)
+#8 166.5 (102/213) Installing openexr-dev (3.4.2-r0)
+#8 167.7 (103/213) Installing cairo-tools (1.18.4-r0)
+#8 167.7 (104/213) Installing expat (2.7.5-r0)
+#8 168.0 (105/213) Installing expat-dev (2.7.5-r0)
+#8 168.0 (106/213) Installing bzip2-dev (1.0.8-r6)
+#8 168.0 (107/213) Installing brotli (1.2.0-r0)
+#8 168.2 (108/213) Installing brotli-dev (1.2.0-r0)
+#8 168.2 (109/213) Installing zlib-dev (1.3.2-r0)
+#8 168.2 (110/213) Installing libpng-dev (1.6.55-r0)
+#8 169.0 (111/213) Installing freetype-dev (2.14.1-r0)
+#8 169.3 (112/213) Installing fontconfig-dev (2.17.1-r0)
+#8 169.4 (113/213) Installing xorgproto (2024.1-r0)
+#8 171.1 (114/213) Installing libxau-dev (1.0.12-r0)
+#8 171.1 (115/213) Installing xcb-proto (1.17.0-r0)
+#8 171.1 (116/213) Installing xcb-proto-pyc (1.17.0-r0)
+#8 171.1 (117/213) Installing libxdmcp-dev (1.1.5-r1)
+#8 171.3 (118/213) Installing libxcb-dev (1.17.0-r1)
+#8 172.7 (119/213) Installing xtrans (1.6.0-r0)
+#8 172.7 (120/213) Installing libx11-dev (1.8.12-r1)
+#8 173.0 (121/213) Installing libxext-dev (1.3.6-r2)
+#8 173.0 (122/213) Installing libxrender-dev (0.9.12-r0)
+#8 173.0 (123/213) Installing pixman-dev (0.46.4-r0)
+#8 173.2 (124/213) Installing util-macros (1.20.2-r0)
+#8 173.6 (125/213) Installing xcb-util (0.4.1-r3)
+#8 174.2 (126/213) Installing xcb-util-dev (0.4.1-r3)
+#8 174.2 (127/213) Installing cairo-gobject (1.18.4-r0)
+#8 174.2 (128/213) Installing libxml2-utils (2.13.9-r0)
+#8 174.2 (129/213) Installing docbook-xml (4.5-r10)
+#8 175.1   Executing docbook-xml-4.5-r10.post-install
+#8 175.9 (130/213) Installing libxslt (1.1.43-r3)
+#8 176.3 (131/213) Installing docbook-xsl-ns (1.79.2-r13)
+#8 183.2   Executing docbook-xsl-ns-1.79.2-r13.post-install
+#8 184.2 (132/213) Installing docbook-xsl-nons (1.79.2-r13)
+#8 189.2   Executing docbook-xsl-nons-1.79.2-r13.post-install
+#8 189.9 (133/213) Installing docbook-xsl (1.79.2-r13)
+#8 190.0 (134/213) Installing xz (5.8.2-r0)
+#8 190.5 (135/213) Installing gettext-asprintf (0.24.1-r1)
+#8 190.5 (136/213) Installing gettext-libs (0.24.1-r1)
+#8 190.5 (137/213) Installing gettext-envsubst (0.24.1-r1)
+#8 190.7 (138/213) Installing gettext (0.24.1-r1)
+#8 191.5 (139/213) Installing gettext-dev (0.24.1-r1)
+#8 192.4 (140/213) Installing py3-parsing (3.2.5-r0)
+#8 192.5 (141/213) Installing py3-parsing-pyc (3.2.5-r0)
+#8 193.3 (142/213) Installing py3-packaging (25.0-r0)
+#8 193.3 (143/213) Installing py3-packaging-pyc (25.0-r0)
+#8 193.3 (144/213) Installing linux-headers (6.16.12-r0)
+#8 198.1 (145/213) Installing libffi-dev (3.5.2-r0)
+#8 198.2 (146/213) Installing bsd-compat-headers (0.7.2-r6)
+#8 198.5 (147/213) Installing libformw (6.5_p20251123-r0)
+#8 198.9 (148/213) Installing libmenuw (6.5_p20251123-r0)
+#8 198.9 (149/213) Installing libncurses++ (6.5_p20251123-r0)
+#8 198.9 (150/213) Installing ncurses-dev (6.5_p20251123-r0)
+#8 199.2 (151/213) Installing libedit (20251016.3.1-r0)
+#8 199.3 (152/213) Installing libedit-dev (20251016.3.1-r0)
+#8 199.4 (153/213) Installing libpcre2-16 (10.47-r0)
+#8 200.2 (154/213) Installing libpcre2-32 (10.47-r0)
+#8 200.2 (155/213) Installing pcre2-dev (10.47-r0)
+#8 200.5 (156/213) Installing libuuid (2.41.2-r0)
+#8 200.5 (157/213) Installing libfdisk (2.41.2-r0)
+#8 201.0 (158/213) Installing liblastlog2 (2.41.2-r0)
+#8 201.0 (159/213) Installing libsmartcols (2.41.2-r0)
+#8 201.5 (160/213) Installing sqlite (3.51.2-r0)
+#8 201.8 (161/213) Installing sqlite-dev (3.51.2-r0)
+#8 201.9 (162/213) Installing util-linux-dev (2.41.2-r0)
+#8 202.0 (163/213) Installing glib-dev (2.86.3-r0)
+#8 204.2 (164/213) Installing cairo-dev (1.18.4-r0)
+#8 204.4 (165/213) Installing cfitsio-dev (4.6.3-r0)
+#8 204.4 (166/213) Installing cgif-dev (0.5.0-r1)
+#8 204.4 (167/213) Installing fftw-long-double-libs (3.3.10-r7)
+#8 204.5 (168/213) Installing fftw-single-libs (3.3.10-r7)
+#8 205.0 (169/213) Installing fftw-dev (3.3.10-r7)
+#8 205.7 (170/213) Installing libimagequant-dev (4.2.2-r0)
+#8 205.7 (171/213) Installing lcms2-plugins (2.17-r0)
+#8 205.7 (172/213) Installing libturbojpeg (3.1.2-r0)
+#8 206.0 (173/213) Installing libjpeg-turbo-dev (3.1.2-r0)
+#8 206.4 (174/213) Installing libtiffxx (4.7.1-r0)
+#8 206.4 (175/213) Installing libwebpdecoder (1.6.0-r0)
+#8 207.2 (176/213) Installing libwebp-dev (1.6.0-r0)
+#8 207.2 (177/213) Installing zstd (1.5.7-r2)
+#8 207.2 (178/213) Installing zstd-dev (1.5.7-r2)
+#8 207.2 (179/213) Installing tiff-dev (4.7.1-r0)
+#8 207.5 (180/213) Installing lcms2-dev (2.17-r0)
+#8 207.5 (181/213) Installing openssl-dev (3.5.5-r0)
+#8 208.5 (182/213) Installing libarchive-dev (3.8.5-r0)
+#8 208.5 (183/213) Installing libexif-dev (0.6.25-r0)
+#8 208.5 (184/213) Installing libhwy_contrib (1.3.0-r0)
+#8 209.2 (185/213) Installing libhwy_test (1.3.0-r0)
+#8 209.7 (186/213) Installing gtest (1.17.0-r0)
+#8 209.7 (187/213) Installing gmock (1.17.0-r0)
+#8 210.4 (188/213) Installing gtest-dev (1.17.0-r0)
+#8 210.4 (189/213) Installing highway-dev (1.3.0-r0)
+#8 211.3 (190/213) Installing openjpeg-tools (2.5.4-r1)
+#8 211.4 (191/213) Installing openjpeg-dev (2.5.4-r1)
+#8 212.3 (192/213) Installing rsvg-convert (2.61.2-r0)
+#8 213.8 (193/213) Installing dav1d-dev (1.5.2-r0)
+#8 213.8 (194/213) Installing gdk-pixbuf-dev (2.44.4-r0)
+#8 213.8 (195/213) Installing harfbuzz-cairo (12.2.0-r0)
+#8 213.8 (196/213) Installing harfbuzz-gobject (12.2.0-r0)
+#8 214.2 (197/213) Installing icu-data-en (76.1-r1)
+#8 214.2   Executing icu-data-en-76.1-r1.post-install
+#8 214.5 (198/213) Installing icu-libs (76.1-r1)
+#8 214.5   * 
+#8 214.5   * If you need ICU with non-English locales and legacy charset support, install
+#8 214.5   * package icu-data-full.
+#8 214.5   * 
+#8 215.5 (199/213) Installing harfbuzz-icu (12.2.0-r0)
+#8 215.5 (200/213) Installing harfbuzz-subset (12.2.0-r0)
+#8 215.8 (201/213) Installing graphite2-dev (1.3.14-r6)
+#8 216.0 (202/213) Installing icu (76.1-r1)
+#8 216.2 (203/213) Installing icu-dev (76.1-r1)
+#8 217.7 (204/213) Installing harfbuzz-dev (12.2.0-r0)
+#8 218.2 (205/213) Installing xz-dev (5.8.2-r0)
+#8 218.2 (206/213) Installing libxml2-dev (2.13.9-r0)
+#8 218.5 (207/213) Installing pango-tools (1.56.4-r0)
+#8 218.7 (208/213) Installing fribidi-dev (1.0.16-r2)
+#8 218.7 (209/213) Installing libxft-dev (2.3.9-r0)
+#8 219.4 (210/213) Installing pango-dev (1.56.4-r0)
+#8 219.8 (211/213) Installing librsvg-dev (2.61.2-r0)
+#8 220.4 (212/213) Installing libspng-dev (0.7.4-r1)
+#8 220.4 (213/213) Installing vips-dev (8.17.3-r1)
+#8 221.2 Executing busybox-1.37.0-r30.trigger
+#8 221.5 Executing glib-2.86.3-r0.trigger
+#8 222.3 * No schema files found: doing nothing.
+#8 222.3 Executing shared-mime-info-2.4-r6.trigger
+#8 247.1 Executing gdk-pixbuf-2.44.4-r0.trigger
+#8 248.3 OK: 481.9 MiB in 230 packages
+#8 DONE 252.5s
+
+#11 [build 5/7] RUN npm config set fetch-retries 5 &&     npm config set fetch-retry-mintimeout 60000 &&     npm config set fetch-retry-maxtimeout 300000 &&     npm config set fetch-timeout 600000 &&     npm ci --legacy-peer-deps
+#11 ...
+
+#12 [stage-1  4/12] COPY package.json package-lock.json ./
+#12 DONE 13.9s
+
+#11 [build 5/7] RUN npm config set fetch-retries 5 &&     npm config set fetch-retry-mintimeout 60000 &&     npm config set fetch-retry-maxtimeout 300000 &&     npm config set fetch-timeout 600000 &&     npm ci --legacy-peer-deps
+#11 ...
+
+#13 [stage-1  5/12] RUN npm config set fetch-retries 5 &&     npm config set fetch-retry-mintimeout 60000 &&     npm config set fetch-retry-maxtimeout 300000 &&     npm config set fetch-timeout 600000 &&     npm ci --omit=dev --legacy-peer-deps
+client_loop: send disconnect: Connection reset

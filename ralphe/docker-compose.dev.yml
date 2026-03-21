@@ -1,0 +1,74 @@
+services:
+  admin-dashboard:
+    build:
+      context: .
+      dockerfile: admin-dashboard/Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_STRAPI_URL=http://localhost:1337
+    volumes:
+      - ./admin-dashboard:/app
+      - /app/node_modules
+
+  cms:
+    build:
+      context: ./inventory-cms
+      target: development
+    environment:
+      - NODE_ENV=development
+      - DATABASE_HOST=pgbouncer
+      - HOST=0.0.0.0
+      - PORT=1337
+    ports:
+      - "1337:1337"
+    volumes:
+      - ./inventory-cms:/app
+      - /app/node_modules
+
+  n8n-main:
+    environment:
+      - NODE_ENV=development
+      - N8N_PROTOCOL=http
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_EDITOR_BASE_URL=http://localhost:5678/
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_SECURE_COOKIE=false
+    ports:
+      - "5678:5678"
+
+  kiosk-app:
+    build:
+      context: .
+      dockerfile: kiosk-app/Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_STRAPI_URL=http://localhost:1337
+    volumes:
+      - ./kiosk-app:/app
+      - /app/node_modules
+
+  mock-api:
+    ports:
+      - "8080:8080"
+    profiles:
+      - dev
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  gateway:
+    ports:
+      - "8081:8080"
+
+  traefik:
+    # Not needed in pure dev since we hit ports directly, but kept if user tests routing locally
+    profiles:
+      - prod-testing

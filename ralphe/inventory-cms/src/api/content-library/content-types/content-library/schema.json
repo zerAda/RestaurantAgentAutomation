@@ -1,0 +1,98 @@
+{
+    "kind": "collectionType",
+    "collectionName": "content_library",
+    "info": {
+        "singularName": "content-library",
+        "pluralName": "content-libraries",
+        "displayName": "Content Library",
+        "description": "AI-generated marketing content assets with quality control and publishing status"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "dish_name": {
+            "type": "string",
+            "required": true
+        },
+        "brand_name": {
+            "type": "string"
+        },
+        "image_square_url": {
+            "type": "string",
+            "description": "1:1 aspect ratio image for Instagram feed, Facebook posts"
+        },
+        "image_vertical_url": {
+            "type": "string",
+            "description": "9:16 aspect ratio image for Stories, Reels, TikTok"
+        },
+        "video_url": {
+            "type": "string",
+            "description": "9:16 video for Reels, TikTok, Stories"
+        },
+        "caption_a": {
+            "type": "text",
+            "description": "A/B test variant A: short & punchy caption"
+        },
+        "caption_b": {
+            "type": "text",
+            "description": "A/B test variant B: storytelling caption"
+        },
+        "hashtags": {
+            "type": "json",
+            "default": []
+        },
+        "quality_score": {
+            "type": "integer",
+            "min": 1,
+            "max": 10,
+            "description": "LLM quality score: 7+ = publishable"
+        },
+        "quality_reasoning": {
+            "type": "text",
+            "description": "LLM explanation for the quality score"
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "draft",
+                "ready",
+                "published",
+                "failed",
+                "retry"
+            ],
+            "default": "draft"
+        },
+        "platforms_published": {
+            "type": "json",
+            "default": {},
+            "description": "Per-platform publish results: { instagram: { success, media_id }, facebook: {...}, ... }"
+        },
+        "content_published_at": {
+            "type": "datetime",
+            "description": "When this content was published to social platforms (renamed from published_at to avoid Strapi 5 system column collision)"
+        },
+        "caption_variant_used": {
+            "type": "enumeration",
+            "enum": [
+                "A",
+                "B"
+            ],
+            "description": "Which A/B variant was used for publishing"
+        },
+        "performance_json": {
+            "type": "json",
+            "description": "Post-publish engagement metrics per platform"
+        },
+        "best_channel": {
+            "type": "string"
+        },
+        "peak_hours": {
+            "type": "json"
+        },
+        "generated_at": {
+            "type": "datetime"
+        }
+    }
+}
