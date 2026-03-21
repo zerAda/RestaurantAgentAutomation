@@ -244,7 +244,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.customerPhone}}\",\n  \"message\": \"\ud83c\udfa4 Ralph\u00e9 Voice: J'ai bien enregistr\u00e9 votre commande !\\n\\n\ud83d\udcc1 Commande n\u00b0{{$item(0).$node[\\\"Create Order (DB)\\\"].json.id}}\\n\ud83d\udcb0 Total: {{($item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.totalAmount/100).toFixed(2)}} DZD\\n\\nVous recevrez une notification d\u00e8s qu'elle sera en cuisine.\"\n}",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"={{$item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.customerPhone}}\",\n  \"message\": \"🎤 Ralphé Voice: J'ai bien enregistré votre commande !\\n\\n📁 Commande n°{{$item(0).$node[\\\"Create Order (DB)\\\"].json.id}}\\n💰 Total: {{($item(0).$node[\\\"Webhook - Finalize Order\\\"].json.body.totalAmount/100).toFixed(2)}} DZD\\n\\nVous recevrez une notification dès qu'elle sera en cuisine.\"\n}",
         "options": {}
       },
       "name": "Push Voice Summary (WA)",
@@ -381,5 +381,8 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "errorWorkflow": "W_ERROR_HANDLER - Global Error Handler (GSD-P1-04)"
   }
 }

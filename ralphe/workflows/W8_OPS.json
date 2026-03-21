@@ -4,7 +4,8 @@
   "settings": {
     "executionTimeout": 300,
     "saveExecutionProgress": true,
-    "saveManualExecutions": true
+    "saveManualExecutions": true,
+    "errorWorkflow": "W_ERROR_HANDLER - Global Error Handler (GSD-P1-04)"
   },
   "nodes": [
     {
@@ -44,7 +45,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const row = $json;\nconst due = Array.isArray(row.due) ? row.due : [];\nconst results = [];\n\nconst cfg = {\n  whatsapp: { url: $env.WA_SEND_URL, token: $env.WA_API_TOKEN },\n  instagram:{ url: $env.IG_SEND_URL, token: $env.IG_API_TOKEN },\n  messenger:{ url: $env.MSG_SEND_URL, token: $env.MSG_API_TOKEN }\n};\n\nfor (const job of due) {\n  const ch = (job.channel || '').toString();\n  const url = (cfg[ch]?.url || '').toString();\n  const token = (cfg[ch]?.token || '').toString();\n\n  if (!url) {\n    results.push({id: job.id, ok:false, reason:'send_url_missing'});\n    continue;\n  }\n\n  try {\n    await $httpRequest({\n      method:'POST',\n      url,\n      headers: token ? {Authorization:'Bearer '+token} : {},\n      body: { channel: ch, to: job.user_id, restaurantId: job.restaurant_id, text: job.message_text, buttons: [{id:'FEEDBACK_5',title:'\u2b50 5'},{id:'FEEDBACK_4',title:'\u2b50 4'},{id:'FEEDBACK_3',title:'\u2b50 3'}]},\n      json:true,\n      timeout: 30000\n    });\n    results.push({id: job.id, ok:true});\n  } catch (err) {\n    results.push({id: job.id, ok:false, error: err?.message || 'send_failed'});\n  }\n}\n\nreturn results.map(r => ({json: r}));"
+        "jsCode": "const row = $json;\nconst due = Array.isArray(row.due) ? row.due : [];\nconst results = [];\n\nconst cfg = {\n  whatsapp: { url: $env.WA_SEND_URL, token: $env.WA_API_TOKEN },\n  instagram:{ url: $env.IG_SEND_URL, token: $env.IG_API_TOKEN },\n  messenger:{ url: $env.MSG_SEND_URL, token: $env.MSG_API_TOKEN }\n};\n\nfor (const job of due) {\n  const ch = (job.channel || '').toString();\n  const url = (cfg[ch]?.url || '').toString();\n  const token = (cfg[ch]?.token || '').toString();\n\n  if (!url) {\n    results.push({id: job.id, ok:false, reason:'send_url_missing'});\n    continue;\n  }\n\n  try {\n    await $httpRequest({\n      method:'POST',\n      url,\n      headers: token ? {Authorization:'Bearer '+token} : {},\n      body: { channel: ch, to: job.user_id, restaurantId: job.restaurant_id, text: job.message_text, buttons: [{id:'FEEDBACK_5',title:'⭐ 5'},{id:'FEEDBACK_4',title:'⭐ 4'},{id:'FEEDBACK_3',title:'⭐ 3'}]},\n      json:true,\n      timeout: 30000\n    });\n    results.push({id: job.id, ok:true});\n  } catch (err) {\n    results.push({id: job.id, ok:false, error: err?.message || 'send_failed'});\n  }\n}\n\nreturn results.map(r => ({json: r}));"
       },
       "id": "4300d758-522b-4802-90c3-6a7c22f3f116",
       "name": "S3 - Send Feedback Batch",

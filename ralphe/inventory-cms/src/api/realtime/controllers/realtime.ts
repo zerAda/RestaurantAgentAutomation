@@ -29,7 +29,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no', // Disable buffering on Nginx/Traefik
-            'Access-Control-Allow-Origin': '*' // Handled by Strapi CORS mostly, but good to be explicit for SSE
+            'Access-Control-Allow-Origin': ctx.request.header.origin || 'https://admin.srv1258231.hstgr.cloud' // Restrict to known origins — never wildcard on authenticated SSE
         });
 
         ctx.status = 200;

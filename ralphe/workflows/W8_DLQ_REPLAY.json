@@ -4,7 +4,8 @@
   "settings": {
     "executionTimeout": 600,
     "saveExecutionProgress": true,
-    "saveManualExecutions": true
+    "saveManualExecutions": true,
+    "errorWorkflow": "W_ERROR_HANDLER - Global Error Handler (GSD-P1-04)"
   },
   "nodes": [
     {
@@ -18,7 +19,10 @@
       "name": "Replay Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -29,7 +33,10 @@
       "name": "Parse Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [250, 0]
+      "position": [
+        250,
+        0
+      ]
     },
     {
       "parameters": {
@@ -43,7 +50,10 @@
       "name": "Check Admin Scope",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [500, 0],
+      "position": [
+        500,
+        0
+      ],
       "credentials": {
         "postgres": {
           "id": "POSTGRES_CREDENTIAL_ID",
@@ -60,7 +70,10 @@
       "name": "Verify Admin",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [750, 0]
+      "position": [
+        750,
+        0
+      ]
     },
     {
       "parameters": {
@@ -77,7 +90,10 @@
       "name": "Is Admin?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1000, 0]
+      "position": [
+        1000,
+        0
+      ]
     },
     {
       "parameters": {
@@ -91,7 +107,10 @@
       "name": "Fetch DLQ Messages",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [1250, -100],
+      "position": [
+        1250,
+        -100
+      ],
       "credentials": {
         "postgres": {
           "id": "POSTGRES_CREDENTIAL_ID",
@@ -108,7 +127,10 @@
       "name": "Prepare Replay",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1500, -100]
+      "position": [
+        1500,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -125,7 +147,10 @@
       "name": "Not Dry Run?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1750, -100]
+      "position": [
+        1750,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -139,7 +164,10 @@
       "name": "Set to RETRY",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [2000, -200],
+      "position": [
+        2000,
+        -200
+      ],
       "credentials": {
         "postgres": {
           "id": "POSTGRES_CREDENTIAL_ID",
@@ -156,7 +184,10 @@
       "name": "Replay Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2250, -200]
+      "position": [
+        2250,
+        -200
+      ]
     },
     {
       "parameters": {
@@ -167,7 +198,10 @@
       "name": "Dry Run Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2000, 0]
+      "position": [
+        2000,
+        0
+      ]
     },
     {
       "parameters": {
@@ -188,7 +222,10 @@
       "name": "403 Forbidden",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1250, 100]
+      "position": [
+        1250,
+        100
+      ]
     },
     {
       "parameters": {
@@ -209,7 +246,10 @@
       "name": "200 OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2500, -100]
+      "position": [
+        2500,
+        -100
+      ]
     }
   ],
   "connections": {

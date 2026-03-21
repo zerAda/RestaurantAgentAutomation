@@ -4,7 +4,8 @@
   "settings": {
     "executionTimeout": 60,
     "saveExecutionProgress": true,
-    "saveManualExecutions": true
+    "saveManualExecutions": true,
+    "errorWorkflow": "W_ERROR_HANDLER - Global Error Handler (GSD-P1-04)"
   },
   "nodes": [
     {
