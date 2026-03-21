@@ -30,7 +30,7 @@ if grep -R --line-number --fixed-string "CHANGE_ME" \
 fi
 
 echo "\n[3/8] Workflow JSON validation"
-for wf in workflows/*.json; do
+for wf in n8n/workflows/*.json; do
   jq -e '.name and (.nodes|type=="array") and (.connections|type=="object") and ((.active == null) or (.active|type=="boolean"))' "$wf" >/dev/null \
     || fail "Invalid workflow JSON: $wf"
 
