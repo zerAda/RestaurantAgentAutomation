@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+
 import { useCart, type CartItem } from '../context/CartContext';
 import { strapi } from '../services/strapiClient';
 import { motion, AnimatePresence } from 'framer-motion';
