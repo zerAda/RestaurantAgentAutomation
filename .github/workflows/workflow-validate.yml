@@ -14,13 +14,17 @@ name: Workflow Validate
 on:
   pull_request:
     paths:
-      - 'workflows/*.json'
+      - 'ralphe/workflows/*.json'
   push:
     paths:
-      - 'workflows/*.json'
+      - 'ralphe/workflows/*.json'
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    working-directory: ralphe
 
 jobs:
   validate-workflows:

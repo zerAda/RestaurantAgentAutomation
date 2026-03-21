@@ -143,6 +143,9 @@ jobs:
     name: Configuration Security
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ralphe
 
     steps:
       - name: Checkout code
@@ -241,6 +244,9 @@ jobs:
     name: Dependency Security
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ralphe
 
     steps:
       - name: Checkout code

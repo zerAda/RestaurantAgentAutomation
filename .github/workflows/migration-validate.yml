@@ -13,12 +13,16 @@ name: Migration Validate
 on:
   pull_request:
     paths:
-      - 'db/migrations/**'
-      - 'db/bootstrap.sql'
+      - 'ralphe/db/migrations/**'
+      - 'ralphe/db/bootstrap.sql'
 
 permissions:
   contents: read
   pull-requests: read
+
+defaults:
+  run:
+    working-directory: ralphe
 
 jobs:
   validate-migrations:
