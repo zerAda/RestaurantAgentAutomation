@@ -137,7 +137,7 @@
                 "id": "={{ $json.order_id }}",
                 "filters": {
                     "restaurant_id": {
-                        "$eq": "={{ $node['Verify Signature'].json.event?.data?.metadata?.restaurant_id || $json.tenant_context?.restaurant_id }}"
+                        "$eq": "={{ $node['Verify Signature'].json.event?.data?.metadata?.restaurant_id || $node['Verify Signature'].json.checkout_id }}"
                     }
                 }
             },
