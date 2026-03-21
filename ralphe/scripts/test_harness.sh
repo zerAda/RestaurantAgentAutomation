@@ -172,8 +172,13 @@ create_wf() {
   local label="$2"
   local active="${3:-false}"
 
+  if [ ! -f "$ROOT_DIR/$wf_file" ]; then
+    echo "  $label → FAILED (File not found: $wf_file)" >&2
+    return 1
+  fi
+
   jq "del(.id) | .active = $active" \
-    "$ROOT_DIR/$wf_file" > /tmp/_wf_payload.json || fail "preprocess $label failed"
+    "$ROOT_DIR/$wf_file" > /tmp/_wf_payload.json || { echo "preprocess $label failed" >&2; return 1; }
 
   local resp http_code
   http_code="$(curl -s -o /tmp/_wf_resp.json -w "%{http_code}" -b "$N8N_JAR" \
