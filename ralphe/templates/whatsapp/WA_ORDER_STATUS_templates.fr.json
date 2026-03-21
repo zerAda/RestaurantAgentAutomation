@@ -1,8 +1,0 @@
-{
-  "WA_ORDER_STATUS_CONFIRMED": "✅ Commande confirmée (#{{order_id}}).{{eta}}",
-  "WA_ORDER_STATUS_PREPARING": "👨‍🍳 Votre commande est en préparation (#{{order_id}}).{{eta}}",
-  "WA_ORDER_STATUS_READY": "📦 Votre commande est prête (#{{order_id}}).{{eta}}",
-  "WA_ORDER_STATUS_OUT_FOR_DELIVERY": "🛵 Votre commande est en cours de livraison (#{{order_id}}).{{eta}}",
-  "WA_ORDER_STATUS_DELIVERED": "🎉 Commande livrée / terminée (#{{order_id}}). Merci !",
-  "WA_ORDER_STATUS_CANCELLED": "❌ Commande annulée (#{{order_id}})."
-}
