@@ -511,10 +511,10 @@ jobs:
             context: ./inventory-cms
             dockerfile: ./inventory-cms/Dockerfile
           - name: admin
-            context: .
+            context: ./admin-dashboard
             dockerfile: ./admin-dashboard/Dockerfile
           - name: kiosk
-            context: .
+            context: ./kiosk-app
             dockerfile: ./kiosk-app/Dockerfile
 
     steps:
