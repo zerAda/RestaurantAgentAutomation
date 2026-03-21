@@ -132,7 +132,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: ralphe
+        working-directory: .
 
     steps:
       - name: Checkout code
@@ -233,7 +233,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: ralphe
+        working-directory: .
 
     steps:
       - name: Checkout code
@@ -333,3 +333,5 @@ jobs:
         run: |
           echo "::error::Secret detection found issues — BLOCKING BUILD."
           exit 1
+
+

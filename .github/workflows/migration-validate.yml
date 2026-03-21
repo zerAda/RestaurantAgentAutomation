@@ -13,8 +13,8 @@ name: Migration Validate
 on:
   pull_request:
     paths:
-      - 'ralphe/db/migrations/**'
-      - 'ralphe/db/bootstrap.sql'
+      - 'db/migrations/**'
+      - 'db/bootstrap.sql'
 
 permissions:
   contents: read
@@ -22,7 +22,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: ralphe
+    working-directory: .
 
 jobs:
   validate-migrations:
@@ -175,3 +175,5 @@ jobs:
           fi
 
           echo "::endgroup::"
+
+

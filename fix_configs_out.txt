@@ -1,2 +1,0 @@
-openclaw.json: valid
-auth-profiles.json: valid

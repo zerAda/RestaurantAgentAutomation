@@ -14,17 +14,17 @@ name: Workflow Validate
 on:
   pull_request:
     paths:
-      - 'ralphe/workflows/*.json'
+      - 'workflows/*.json'
   push:
     paths:
-      - 'ralphe/workflows/*.json'
+      - 'workflows/*.json'
 
 permissions:
   contents: read
 
 defaults:
   run:
-    working-directory: ralphe
+    working-directory: .
 
 jobs:
   validate-workflows:
@@ -124,3 +124,5 @@ jobs:
           done
 
           echo "::endgroup::"
+
+

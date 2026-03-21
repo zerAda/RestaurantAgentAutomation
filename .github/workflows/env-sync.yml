@@ -14,14 +14,14 @@ on:
     - cron: '0 8 * * 1'  # Monday 8am UTC
   pull_request:
     paths:
-      - 'ralphe/config/.env.example'
+      - 'config/.env.example'
 
 permissions:
   contents: read
 
 defaults:
   run:
-    working-directory: ralphe
+    working-directory: .
 
 concurrency:
   group: env-sync
@@ -130,3 +130,5 @@ jobs:
           fi
 
           echo "Environment sync check complete"
+
+
