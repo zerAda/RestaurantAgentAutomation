@@ -28,3 +28,5 @@ jobs:
           traceroute "$VPS_HOST" || true
           echo "=> Netcat VPS port 22"
           nc -zv "$VPS_HOST" 22 || true
+
+
