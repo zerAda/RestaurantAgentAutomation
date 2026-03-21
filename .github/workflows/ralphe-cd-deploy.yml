@@ -1152,7 +1152,7 @@ jobs:
 
           if [ -f "scripts/ops/rollback.sh" ]; then
              chmod +x scripts/ops/rollback.sh
-             ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 "$VPS_USER@$VPS_HOST" \
+             ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 "${{ steps.config.outputs.vps_user }}@${{ steps.config.outputs.vps_host }}" \
                "export PROJECT_DIR='$PROJECT_DIR'; bash -s" < scripts/ops/rollback.sh
           else
              echo "::error::scripts/ops/rollback.sh not found"
@@ -1229,3 +1229,4 @@ jobs:
           deploy-duration: ${{ steps.config.outputs.deploy_duration }}
           repo-url: ${{ github.server_url }}/${{ github.repository }}
           run-id: ${{ github.run_id }}
+
