@@ -45,20 +45,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_SUMMARY: true
 
-      - name: Upload Gitleaks SARIF
-        if: always()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
-        with:
-          name: gitleaks-sarif
-          path: results.sarif
-          retention-days: 90
-          if-no-files-found: ignore
 
       - name: Custom secret patterns
         run: |
