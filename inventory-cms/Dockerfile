@@ -1,7 +1,7 @@
 # ── Strapi 5 CMS ─────────────────────────────────────────────
 # Node >= 20 required (see package.json engines)
 # ─────────────────────────────────────────────────────────────
-FROM node:20.20.0-alpine AS build
+FROM node:20.18.3-alpine AS build
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ ENV DATABASE_CLIENT=sqlite
 RUN npm run build
 
 # ── Production stage ────────────────────────────────────────
-FROM node:20.20.0-alpine
+FROM node:20.18.3-alpine
 
 WORKDIR /app
 
