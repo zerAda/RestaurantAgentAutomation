@@ -1,2 +1,4 @@
 vps_configs.txt
 CREDENTIALS_CHECKLIST.md
+.env
+vps.env

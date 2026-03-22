@@ -22,7 +22,7 @@ export default function GodMode() {
 
     // Load metrics
     useEffect(() => {
-        strapi.find<any>('orders', {
+        strapi.find<Record<string, unknown>>('orders', {
             filters: { status: { $in: ['pending', 'confirmed', 'preparing'] } },
             pagination: { limit: 0 }
         }).then(res => {
