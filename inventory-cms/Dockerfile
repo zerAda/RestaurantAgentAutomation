@@ -51,9 +51,11 @@ RUN npm config set fetch-retries 5 && \
 # (1) Named import from CJS-only lodash: convert to default import in domain/module
 RUN sed -i "s/import _, { flatten } from 'lodash';/import _ from 'lodash'; const { flatten } = _;/" \
     /app/node_modules/@strapi/core/dist/domain/module/index.mjs
-# (2) Directory import 'lodash/fp' — not valid in ESM; rewrite to 'lodash/fp.js' across all .mjs
-RUN find /app/node_modules/@strapi/core/dist/ -name "*.mjs" \
-    -exec sed -i "s|'lodash/fp'|'lodash/fp.js'|g" {} \;
+# (2) Create lodash/fp ESM wrapper with named exports + package.json exports map.
+#     Fixes ERR_UNSUPPORTED_DIR_IMPORT and named ESM import failures across all @strapi packages
+#     (290+ .mjs files do `import { xxx } from 'lodash/fp'` which fails with CJS dynamic exports).
+COPY fix-lodash-fp.js /tmp/fix-lodash-fp.js
+RUN node /tmp/fix-lodash-fp.js
 
 # Remove build tools after npm ci (keep runtime-only packages)
 RUN apk del python3 make g++
