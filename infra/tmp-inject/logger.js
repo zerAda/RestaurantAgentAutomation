@@ -4,7 +4,8 @@ const request_id_1 = require("../src/middlewares/request-id");
 const winston_1 = require("winston");
 const isProduction = process.env.NODE_ENV === 'production';
 exports.default = isProduction ? {
-    level: 'info',
+    // 'http' captures strapi.log.http() plus warn/error/info (npm levels 0-3)
+    level: 'http',
     format: winston_1.format.combine(
         winston_1.format.timestamp(),
         winston_1.format((info) => {

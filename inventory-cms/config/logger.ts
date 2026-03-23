@@ -22,7 +22,10 @@ import { format } from 'winston';
 const isProduction = process.env.NODE_ENV === 'production';
 
 export default isProduction ? {
-  level: 'info',
+  // 'http' captures strapi.log.http() request entries plus warn/error/info.
+  // npm levels: error=0 warn=1 info=2 http=3 verbose=4 debug=5 silly=6
+  // Using 'http' means all levels 0-3 are emitted (error,warn,info,http).
+  level: 'http',
   format: format.combine(
     format.timestamp(),
     format((info) => {
