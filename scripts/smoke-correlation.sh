@@ -34,25 +34,52 @@ echo "Phase 02 Smoke Test: Structured Logging"
 echo "========================================"
 echo ""
 
-# -- OBS-01: n8n execution logs accessible (health check) --------------------
-# Note: n8n 1.80.0 does not support N8N_LOG_FORMAT=json for stdout.
-# OBS-01 is verified by confirming n8n is running and producing log output.
-echo "--- OBS-01: n8n service health and log output ---"
+# -- OBS-01: n8n structured JSON logs -----------------------------------------
+# n8n 2.9.4 with N8N_LOG_FORMAT=json emits NDJSON to stdout.
+echo "--- OBS-01: n8n structured JSON logs ---"
 
-N8N_UP=$(vps "docker logs current-n8n-main-1 --tail 3 2>&1 | wc -l" || echo "0")
-if [ "$N8N_UP" -gt 0 ]; then
-  log_pass "OBS-01: n8n-main is running and producing log output"
-  echo "  NOTE: n8n 1.80.0 stdout logs are plain text (N8N_LOG_FORMAT=json is not supported)."
-  echo "  Structured execution data is available via REST API (/rest/executions)."
+N8N_MAIN_JSON=$(vps "docker logs current-n8n-main-1 --tail 20 2>&1 | python3 -c \"
+import sys, json
+count = 0
+for line in sys.stdin:
+    line = line.strip()
+    if not line: continue
+    try:
+        obj = json.loads(line)
+        if ('level' in obj) and ('message' in obj or 'msg' in obj):
+            count += 1
+    except: pass
+print(count)
+\"" || echo "0")
+
+if [ "$N8N_MAIN_JSON" -gt 0 ]; then
+  log_pass "OBS-01: n8n-main emits structured JSON logs ($N8N_MAIN_JSON JSON lines found)"
 else
-  log_fail "OBS-01: Could not retrieve n8n-main logs (container may be down)"
+  log_fail "OBS-01: n8n-main logs are NOT JSON format"
+  echo "  Sample log output:"
+  vps "docker logs current-n8n-main-1 --tail 3 2>&1" | head -3 | sed 's/^/  /' || true
 fi
 
-WORKER_UP=$(vps "docker logs current-n8n-worker-1 --tail 3 2>&1 | wc -l" || echo "0")
-if [ "$WORKER_UP" -gt 0 ]; then
-  log_pass "OBS-01: n8n-worker is running and producing log output"
+N8N_WORKER_JSON=$(vps "docker logs current-n8n-worker-1 --tail 20 2>&1 | python3 -c \"
+import sys, json
+count = 0
+for line in sys.stdin:
+    line = line.strip()
+    if not line: continue
+    try:
+        obj = json.loads(line)
+        if ('level' in obj) and ('message' in obj or 'msg' in obj):
+            count += 1
+    except: pass
+print(count)
+\"" || echo "0")
+
+if [ "$N8N_WORKER_JSON" -gt 0 ]; then
+  log_pass "OBS-01: n8n-worker emits structured JSON logs ($N8N_WORKER_JSON JSON lines found)"
 else
-  log_fail "OBS-01: n8n-worker logs not accessible"
+  log_fail "OBS-01: n8n-worker logs are NOT JSON format"
+  echo "  Sample log output:"
+  vps "docker logs current-n8n-worker-1 --tail 3 2>&1" | head -3 | sed 's/^/  /' || true
 fi
 
 echo ""
