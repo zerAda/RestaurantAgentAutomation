@@ -53,7 +53,7 @@ RUN sed -i "s/import _, { flatten } from 'lodash';/import _ from 'lodash'; const
     /app/node_modules/@strapi/core/dist/domain/module/index.mjs
 # (2) Directory import 'lodash/fp' — not valid in ESM; rewrite to 'lodash/fp.js' across all .mjs
 RUN find /app/node_modules/@strapi/core/dist/ -name "*.mjs" \
-    -exec sed -i "s|from 'lodash/fp'|from 'lodash/fp.js'|g" {} \;
+    -exec sed -i "s|'lodash/fp'|'lodash/fp.js'|g" {} \;
 
 # Remove build tools after npm ci (keep runtime-only packages)
 RUN apk del python3 make g++
