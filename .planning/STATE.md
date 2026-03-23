@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 07-02-PLAN.md — async telegram bridge with typing keepalive and retry deployed
-last_updated: "2026-03-20T20:01:30Z"
+stopped_at: "Session resumed, proceeding to plan 01-04 (VPS: check CMS health, run smoke scripts)"
+last_updated: "2026-03-23T12:21:05.054Z"
 progress:
   total_phases: 7
   completed_phases: 0
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 07 — nemoclaw-telegram-bot-nvidia-nim-integration-and-reliability-improvements
+**Current focus:** Phase 01 — cms-stability-and-base-upgrade
 
 ## Current Position
 
-Phase: 07 (nemoclaw-telegram-bot-nvidia-nim-integration-and-reliability-improvements) — EXECUTING
-Plan: 2 of 4
+Phase: 01 (cms-stability-and-base-upgrade) — EXECUTING
+Plan: 1 of 4
 
 ## Performance Metrics
 
@@ -79,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20
-Stopped at: Completed 07-02-PLAN.md — async telegram bridge with typing keepalive and retry deployed
-Resume file: None
+Last session: 2026-03-23
+Stopped at: Session resumed, proceeding to plan 01-04 (VPS: check CMS health, run smoke scripts)
+Resume file: .planning/phases/01-cms-stability-and-base-upgrade/.continue-here.md
