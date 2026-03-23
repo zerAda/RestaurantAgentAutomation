@@ -1,35 +1,76 @@
 {
   "version": "1.0",
-  "timestamp": "2026-03-23T17:57:20.176Z",
+  "timestamp": "2026-03-23T19:21:40.843Z",
   "phase": "01",
   "phase_name": "cms-stability-and-base-upgrade",
   "phase_dir": ".planning/phases/01-cms-stability-and-base-upgrade",
   "plan": 4,
-  "task": 1,
+  "task": 2,
   "total_tasks": 3,
   "status": "paused",
-  "completed_tasks": [],
-  "remaining_tasks": [
-    {"id": "01-04-T1", "name": "VPS CMS rebuild and health verification", "status": "in_progress", "progress": "6 rebuilds done. lodash/fp fixed (19 nested installs patched). New blocker: fs-extra named ESM import fails same way."},
-    {"id": "01-04-T2", "name": "Run smoke scripts and capture output", "status": "not_started"},
-    {"id": "01-04-T3", "name": "Update TEST_REPORT.md + create SUMMARY.md", "status": "not_started"}
-  ],
-  "blockers": [
+  "completed_tasks": [
     {
-      "description": "CMS crashes: `The requested module 'fs-extra' does not provide an export named 'existsSync'`. Node.js 20.20.0 loadESMFromCJS loads .js files with ESM import syntax via ESM runtime; named imports from CJS packages with dynamic module.exports (like fs-extra) fail. After fs-extra there may be more packages with same issue.",
-      "type": "technical",
-      "workaround": "Extend fix-lodash-fp.js to also patch fs-extra. After the existing lodash forEach, add: const fse = require('/app/node_modules/fs-extra'); const fseKeys = Object.keys(fse); build fp.mjs-style wrapper at /app/node_modules/fs-extra/index.mjs; patch /app/node_modules/fs-extra/package.json exports map with '.' + './index' + './index.js' all pointing to index.mjs for import and index.js for require. Check for nested fs-extra under @strapi/* too. Rebuild. Then check for next error."
+      "id": "01-04-T1",
+      "name": "VPS CMS rebuild and health verification",
+      "status": "done",
+      "commits": ["d312a0e", "27de9e3", "530d60e", "741d46c", "1fed1d8"],
+      "progress": "CMS healthy (docker ps: Up 10min healthy, /_health 204). All ESM/CJS crashes fixed permanently via tsconfig CommonJS. CI/CD hardened."
     }
   ],
-  "human_actions_pending": [],
+  "remaining_tasks": [
+    {
+      "id": "01-04-T2",
+      "name": "Run smoke scripts and capture output",
+      "status": "not_started",
+      "note": "Port 1337 not published to host. Must use docker exec or Traefik URL. See .continue-here.md for exact commands."
+    },
+    {
+      "id": "01-04-T3",
+      "name": "Update TEST_REPORT.md + create SUMMARY.md",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {
+      "action": "Set ALERT_WEBHOOK_URL and run scripts/setup-vps-sre.sh on VPS",
+      "context": "SRE watchdog cron + docker daemon.json need one-time install. Needs user to provide a Slack/webhook URL.",
+      "blocking": false
+    }
+  ],
   "decisions": [
-    {"decision": "Pin node:20.20.0-alpine in Dockerfile (both stages)", "rationale": "node:20.20.1 introduced stricter ESM resolution breaking lodash imports", "phase": "01"},
-    {"decision": "Add allowJs: true to inventory-cms/tsconfig.json", "rationale": "Without it JS controllers never land in dist/ — Strapi production only loads from dist/", "phase": "01"},
-    {"decision": "Set auth: false (not true/string) in Strapi 5 route configs", "rationale": "Strapi 5 validateRouteConfig rejects boolean true and string values for config.auth", "phase": "01"},
-    {"decision": "ESM wrapper (pkg.mjs) + package.json exports map approach for CJS packages with named ESM import failures", "rationale": "290+ @strapi .mjs files use named imports from lodash/fp; sed only patched @strapi/core. Wrapper approach fixes all 19 nested lodash installs at once. Same pattern applies to fs-extra and any other CJS package that fails.", "phase": "01"},
-    {"decision": "loadESMFromCJS in Node.js 20.20.0 is root cause: dist/src/index.js (compiled TS with ESM syntax) is require()d by Strapi CJS core, loaded as ESM, which chain-loads other ESM imports that fail on named CJS imports", "rationale": "Understanding the root cause: our TS compiles to ESM .js files, Strapi loads them via require(), Node 20.20.0 uses loadESMFromCJS to handle them as ESM. Named imports from CJS modules with non-static exports fail in ESM context.", "phase": "01"}
+    {
+      "decision": "tsconfig module: CommonJS + moduleResolution: Node",
+      "rationale": "Permanent fix for Node 20.19+ loadESMFromCJS: compiled dist/ is CJS, Strapi require() never triggers ESM parsing, no more cascading named-import failures from lodash/fs-extra/etc.",
+      "phase": "01"
+    },
+    {
+      "decision": "Keep fix-lodash-fp.js for Strapi upstream bugs",
+      "rationale": "@strapi/core 5.37.1 own .mjs files have named imports from lodash/fp and fs-extra — these are Strapi bugs unrelated to our tsconfig. The patch remains necessary until upstream fixes.",
+      "phase": "01"
+    },
+    {
+      "decision": "CMS memory 512M→1G + NODE_OPTIONS=--max-old-space-size=768",
+      "rationale": "512M container limit caused OOM during Strapi startup (~249MB heap used). Stable at ~323MB with 1G limit.",
+      "phase": "01"
+    },
+    {
+      "decision": "CI/CD branch master→main fix",
+      "rationale": "All workflow triggers were on master but active branch is main — CI/CD was never auto-triggering on any push to main. Critical discovery.",
+      "phase": "01"
+    },
+    {
+      "decision": "cms-ts-compile CI gate: tsc --noEmit + module format validation",
+      "rationale": "Would have caught the module:ESNext misconfiguration in 3 minutes instead of 10 hours of manual debugging.",
+      "phase": "01"
+    },
+    {
+      "decision": "Port 1337 not published to host",
+      "rationale": "Security: CMS only accessible via Docker internal network or Traefik. Smoke tests must use docker exec or Traefik URL.",
+      "phase": "01"
+    }
   ],
   "uncommitted_files": [],
-  "next_action": "Edit inventory-cms/fix-lodash-fp.js: after the existing lodash patchLodash() function and dirs.forEach(), add a patchFsExtra() function using same pattern (require, Object.keys, create .mjs wrapper, patch package.json exports map). Check if fs-extra has nested installs under @strapi/* too. SCP to VPS. Rebuild (fast — cached layers). Check health. If another package fails, apply same pattern. Once healthy: run smoke scripts (scripts/smoke-test.sh on VPS), update .planning/phases/01-cms-stability-and-base-upgrade/01-04-TEST_REPORT.md, create SUMMARY.md.",
-  "context_notes": "This session (2026-03-23) did 6 CMS rebuilds. Root cause of all failures: Node.js 20.20.0 loadESMFromCJS feature. When Strapi CJS core loads our compiled dist/src/index.js via require(), it sees ESM syntax and uses loadESMFromCJS. This loads it as ESM. In ESM context, named imports from CJS packages (lodash/fp, fs-extra) fail unless the package has statically-detectable named exports. Fix: create .mjs wrapper with explicit named exports + package.json exports map. Applied to lodash (all 19 nested installs patched). fs-extra is next. Pattern is clear and mechanical. Commits pushed this session: 3025c89, 1c148dc, 10c34d6, 5f53f96, 5227e62. Key files: inventory-cms/Dockerfile (COPY fix-lodash-fp.js + RUN node fix-lodash-fp.js replaces old sed), inventory-cms/fix-lodash-fp.js (the fixer script). Plans 01-01/02/03 already have SUMMARYs. Only 01-04 remains to close phase 01."
+  "next_action": "Run smoke test via docker exec on VPS. See .continue-here.md <next_action> section for exact command. Then tasks 2+3 (smoke + SUMMARY).",
+  "context_notes": "Session 2026-03-23 afternoon. 11 Docker builds total. Root cause found session 2 (tsconfig ESNext). CI/CD audit revealed master/main split-brain — all automated workflows were broken. SRE audit revealed 512M memory limit, missing healthchecks on traefik/ollama/whisper, no alerting. All fixed and committed. CMS healthy. Just need smoke tests + Phase 01 close."
 }
