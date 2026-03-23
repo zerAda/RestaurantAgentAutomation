@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: "Session resumed, proceeding to plan 01-04 (VPS: check CMS health, run smoke scripts)"
-last_updated: "2026-03-23T12:21:05.054Z"
+stopped_at: "Phase 02 Plan 01 COMPLETE — nginx request_id log field + X-Request-ID header propagation deployed"
+last_updated: "2026-03-23T20:21:00.000Z"
 progress:
   total_phases: 7
-  completed_phases: 0
-  total_plans: 8
-  completed_plans: 4
+  completed_phases: 1
+  total_plans: 16
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 01 — cms-stability-and-base-upgrade
+**Current focus:** Phase 02 — structured-logging-and-correlation
 
 ## Current Position
 
-Phase: 01 (cms-stability-and-base-upgrade) — EXECUTING
-Plan: 1 of 4
+Phase: 02 (structured-logging-and-correlation) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -62,6 +62,8 @@ Plan: 1 of 4
 - [07-02] Preserve existing polling architecture and credential loading; only replace message handling core
 - [07-02] Use ES5-compatible var in withRetry/classifyError for maximum Node.js compatibility
 - [07-02] clearInterval moved to finally block from try block to prevent typing leak on errors
+- [02-01] nginx $request_id built-in variable (no module needed, nginx >= 1.11.0) used as correlation ID — no map block or set directive needed
+- [02-01] Strapi proxy locations use inline proxy_set_header and do NOT include proxy_params — X-Request-ID must be added inline to each Strapi location block
 
 ### Roadmap Evolution
 
@@ -73,12 +75,13 @@ None yet.
 
 ### Blockers/Concerns
 
-- P0: CMS routes injected via docker cp are lost on any container rebuild — addressed in Phase 1
 - No automated DB backup — deferred to v2 (BAK-01..03 out of scope this milestone)
-- Disk risk: 119GB VPS; ENOSPC corrupts files — monitor during image rebuilds in Phase 1
+- Disk risk: 119GB VPS; ENOSPC corrupts files — monitor during image rebuilds
+- Follow-up (Phase 4 scope): Public role DB permissions for kiosk products, nginx POST on /v1/strapi/
+- SRE scripts not yet installed on VPS: setup-vps-sre.sh needs ALERT_WEBHOOK_URL
 
 ## Session Continuity
 
 Last session: 2026-03-23
-Stopped at: Session resumed, proceeding to plan 01-04 (VPS: check CMS health, run smoke scripts)
-Resume file: .planning/phases/01-cms-stability-and-base-upgrade/.continue-here.md
+Stopped at: Phase 02 Plan 01 COMPLETE — nginx request_id log field + X-Request-ID header propagation deployed
+Resume file: none

@@ -47,7 +47,12 @@ Plans:
   2. n8n workflow execution logs contain `workflow_id`, `execution_id`, `step`, `timestamp`, and `level` fields in JSON format
   3. Strapi production logs are in JSON format (Winston JSON formatter); a single request can be traced from nginx access log to Strapi application log using the correlation ID
   4. Nginx access log contains `request_id` for every proxied request, enabling end-to-end trace reconstruction
-**Plans**: TBD
+**Plans:** 1/4 plans executed
+Plans:
+- [ ] 02-01-PLAN.md — Nginx: add $request_id to JSON log format and propagate X-Request-ID header to all upstream services (OBS-03, OBS-04)
+- [ ] 02-02-PLAN.md — n8n: configure N8N_LOG_FORMAT=json for structured NDJSON output on main and worker (OBS-01)
+- [ ] 02-03-PLAN.md — Strapi: Pino JSON logger config + request-id Koa middleware for correlation ID capture (OBS-02, OBS-04)
+- [ ] 02-04-PLAN.md — End-to-end correlation smoke test verifying all four OBS requirements on live VPS (OBS-01, OBS-02, OBS-03, OBS-04)
 
 ### Phase 3: Metrics, Alerting & Audit Trail
 **Goal**: Operators can observe queue health and disk pressure in near-real-time; all inbound workflow executions are recorded in a queryable audit table with 90-day retention
@@ -60,7 +65,13 @@ Plans:
   4. A `workflow_audit` table exists in PostgreSQL; W_IN_WHATSAPP, W_IN_INSTAGRAM, and W_IN_MESSENGER write audit entries on execution start and completion
   5. The admin dashboard has a basic audit log view where operators can search by date range and workflow name
   6. Audit entries older than 90 days are archived (not deleted) by an automated process
-**Plans**: TBD
+**Plans:** 5 plans
+Plans:
+- [ ] 03-01-PLAN.md — DB migration (ops.workflow_audit tables) + nginx rate-limit logging (METR-02, AUDIT-01)
+- [ ] 03-02-PLAN.md — W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-03)
+- [ ] 03-03-PLAN.md — W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE workflows (AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04)
+- [ ] 03-04-PLAN.md — Patch W1_IN_WA, W2_IN_IG, W3_IN_MSG with fire-and-forget audit hooks (AUDIT-02)
+- [ ] 03-05-PLAN.md — Admin dashboard AuditLogView page with date range filter and pagination (AUDIT-03)
 
 ### Phase 4: Test Coverage — Routing & Permissions
 **Goal**: Automated tests guard the two most fragile, zero-coverage surfaces: nginx routing and Strapi permission matrix; both run in CI on relevant PRs
@@ -72,7 +83,11 @@ Plans:
   3. The rate-limit smoke test sends 25 rapid requests to `/v1/inbound/whatsapp` and confirms 429 fires after the burst limit
   4. An unauthenticated `GET /api/products` returns 200 with product data; an unauthenticated `POST /api/orders` returns 403/401; an authenticated admin `GET /api/orders` returns full order data
   5. Nginx smoke tests run automatically in CI on every PR that touches `infra/gateway/nginx.conf`; Strapi permission tests run in CI against a local Strapi instance
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 04-01-PLAN.md — nginx.smoke.conf (CI-safe stub config) + smoke-nginx-routing.sh (8 zones + CORS + rate-limit) (TEST-01, TEST-02, TEST-03)
+- [ ] 04-02-PLAN.md — smoke-strapi-permissions.sh (Public + Authenticated role matrix) (TEST-05, TEST-06, TEST-07)
+- [ ] 04-03-PLAN.md — CI integration: nginx-smoke + strapi-permissions jobs in ci.yml (TEST-04, TEST-08)
 
 ### Phase 5: Test Coverage — n8n Workflow E2E
 **Goal**: The three inbound adapter workflows and the outbox retry mechanism have automated E2E tests that prove orders reach Strapi and retries fire correctly; tests run in CI
@@ -119,9 +134,9 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. CMS Stability & Base Upgrade | 3/4 | In progress (gap closure) | - |
-| 2. Structured Logging & Correlation | 0/TBD | Not started | - |
-| 3. Metrics, Alerting & Audit Trail | 0/TBD | Not started | - |
-| 4. Test Coverage — Routing & Permissions | 0/TBD | Not started | - |
+| 2. Structured Logging & Correlation | 1/4 | In Progress|  |
+| 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
+| 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
 | 5. Test Coverage — n8n Workflow E2E | 0/TBD | Not started | - |
 | 6. Performance Tuning | 0/TBD | Not started | - |
 | 7. NemoClaw Telegram Bot | 1/4 | In Progress|  |
