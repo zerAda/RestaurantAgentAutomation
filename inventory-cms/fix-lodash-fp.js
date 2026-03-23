@@ -86,23 +86,31 @@ dirs.forEach(patchLodash);
 console.log('Total lodash installs patched: ' + dirs.length);
 
 // Also patch fs-extra (same CJS dynamic exports problem)
+// fs-extra uses main: ./lib/index.js (not ./index.js), so we read package.json
+// to find the actual entry, then write .mjs wrapper alongside it.
 function patchFsExtra(dir) {
-  var fse = require(dir + '/index.js');
+  var pkgPath = path.join(dir, 'package.json');
+  var pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  var mainRel = pkg.main || './index.js';
+  if (!mainRel.startsWith('./')) mainRel = './' + mainRel;
+  var mainAbs = path.join(dir, mainRel.slice(2));
+  if (!fs.existsSync(mainAbs)) { console.log('Skip fs-extra (no main): ' + dir); return; }
+  var fse = require(mainAbs);
   var keys = Object.keys(fse);
-  var lines = ["import _fse from './index.js';", "export default _fse;"];
+  // Write mjs alongside the main file (e.g. lib/index.mjs)
+  var mjsAbs = mainAbs.replace(/\.js$/, '.mjs');
+  // import path is relative to the .mjs file's directory (same dir as main)
+  var mainBasename = './' + path.basename(mainAbs); // e.g. './index.js'
+  var mjsRel = './' + path.relative(dir, mjsAbs).replace(/\\/g, '/'); // e.g. './lib/index.mjs'
+  var lines = ["import _fse from '" + mainBasename + "';", "export default _fse;"];
   keys.forEach(function(k) {
     if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)) {
       lines.push('export const ' + k + ' = _fse.' + k + ';');
     }
   });
-  fs.writeFileSync(path.join(dir, 'index.mjs'), lines.join('\n') + '\n');
-  var pkgPath = path.join(dir, 'package.json');
-  var pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-  pkg.exports = {
-    '.': { 'import': './index.mjs', 'require': './index.js' },
-    './index': { 'import': './index.mjs', 'require': './index.js' },
-    './index.js': { 'import': './index.mjs', 'require': './index.js' }
-  };
+  fs.writeFileSync(mjsAbs, lines.join('\n') + '\n');
+  pkg.exports = pkg.exports || {};
+  pkg.exports['.'] = { 'import': mjsRel, 'require': mainRel };
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log('Patched fs-extra: ' + dir.replace('/app/node_modules/', '') + ' (' + keys.length + ' exports)');
 }
@@ -117,7 +125,8 @@ function findFsExtraDirs(startNM) {
       if (!e.isDirectory()) return;
       var pkgDir = path.join(nmDir, e.name);
       if (e.name === 'fs-extra') {
-        if (fs.existsSync(path.join(pkgDir, 'index.js'))) results.push(pkgDir);
+        // Check by package.json (not index.js — main might be lib/index.js)
+        if (fs.existsSync(path.join(pkgDir, 'package.json'))) results.push(pkgDir);
       } else if (e.name.charAt(0) === '@') {
         var se; try { se = fs.readdirSync(pkgDir, { withFileTypes: true }); } catch(er) { return; }
         se.forEach(function(s) {
