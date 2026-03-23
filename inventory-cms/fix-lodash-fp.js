@@ -35,7 +35,8 @@ pkg.exports = {
   '.': './lodash.js',
   './fp': { 'import': './fp.mjs', 'require': './fp.js' },
   './fp.js': { 'import': './fp.mjs', 'require': './fp.js' },
-  './*': './*'
+  './*.js': './*.js',   // explicit .js imports: require('lodash/get.js') → ./get.js
+  './*': './*.js'        // bare imports: require('lodash/get') → ./get.js (adds extension)
 };
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 console.log('Patched lodash/package.json with exports map');
