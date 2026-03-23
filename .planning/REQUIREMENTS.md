@@ -20,7 +20,7 @@
 ### Observability — Structured Logging
 
 - [ ] **OBS-01**: n8n workflows emit structured JSON logs with correlation IDs (workflow_id, execution_id, step, timestamp, level)
-- [ ] **OBS-02**: Strapi CMS uses JSON log format in production (Winston JSON formatter)
+- [x] **OBS-02**: Strapi CMS uses JSON log format in production (Winston JSON formatter)
 - [x] **OBS-03**: Nginx access log includes request_id header for cross-service tracing
 - [x] **OBS-04**: A correlation ID is generated at the gateway and propagated to upstream services via `X-Request-ID` header
 
@@ -118,8 +118,8 @@
 | INFRA-01 | Phase 1 | Pending |
 | INFRA-02 | Phase 1 | Pending |
 | INFRA-03 | Phase 1 | In progress (smoke-post-rebuild.sh added; verification runs in plan 02) |
-| OBS-01 | Phase 2 | Pending |
-| OBS-02 | Phase 2 | Pending |
+| OBS-01 | Phase 2 | Blocked (n8n 1.80.0 no JSON format; needs upgrade) |
+| OBS-02 | Phase 2 | Complete |
 | OBS-03 | Phase 2 | Complete |
 | OBS-04 | Phase 2 | Complete |
 | METR-01 | Phase 3 | Pending |
@@ -159,4 +159,4 @@
 
 ---
 *Requirements defined: 2026-03-18*
-*Last updated: 2026-03-18 — traceability filled by roadmapper*
+*Last updated: 2026-03-23 — OBS-02 marked complete after Phase 02 gap closure; OBS-01 remains pending (n8n 1.80.0 on VPS does not support N8N_LOG_FORMAT=json — requires n8n upgrade)*
