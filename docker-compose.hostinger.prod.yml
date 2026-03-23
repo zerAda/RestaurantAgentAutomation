@@ -442,6 +442,9 @@ services:
       - SLO_DLQ_RATE_MAX=${SLO_DLQ_RATE_MAX:-0.05}
       - SLO_DLQ_COUNT_MAX=${SLO_DLQ_COUNT_MAX:-5}
       - CORE_WORKFLOW_ID=${CORE_WORKFLOW_ID:-}
+      - N8N_LOG_FORMAT=json
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console
     expose:
       - "5678"
     healthcheck:
@@ -570,6 +573,9 @@ services:
       - SLO_DLQ_RATE_MAX=${SLO_DLQ_RATE_MAX:-0.05}
       - SLO_DLQ_COUNT_MAX=${SLO_DLQ_COUNT_MAX:-5}
       - CORE_WORKFLOW_ID=${CORE_WORKFLOW_ID:-}
+      - N8N_LOG_FORMAT=json
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console
     healthcheck:
       interval: 30s
       retries: 5
