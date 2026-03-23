@@ -18,7 +18,6 @@ export default {
             path: '/realtime/cortex',
             handler: 'realtime.cortex',
             config: {
-                auth: true,
                 policies: [],
             },
         },
