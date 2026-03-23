@@ -13,9 +13,9 @@ name: Security Scan
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
   schedule:
     # Run weekly on Sundays at 2:00 AM UTC
     - cron: "0 2 * * 0"
@@ -284,7 +284,7 @@ jobs:
     name: Generate SBOM
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout code

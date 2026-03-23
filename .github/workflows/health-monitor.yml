@@ -28,6 +28,7 @@ env:
   # Gateway: api.<domain>/healthz (public, no auth)
   # Console: n8n.<domain> or console.<domain> (IP-protected, will fail)
   HEALTH_URL: ${{ vars.HEALTH_URL }}
+  DOMAIN: ${{ vars.DOMAIN || 'srv1258231.hstgr.cloud' }}
   VPS_HOST: ${{ vars.VPS_HOST }}
   VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
   PROJECT_DIR: ${{ vars.PROJECT_DIR || '/opt/resto' }}
@@ -112,6 +113,53 @@ jobs:
           # Log response for debugging (truncated)
           if [ -n "$RESPONSE" ]; then
             echo "Response: $(echo "$RESPONSE" | head -c 500)"
+          fi
+
+  # =========================================================================
+  # Job 2b: CMS Health Check (Strapi /_health — returns 204)
+  # =========================================================================
+  cms-health-check:
+    name: CMS Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      http_code: ${{ steps.cms-check.outputs.http_code }}
+      status: ${{ steps.cms-check.outputs.status }}
+
+    steps:
+      - name: Check CMS health endpoint
+        id: cms-check
+        run: |
+          CMS_URL="https://cms.${{ env.DOMAIN }}/_health"
+          echo "Checking CMS health: $CMS_URL"
+
+          HTTP_CODE=$(curl -s -o /tmp/cms_health.txt -w "%{http_code}" \
+            "$CMS_URL" \
+            --connect-timeout 15 \
+            --max-time 30 \
+            -H "User-Agent: GitHub-Actions-HealthMonitor/2.0" \
+            2>/dev/null || echo "000")
+
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+
+          # Strapi /_health returns 204 No Content when healthy
+          if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo "status=healthy" >> $GITHUB_OUTPUT
+            echo "::notice::CMS health check passed (HTTP $HTTP_CODE)"
+          elif [ "$HTTP_CODE" = "000" ]; then
+            echo "status=unreachable" >> $GITHUB_OUTPUT
+            echo "::error::CMS unreachable (connection failed). Container may be down or still bootstrapping."
+          elif [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ] || [ "$HTTP_CODE" = "504" ]; then
+            echo "status=backend_down" >> $GITHUB_OUTPUT
+            echo "::error::CMS backend down (HTTP $HTTP_CODE). Check 'docker logs current-cms-1 --tail 50'."
+          else
+            echo "status=unhealthy" >> $GITHUB_OUTPUT
+            echo "::error::CMS unexpected response (HTTP $HTTP_CODE)"
+          fi
+
+          RESPONSE=$(cat /tmp/cms_health.txt 2>/dev/null || echo "")
+          if [ -n "$RESPONSE" ]; then
+            echo "Response: $(echo "$RESPONSE" | head -c 200)"
           fi
 
   # =========================================================================
@@ -212,10 +260,11 @@ jobs:
   alert:
     name: Send Alert
     runs-on: ubuntu-latest
-    needs: [http-health-check, ssh-health-check]
+    needs: [http-health-check, ssh-health-check, cms-health-check]
     if: |
       always() &&
-      needs.http-health-check.outputs.status != 'healthy'
+      (needs.http-health-check.outputs.status != 'healthy' ||
+       needs.cms-health-check.outputs.status != 'healthy')
     timeout-minutes: 5
     steps:
       - name: Send alert webhook
@@ -223,6 +272,8 @@ jobs:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
           HTTP_STATUS: ${{ needs.http-health-check.outputs.status }}
           HTTP_CODE: ${{ needs.http-health-check.outputs.http_code }}
+          CMS_STATUS: ${{ needs.cms-health-check.outputs.status }}
+          CMS_CODE: ${{ needs.cms-health-check.outputs.http_code }}
         run: |
           if [ -z "$ALERT_WEBHOOK_URL" ]; then
             echo "::notice::No ALERT_WEBHOOK_URL configured - skipping alert"
@@ -237,7 +288,7 @@ jobs:
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \"*Health Check Failed*\n- URL: ${{ env.HEALTH_URL }}\n- Status: ${HTTP_STATUS}\n- HTTP Code: ${HTTP_CODE}\n- Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+                  \"text\": \"*Health Check Failed*\n- Gateway URL: ${{ env.HEALTH_URL }}\n- Gateway Status: ${HTTP_STATUS} (HTTP ${HTTP_CODE})\n- CMS Status: ${CMS_STATUS} (HTTP ${CMS_CODE})\n- Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)\"
                 }
               }]
             }" || echo "::warning::Alert webhook failed"
@@ -248,7 +299,7 @@ jobs:
   summary:
     name: Generate Summary
     runs-on: ubuntu-latest
-    needs: [http-health-check, ssh-health-check, check-ssh]
+    needs: [http-health-check, ssh-health-check, check-ssh, cms-health-check]
     if: always()
     timeout-minutes: 2
 
@@ -260,10 +311,12 @@ jobs:
 
           | Metric | Value |
           |--------|-------|
-          | **URL** | ${{ env.HEALTH_URL }} |
-          | **HTTP Status** | ${{ needs.http-health-check.outputs.status || 'N/A' }} |
-          | **HTTP Code** | ${{ needs.http-health-check.outputs.http_code || 'N/A' }} |
-          | **Response Time** | ${{ needs.http-health-check.outputs.response_time || 'N/A' }} |
+          | **Gateway URL** | ${{ env.HEALTH_URL }} |
+          | **Gateway Status** | ${{ needs.http-health-check.outputs.status || 'N/A' }} |
+          | **Gateway HTTP Code** | ${{ needs.http-health-check.outputs.http_code || 'N/A' }} |
+          | **Gateway Response Time** | ${{ needs.http-health-check.outputs.response_time || 'N/A' }} |
+          | **CMS Status** | ${{ needs.cms-health-check.outputs.status || 'N/A' }} |
+          | **CMS HTTP Code** | ${{ needs.cms-health-check.outputs.http_code || 'N/A' }} |
           | **SSH Available** | ${{ needs.check-ssh.outputs.ssh_available || 'N/A' }} |
           | **Timestamp** | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
 

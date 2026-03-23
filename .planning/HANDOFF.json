@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-03-23T13:44:22.495Z",
+  "timestamp": "2026-03-23T17:57:20.176Z",
   "phase": "01",
   "phase_name": "cms-stability-and-base-upgrade",
   "phase_dir": ".planning/phases/01-cms-stability-and-base-upgrade",
@@ -10,25 +10,26 @@
   "status": "paused",
   "completed_tasks": [],
   "remaining_tasks": [
-    {"id": "01-04-T1", "name": "VPS CMS rebuild and health verification", "status": "in_progress", "progress": "4 rebuilds done, CMS still crash-looping — one more Dockerfile fix needed"},
+    {"id": "01-04-T1", "name": "VPS CMS rebuild and health verification", "status": "in_progress", "progress": "6 rebuilds done. lodash/fp fixed (19 nested installs patched). New blocker: fs-extra named ESM import fails same way."},
     {"id": "01-04-T2", "name": "Run smoke scripts and capture output", "status": "not_started"},
-    {"id": "01-04-T3", "name": "Update TEST_REPORT.md with actual results", "status": "not_started"}
+    {"id": "01-04-T3", "name": "Update TEST_REPORT.md + create SUMMARY.md", "status": "not_started"}
   ],
   "blockers": [
     {
-      "description": "CMS crashes with ERR_UNSUPPORTED_DIR_IMPORT for 'lodash/fp' in @strapi/core/dist/index.mjs (bare import, not 'from' import — sed missed it)",
+      "description": "CMS crashes: `The requested module 'fs-extra' does not provide an export named 'existsSync'`. Node.js 20.20.0 loadESMFromCJS loads .js files with ESM import syntax via ESM runtime; named imports from CJS packages with dynamic module.exports (like fs-extra) fail. After fs-extra there may be more packages with same issue.",
       "type": "technical",
-      "workaround": "In Dockerfile, change sed pattern from `s|from 'lodash/fp'|from 'lodash/fp.js'|g` to `s|'lodash/fp'|'lodash/fp.js'|g` (removes the 'from' prefix so it catches bare imports too). SCP to VPS, rebuild, start CMS."
+      "workaround": "Extend fix-lodash-fp.js to also patch fs-extra. After the existing lodash forEach, add: const fse = require('/app/node_modules/fs-extra'); const fseKeys = Object.keys(fse); build fp.mjs-style wrapper at /app/node_modules/fs-extra/index.mjs; patch /app/node_modules/fs-extra/package.json exports map with '.' + './index' + './index.js' all pointing to index.mjs for import and index.js for require. Check for nested fs-extra under @strapi/* too. Rebuild. Then check for next error."
     }
   ],
   "human_actions_pending": [],
   "decisions": [
     {"decision": "Pin node:20.20.0-alpine in Dockerfile (both stages)", "rationale": "node:20.20.1 introduced stricter ESM resolution breaking lodash imports", "phase": "01"},
-    {"decision": "Add allowJs: true to inventory-cms/tsconfig.json", "rationale": "Without it JS controllers (automation.js, agent-session.js etc.) never land in dist/ — Strapi production only loads from dist/", "phase": "01"},
+    {"decision": "Add allowJs: true to inventory-cms/tsconfig.json", "rationale": "Without it JS controllers never land in dist/ — Strapi production only loads from dist/", "phase": "01"},
     {"decision": "Set auth: false (not true/string) in Strapi 5 route configs", "rationale": "Strapi 5 validateRouteConfig rejects boolean true and string values for config.auth", "phase": "01"},
-    {"decision": "Patch @strapi/core dist .mjs files in Dockerfile to rewrite lodash/fp directory import", "rationale": "Node.js 20+ ESM resolver rejects directory imports; lodash/fp.js is the valid entry point", "phase": "01"}
+    {"decision": "ESM wrapper (pkg.mjs) + package.json exports map approach for CJS packages with named ESM import failures", "rationale": "290+ @strapi .mjs files use named imports from lodash/fp; sed only patched @strapi/core. Wrapper approach fixes all 19 nested lodash installs at once. Same pattern applies to fs-extra and any other CJS package that fails.", "phase": "01"},
+    {"decision": "loadESMFromCJS in Node.js 20.20.0 is root cause: dist/src/index.js (compiled TS with ESM syntax) is require()d by Strapi CJS core, loaded as ESM, which chain-loads other ESM imports that fail on named CJS imports", "rationale": "Understanding the root cause: our TS compiles to ESM .js files, Strapi loads them via require(), Node 20.20.0 uses loadESMFromCJS to handle them as ESM. Named imports from CJS modules with non-static exports fail in ESM context.", "phase": "01"}
   ],
-  "uncommitted_files": [".planning/STATE.md"],
-  "next_action": "Fix Dockerfile: line `find ... sed -i \"s|from 'lodash/fp'|...\"` → change to `s|'lodash/fp'|'lodash/fp.js'|g`. SCP to VPS. Rebuild CMS. Wait for health 204. Run smoke scripts. Update TEST_REPORT.md.",
-  "context_notes": "This session did 4 CMS rebuilds revealing layered Strapi 5 startup bugs. All fixed except the final one: @strapi/core/dist/index.mjs line 3 has bare `import 'lodash/fp'` (no 'from') which the previous sed `from 'lodash/fp'` didn't match. Pattern fix is trivial — just remove 'from ' from the sed LHS. Commits pushed: d957110, f16faf4, 4324308, bdbe0c3. CMS is currently in restart loop on VPS (container current-cms-1, image 0654bc1e). Plans 01-01/02/03 already have SUMMARYs. Only 01-04 remains."
+  "uncommitted_files": [],
+  "next_action": "Edit inventory-cms/fix-lodash-fp.js: after the existing lodash patchLodash() function and dirs.forEach(), add a patchFsExtra() function using same pattern (require, Object.keys, create .mjs wrapper, patch package.json exports map). Check if fs-extra has nested installs under @strapi/* too. SCP to VPS. Rebuild (fast — cached layers). Check health. If another package fails, apply same pattern. Once healthy: run smoke scripts (scripts/smoke-test.sh on VPS), update .planning/phases/01-cms-stability-and-base-upgrade/01-04-TEST_REPORT.md, create SUMMARY.md.",
+  "context_notes": "This session (2026-03-23) did 6 CMS rebuilds. Root cause of all failures: Node.js 20.20.0 loadESMFromCJS feature. When Strapi CJS core loads our compiled dist/src/index.js via require(), it sees ESM syntax and uses loadESMFromCJS. This loads it as ESM. In ESM context, named imports from CJS packages (lodash/fp, fs-extra) fail unless the package has statically-detectable named exports. Fix: create .mjs wrapper with explicit named exports + package.json exports map. Applied to lodash (all 19 nested installs patched). fs-extra is next. Pattern is clear and mechanical. Commits pushed this session: 3025c89, 1c148dc, 10c34d6, 5f53f96, 5227e62. Key files: inventory-cms/Dockerfile (COPY fix-lodash-fp.js + RUN node fix-lodash-fp.js replaces old sed), inventory-cms/fix-lodash-fp.js (the fixer script). Plans 01-01/02/03 already have SUMMARYs. Only 01-04 remains to close phase 01."
 }

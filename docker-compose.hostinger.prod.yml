@@ -75,10 +75,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.50"
-          memory: 512M
+          cpus: "1.00"
+          memory: 1G
     environment:
       - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=768
       - HOST=0.0.0.0
       - PORT=1337
       - DATABASE_CLIENT=postgres
@@ -106,9 +107,13 @@ services:
     expose:
       - "1337"
     healthcheck:
+      # Strapi bootstraps 81 tables on first start (~3-8 min on a 2-CPU VPS).
+      # start_period: 180s means Docker does NOT count failures during this
+      # window — the container will not be marked unhealthy until 3 minutes
+      # have elapsed. Retries x interval = 10 x 30s = 300s of grace after that.
       interval: 30s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 180s
       test:
         - CMD-SHELL
         - wget -qO- http://127.0.0.1:1337/_health || exit 1
@@ -198,7 +203,8 @@ services:
       - SETUID
       - SETGID
     depends_on:
-      - n8n-main
+      n8n-main:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -591,6 +597,17 @@ services:
       - ./scripts/n8n-worker-entrypoint.sh:/opt/scripts/n8n-worker-entrypoint.sh:ro
   ollama:
     image: ollama/ollama:0.6.2
+    healthcheck:
+      # Ollama exposes a /api/tags endpoint when ready. Model loading can take
+      # 30-60s; start_period covers that. This is ai-profile only so downtime
+      # does not affect core services.
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:11434/api/tags || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -715,6 +732,16 @@ services:
       - redis_data:/data
       - ./infra/redis/entrypoint.sh:/etc/redis/entrypoint.sh:ro
   traefik:
+    healthcheck:
+      # --ping=true is already set in the command block below; this probes it.
+      # Traefik starts in ~2s so 10s start_period is generous.
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/ping || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -760,6 +787,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./secrets/traefik_usersfile:/run/secrets/traefik_usersfile:ro
   whisper:
+    healthcheck:
+      # Whisper ASR webservice exposes /docs (FastAPI). Model loading takes
+      # 60-120s depending on model size; start_period covers initial load.
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:9000/docs || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     expose:
       - "9000"
     # Pin to a specific version tag — never use :latest in production (supply-chain risk)
