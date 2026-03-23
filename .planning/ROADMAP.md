@@ -47,12 +47,13 @@ Plans:
   2. n8n workflow execution logs contain `workflow_id`, `execution_id`, `step`, `timestamp`, and `level` fields in JSON format
   3. Strapi production logs are in JSON format (Winston JSON formatter); a single request can be traced from nginx access log to Strapi application log using the correlation ID
   4. Nginx access log contains `request_id` for every proxied request, enabling end-to-end trace reconstruction
-**Plans:** 1/4 plans executed
+**Plans:** 5 plans
 Plans:
-- [ ] 02-01-PLAN.md — Nginx: add $request_id to JSON log format and propagate X-Request-ID header to all upstream services (OBS-03, OBS-04)
-- [ ] 02-02-PLAN.md — n8n: configure N8N_LOG_FORMAT=json for structured NDJSON output on main and worker (OBS-01)
-- [ ] 02-03-PLAN.md — Strapi: Pino JSON logger config + request-id Koa middleware for correlation ID capture (OBS-02, OBS-04)
-- [ ] 02-04-PLAN.md — End-to-end correlation smoke test verifying all four OBS requirements on live VPS (OBS-01, OBS-02, OBS-03, OBS-04)
+- [x] 02-01-PLAN.md — Nginx: add $request_id to JSON log format and propagate X-Request-ID header to all upstream services (OBS-03, OBS-04)
+- [x] 02-02-PLAN.md — n8n: configure N8N_LOG_FORMAT=json for structured NDJSON output on main and worker (OBS-01)
+- [x] 02-03-PLAN.md — Strapi: Pino JSON logger config + request-id Koa middleware for correlation ID capture (OBS-02, OBS-04)
+- [x] 02-04-PLAN.md — End-to-end correlation smoke test verifying all four OBS requirements on live VPS (OBS-01, OBS-02, OBS-03, OBS-04)
+- [ ] 02-05-PLAN.md — Gap closure: document OBS-01 known limitation and mark OBS-02 complete in REQUIREMENTS.md (OBS-01, OBS-02)
 
 ### Phase 3: Metrics, Alerting & Audit Trail
 **Goal**: Operators can observe queue health and disk pressure in near-real-time; all inbound workflow executions are recorded in a queryable audit table with 90-day retention
@@ -134,7 +135,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. CMS Stability & Base Upgrade | 3/4 | In progress (gap closure) | - |
-| 2. Structured Logging & Correlation | 1/4 | In Progress|  |
+| 2. Structured Logging & Correlation | 4/5 | In Progress (gap closure) |  |
 | 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
 | 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
 | 5. Test Coverage — n8n Workflow E2E | 0/TBD | Not started | - |
