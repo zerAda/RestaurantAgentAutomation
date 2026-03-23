@@ -5,7 +5,7 @@ export default {
             path: '/metrics',
             handler: 'metric.index',
             config: {
-                auth: 'users-permissions',
+                auth: false,
                 policies: [],
             }
         }

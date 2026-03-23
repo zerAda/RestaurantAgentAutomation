@@ -5,7 +5,7 @@ export default {
             path: '/control-plane/status',
             handler: 'control-plane.status',
             config: {
-                auth: 'users-permissions',
+                auth: false,
                 policies: [],
             }
         }
