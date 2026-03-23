@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-03-23T12:13:39.606Z",
+  "phase": "01",
+  "phase_name": "cms-stability-and-base-upgrade",
+  "phase_dir": ".planning/phases/01-cms-stability-and-base-upgrade",
+  "plan": 4,
+  "task": 1,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": "01-01", "name": "Add TS source for all 15 Strapi API routes", "status": "done"},
+    {"id": "01-02", "name": "Upgrade Node.js 18→20 in all Dockerfiles", "status": "done"},
+    {"id": "01-03", "name": "Fix lodash ESM import crash in Dockerfile", "status": "done"}
+  ],
+  "remaining_tasks": [
+    {
+      "id": "01-04-T1",
+      "name": "VPS: check CMS health; if not healthy check logs; if healthy run smoke scripts",
+      "status": "not_started",
+      "type": "human_action_blocking"
+    },
+    {
+      "id": "01-04-T2",
+      "name": "VPS: run smoke-cms-routes.sh + smoke-post-rebuild.sh, capture full output",
+      "status": "not_started",
+      "type": "human_action_blocking"
+    },
+    {
+      "id": "01-04-T3",
+      "name": "Update project/TEST_REPORT.md with smoke results, replace BLOCKED/DEFERRED rows",
+      "status": "not_started",
+      "type": "auto"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "CMS health unknown — 4 bugs fixed via docker commit but health not confirmed after last fix (auth: true bug)",
+      "type": "human_action",
+      "workaround": "Check: ssh deploy@72.60.190.192 'docker logs current-cms-1 2>&1 | grep -i error | tail -10'"
+    }
+  ],
+  "human_actions_pending": [
+    {
+      "action": "SSH to VPS and check CMS health: curl -s -o /dev/null -w '%{http_code}' http://72.60.190.192:1337/_health",
+      "context": "4 bugs fixed via docker commit in last session but health not confirmed. If still crashing, check docker logs current-cms-1 for next error.",
+      "blocking": true
+    },
+    {
+      "action": "If CMS healthy (204): run BOTH smoke scripts. Scripts path is /opt/resto/current/scripts/ (NOT project/scripts/). See cms-strapi5-node20-fixes.md for exact commands.",
+      "context": "Smoke output needed for Claude to update TEST_REPORT.md in Task 3 of plan 01-04",
+      "blocking": true
+    }
+  ],
+  "decisions": [
+    {"decision": "CMS routes fixed by adding TS source files — never runtime injection", "rationale": "Persistent across rebuilds", "phase": "01"},
+    {"decision": "Node.js upgraded 18→20 in all Dockerfiles", "rationale": "Node 18 EOL", "phase": "01"},
+    {"decision": "lodash ESM fix in Dockerfile postinstall sed patch", "rationale": "Node 20.20.0 strict ESM/CJS interop breaks named imports from lodash", "phase": "01"},
+    {"decision": "4 bugs patched via docker commit (fast fix); proper rebuild still needed to bake into image", "rationale": "docker commit makes runtime fixes persistent without full rebuild", "phase": "01"}
+  ],
+  "uncommitted_files": [
+    ".planning/STATE.md",
+    "inventory-cms/Dockerfile"
+  ],
+  "next_action": "SSH to VPS: check CMS health first. If healthy (204): run smoke scripts from /opt/resto/current/scripts/. If crashing: check docker logs for next error after 'auth: true' fix.",
+  "context_notes": "Last session fixed 4 CMS crash-loop bugs via docker commit: (1) lodash ESM named import, (2) broken bidirectional schema relations in driver-reward + fortune-spin, (3) CREATE INDEX CONCURRENTLY in transaction, (4) auth: true invalid in Strapi 5. All 4 applied to running container image sha256:b401186. CMS health NOT confirmed after final fix — context ran out. Phase 07 was deleted from scope. VPS script path is /opt/resto/current/scripts/ (no project/ subdir). See memory/cms-strapi5-node20-fixes.md for full detail."
+}
