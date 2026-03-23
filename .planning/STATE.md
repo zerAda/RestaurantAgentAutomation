@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: "Phase 02 Plan 01 COMPLETE — nginx request_id log field + X-Request-ID header propagation deployed"
-last_updated: "2026-03-23T20:21:00.000Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-03-23T22:11:05.686Z"
 progress:
   total_phases: 7
-  completed_phases: 1
-  total_plans: 16
-  completed_plans: 5
+  completed_phases: 2
+  total_plans: 17
+  completed_plans: 9
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-18)
 
 ## Current Position
 
-Phase: 02 (structured-logging-and-correlation) — EXECUTING
-Plan: 2 of 4
+Phase: 02 (structured-logging-and-correlation) — COMPLETE
+Plan: 5 of 5
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Plan: 2 of 4
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 02 P05 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,10 @@ Plan: 2 of 4
 - [07-02] clearInterval moved to finally block from try block to prevent typing leak on errors
 - [02-01] nginx $request_id built-in variable (no module needed, nginx >= 1.11.0) used as correlation ID — no map block or set directive needed
 - [02-01] Strapi proxy locations use inline proxy_set_header and do NOT include proxy_params — X-Request-ID must be added inline to each Strapi location block
+- [02-05] OBS-01 not marked complete: VPS n8n is 1.80.0 (not 2.9.4), 1.80.0 does not honor N8N_LOG_FORMAT=json — requires n8n upgrade
+- [02-05] OBS-02 confirmed complete: Strapi CMS emits 50+ structured JSON lines with service='strapi-cms' field
+- [Phase 02-05]: OBS-01 not marked complete: VPS n8n is 1.80.0 (not 2.9.4) and does not honor N8N_LOG_FORMAT=json — requires n8n upgrade to resolve
+- [Phase 02-05]: OBS-02 confirmed complete: Strapi CMS emits structured JSON logs with service='strapi-cms' field (50+ lines confirmed by smoke test)
 
 ### Roadmap Evolution
 
@@ -82,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23
-Stopped at: Phase 02 Plan 01 COMPLETE — nginx request_id log field + X-Request-ID header propagation deployed
-Resume file: none
+Last session: 2026-03-23T22:11:05.682Z
+Stopped at: Completed 02-05-PLAN.md
+Resume file: None

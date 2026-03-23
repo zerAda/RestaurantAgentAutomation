@@ -13,7 +13,7 @@ capability — no horizontal layers, no partial features.
 ## Phases
 
 - [ ] **Phase 1: CMS Stability & Base Upgrade** - Eliminate the docker-cp runtime hack; bake all 15 Strapi API routes into source; upgrade Node.js 18 -> 20 across all services
-- [ ] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end
+- [x] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end (completed 2026-03-23)
 - [ ] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table
 - [ ] **Phase 4: Test Coverage — Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix with automated integration tests
 - [ ] **Phase 5: Test Coverage — n8n Workflow E2E** - End-to-end tests for inbound adapters, outbox retry, and CI integration for workflow smoke tests
@@ -47,7 +47,7 @@ Plans:
   2. n8n workflow execution logs contain `workflow_id`, `execution_id`, `step`, `timestamp`, and `level` fields in JSON format
   3. Strapi production logs are in JSON format (Winston JSON formatter); a single request can be traced from nginx access log to Strapi application log using the correlation ID
   4. Nginx access log contains `request_id` for every proxied request, enabling end-to-end trace reconstruction
-**Plans:** 5 plans
+**Plans:** 5/5 plans complete
 Plans:
 - [x] 02-01-PLAN.md — Nginx: add $request_id to JSON log format and propagate X-Request-ID header to all upstream services (OBS-03, OBS-04)
 - [x] 02-02-PLAN.md — n8n: configure N8N_LOG_FORMAT=json for structured NDJSON output on main and worker (OBS-01)
@@ -135,7 +135,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. CMS Stability & Base Upgrade | 3/4 | In progress (gap closure) | - |
-| 2. Structured Logging & Correlation | 4/5 | In Progress (gap closure) |  |
+| 2. Structured Logging & Correlation | 5/5 | Complete   | 2026-03-23 |
 | 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
 | 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
 | 5. Test Coverage — n8n Workflow E2E | 0/TBD | Not started | - |
