@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "lib": [
       "ES2022"
     ],
