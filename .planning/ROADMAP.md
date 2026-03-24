@@ -98,7 +98,10 @@ Plans:
   1. A POST to `/v1/inbound/whatsapp` with a valid Meta-signed payload triggers W_IN_WHATSAPP_ADAPTER and creates a record in Strapi `inbound-message` — verifiable by querying the DB after the test
   2. A simulated outbound failure results in a Redis queue entry for the retry, confirming exponential backoff is wired up correctly
   3. Workflow smoke tests execute in CI using n8n test mode or mock webhook triggers without requiring a live VPS
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 05-01-PLAN.md — E2E test script: Meta-signed WA inbound + DB assertion (TEST-09) and outbox retry + Redis assertion (TEST-10)
+- [ ] 05-02-PLAN.md — CI integration: n8n-workflow-e2e job in ci.yml (TEST-11)
 
 ### Phase 6: Performance Tuning
 **Goal**: Known performance ceilings are removed: order query latency drops via new indexes, Redis cannot OOM-kill the platform, and the admin dashboard loads faster via code splitting
@@ -138,6 +141,6 @@ Plans:
 | 2. Structured Logging & Correlation | 5/5 | Complete   | 2026-03-23 |
 | 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
 | 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
-| 5. Test Coverage — n8n Workflow E2E | 0/TBD | Not started | - |
+| 5. Test Coverage — n8n Workflow E2E | 0/2 | Not started | - |
 | 6. Performance Tuning | 0/TBD | Not started | - |
 | 7. NemoClaw Telegram Bot | 1/4 | In Progress|  |
