@@ -68,8 +68,8 @@ Plans:
   6. Audit entries older than 90 days are archived (not deleted) by an automated process
 **Plans:** 5 plans
 Plans:
-- [ ] 03-01-PLAN.md — DB migration (ops.workflow_audit tables) + nginx rate-limit logging (METR-02, AUDIT-01)
-- [ ] 03-02-PLAN.md — W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-03)
+- [ ] 03-01-PLAN.md — DB migration (ops.workflow_audit tables) + nginx rate-limit logging + /v1/internal/ proxy (METR-03, AUDIT-01)
+- [ ] 03-02-PLAN.md — W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-02, METR-04, METR-05)
 - [ ] 03-03-PLAN.md — W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE workflows (AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04)
 - [ ] 03-04-PLAN.md — Patch W1_IN_WA, W2_IN_IG, W3_IN_MSG with fire-and-forget audit hooks (AUDIT-02)
 - [ ] 03-05-PLAN.md — Admin dashboard AuditLogView page with date range filter and pagination (AUDIT-03)
