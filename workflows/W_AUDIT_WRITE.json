@@ -1,0 +1,159 @@
+{
+  "name": "W_AUDIT_WRITE - Workflow Audit Write",
+  "active": false,
+  "settings": {
+    "executionTimeout": 30,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/internal/audit-write",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "audit-write-webhook",
+      "name": "IN - Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "var body = $json.body ?? $json;\nvar required = ['workflow_name', 'workflow_id', 'execution_id', 'status'];\nfor (var i = 0; i < required.length; i++) {\n  var f = required[i];\n  if (!body[f]) {\n    return [{ json: { error: 'Missing required field: ' + f, valid: false } }];\n  }\n}\nvar validStatuses = ['started', 'completed', 'failed'];\nif (validStatuses.indexOf(body.status) === -1) {\n  return [{ json: { error: 'Invalid status: ' + body.status, valid: false } }];\n}\nreturn [{ json: {\n  valid: true,\n  workflow_name: body.workflow_name,\n  workflow_id: body.workflow_id,\n  execution_id: body.execution_id,\n  channel: body.channel || 'unknown',\n  status: body.status,\n  started_at: body.started_at || new Date().toISOString(),\n  completed_at: body.completed_at || null,\n  duration_ms: body.duration_ms ? parseInt(body.duration_ms, 10) : null,\n  tenant_id: body.tenant_id || null,\n  correlation_id: body.correlation_id || null,\n  error_message: body.error_message || null,\n  metadata_json: body.metadata_json || {}\n}}];"
+      },
+      "id": "audit-write-validate",
+      "name": "B0 - Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-550, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.valid}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "audit-write-if-valid",
+      "name": "IF Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [-300, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify({error: $json.error})}}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "audit-write-respond-400",
+      "name": "RESP - 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-50, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "value2": "started"
+            }
+          ]
+        }
+      },
+      "id": "audit-write-if-started",
+      "name": "IF Started",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [-50, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ops.workflow_audit (workflow_name, workflow_id, execution_id, channel, status, started_at, tenant_id, correlation_id, metadata_json)\nVALUES ('{{ $json.workflow_name }}', '{{ $json.workflow_id }}', '{{ $json.execution_id }}', '{{ $json.channel }}', 'started', '{{ $json.started_at }}'::timestamptz, {{ $json.tenant_id ? \"'\" + $json.tenant_id + \"'\" : \"NULL\" }}, {{ $json.correlation_id ? \"'\" + $json.correlation_id + \"'\" : \"NULL\" }}, '{{ JSON.stringify($json.metadata_json) }}'::jsonb)\nON CONFLICT DO NOTHING\nRETURNING id",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "RestoBot PG (n8n DB)"
+        }
+      },
+      "id": "audit-write-insert",
+      "name": "PG - INSERT (started)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [250, -200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ops.workflow_audit\nSET status = '{{ $json.status }}',\n    completed_at = '{{ $json.completed_at }}'::timestamptz,\n    duration_ms = {{ $json.duration_ms !== null ? $json.duration_ms : 'NULL' }},\n    error_message = {{ $json.error_message ? \"'\" + $json.error_message.replace(/'/g, \"''\") + \"'\" : 'NULL' }}\nWHERE execution_id = '{{ $json.execution_id }}'\n  AND status = 'started'\nRETURNING id",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "RestoBot PG (n8n DB)"
+        }
+      },
+      "id": "audit-write-update",
+      "name": "PG - UPDATE (completed/failed)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify({ok: true, status: $json.status || 'written'})}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "audit-write-respond-200",
+      "name": "RESP - 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [550, -100]
+    }
+  ],
+  "connections": {
+    "IN - Webhook": {
+      "main": [[{ "node": "B0 - Validate", "type": "main", "index": 0 }]]
+    },
+    "B0 - Validate": {
+      "main": [[{ "node": "IF Valid", "type": "main", "index": 0 }]]
+    },
+    "IF Valid": {
+      "main": [
+        [{ "node": "IF Started", "type": "main", "index": 0 }],
+        [{ "node": "RESP - 400", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Started": {
+      "main": [
+        [{ "node": "PG - INSERT (started)", "type": "main", "index": 0 }],
+        [{ "node": "PG - UPDATE (completed/failed)", "type": "main", "index": 0 }]
+      ]
+    },
+    "PG - INSERT (started)": {
+      "main": [[{ "node": "RESP - 200", "type": "main", "index": 0 }]]
+    },
+    "PG - UPDATE (completed/failed)": {
+      "main": [[{ "node": "RESP - 200", "type": "main", "index": 0 }]]
+    }
+  }
+}

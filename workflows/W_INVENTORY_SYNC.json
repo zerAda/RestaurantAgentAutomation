@@ -1,5 +1,10 @@
 {
     "name": "W_INVENTORY_SYNC",
+    "settings": {
+        "executionTimeout": 60,
+        "saveExecutionProgress": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
+    },
     "nodes": [
         {
             "parameters": {},
@@ -33,7 +38,7 @@
         },
         {
             "parameters": {
-                "jsCode": "return $json.items.map(item => ({ json: { item_code: item.item, qty: item.qty } }));"
+                "jsCode": "return $json.items.map(item => ({ json: { item_code: item.item, qty: item.qty, restaurantId: $json.restaurantId || $json.tenant_context?.restaurant_id } }));"
             },
             "name": "Split Items",
             "type": "n8n-nodes-base.code",
@@ -45,7 +50,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/products?filters[code][$eq]={{$json.item_code}}&filters[restaurant_id][$eq]={{$json.tenant_context?.restaurant_id || $item(0).$node[\"Start\"].json.restaurantId}}&populate=ingredients",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/products?filters[code][$eq]={{$json.item_code}}&filters[restaurant_id][$eq]={{$json.restaurantId}}&populate=ingredients",
                 "method": "GET",
                 "authentication": "genericCredentialType",
                 "genericAuthType": "httpHeaderAuth",
@@ -61,13 +66,14 @@
                 850,
                 300
             ],
-            "notes": "SECURITY: Tenant isolation enforced via restaurant_id URL filter. Only products/ingredients belonging to the authenticated restaurant are retrieved. DO NOT remove this filter."
+            "continueOnFail": true,
+            "notes": "SECURITY: Tenant isolation enforced via restaurant_id URL filter."
         },
         {
             "parameters": {
-                "jsCode": "const product = $json.data[0];\nif (!product) return [];\n\nconst ingredients = product.attributes.ingredients.data;\nconst orderQty = $item(0).$node[\"Split Items\"].json.qty;\n\nreturn ingredients.map(ing => ({\n  json: {\n    id: ing.id,\n    name: ing.attributes.name,\n    current_stock: ing.attributes.current_stock,\n    decrement_by: orderQty,\n    min_stock_alert: ing.attributes.min_stock_alert\n  }\n}));"
+                "jsCode": "/**\n * CRIT-04 FIX: Prepare ingredient decrement data\n * No longer calculates new stock locally — that's done atomically in SQL.\n */\nconst product = $json.data && $json.data[0] ? $json.data[0] : null;\nif (!product) return [];\n\nconst ingredients = product.attributes?.ingredients?.data || [];\nconst orderQty = $item(0).$node[\"Split Items\"].json.qty;\nconst restaurantId = $item(0).$node[\"Split Items\"].json.restaurantId;\n\nreturn ingredients.map(ing => ({\n  json: {\n    ingredient_id: ing.id,\n    name: ing.attributes?.name || 'unknown',\n    decrement_by: orderQty,\n    min_stock_alert: ing.attributes?.min_stock_alert || 5,\n    restaurantId\n  }\n}));"
             },
-            "name": "Calculate New Stock",
+            "name": "Prepare Decrement Data",
             "type": "n8n-nodes-base.code",
             "typeVersion": 1,
             "position": [
@@ -77,34 +83,42 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/ingredients/{{$json.id}}",
-                "method": "PUT",
-                "authentication": "genericCredentialType",
-                "genericAuthType": "httpHeaderAuth",
-                "headerAuth": {
-                    "name": "Authorization",
-                    "value": "=Bearer {{$env.STRAPI_API_TOKEN}}"
-                },
-                "jsonParameters": true,
-                "options": {},
-                "body": "={{ {\"data\": {\"current_stock\": $json.current_stock - $json.decrement_by}} }}"
+                "operation": "executeQuery",
+                "query": "UPDATE ingredients SET current_stock = current_stock - $1 WHERE id = $2 AND current_stock >= $1 RETURNING id, name, current_stock, ($3)::int as min_stock_alert;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.decrement_by, $json.ingredient_id, $json.min_stock_alert]}}"
+                }
             },
-            "name": "Update Stock",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
+            "name": "Atomic Decrement Stock (SQL)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
             "position": [
                 1250,
+                300
+            ],
+            "continueOnFail": true,
+            "notes": "CRIT-04 FIX: Atomic decrement via SQL. Uses `current_stock >= $qty` guard to prevent negative stock. No TOCTOU race condition. RETURNING clause provides updated stock for low-stock check."
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * CRIT-04 FIX: Handle decrement results\n * - If RETURNING is empty, the decrement failed (insufficient stock)\n * - Check for low stock threshold\n */\nconst result = $json;\nconst rows = Array.isArray(result) ? result : (result.data || result.rows || [result]);\n\nif (!rows || rows.length === 0 || !rows[0]?.id) {\n  // Stock insufficient — log and flag\n  console.log(JSON.stringify({\n    level: 'WARN',\n    event: 'STOCK_DECREMENT_FAILED',\n    ingredient_id: $node['Prepare Decrement Data'].json.ingredient_id,\n    ingredient_name: $node['Prepare Decrement Data'].json.name,\n    requested_qty: $node['Prepare Decrement Data'].json.decrement_by,\n    reason: 'INSUFFICIENT_STOCK',\n    ts: new Date().toISOString()\n  }));\n  return [{ json: { stockOk: false, lowStock: true, ingredient: $node['Prepare Decrement Data'].json.name } }];\n}\n\nconst row = rows[0];\nconst isLow = (row.current_stock || 0) <= (row.min_stock_alert || 5);\n\nreturn [{ json: { \n  stockOk: true, \n  lowStock: isLow, \n  ingredient_id: row.id,\n  name: row.name,\n  current_stock: row.current_stock,\n  min_stock_alert: row.min_stock_alert\n} }];"
+            },
+            "name": "Check Decrement Result",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1450,
                 300
             ]
         },
         {
             "parameters": {
                 "conditions": {
-                    "number": [
+                    "boolean": [
                         {
-                            "value1": "={{$json.data.attributes.current_stock}}",
-                            "operation": "smallerEqual",
-                            "value2": "={{$node[\"Calculate New Stock\"].json.min_stock_alert}}"
+                            "value1": "={{$json.lowStock}}",
+                            "operation": "isTrue"
                         }
                     ]
                 }
@@ -113,7 +127,7 @@
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
             "position": [
-                1450,
+                1650,
                 300
             ]
         },
@@ -125,9 +139,10 @@
             "type": "n8n-nodes-base.executeWorkflow",
             "typeVersion": 1,
             "position": [
-                1650,
+                1850,
                 300
-            ]
+            ],
+            "continueOnFail": true
         }
     ],
     "connections": {
@@ -168,25 +183,36 @@
             "main": [
                 [
                     {
-                        "node": "Calculate New Stock",
+                        "node": "Prepare Decrement Data",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Calculate New Stock": {
+        "Prepare Decrement Data": {
             "main": [
                 [
                     {
-                        "node": "Update Stock",
+                        "node": "Atomic Decrement Stock (SQL)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Update Stock": {
+        "Atomic Decrement Stock (SQL)": {
+            "main": [
+                [
+                    {
+                        "node": "Check Decrement Result",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Decrement Result": {
             "main": [
                 [
                     {

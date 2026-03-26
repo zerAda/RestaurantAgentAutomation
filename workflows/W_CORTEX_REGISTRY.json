@@ -122,7 +122,7 @@
       ],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
           "name": "Redis"
         }
       }
@@ -142,7 +142,7 @@
       ],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
           "name": "Redis"
         }
       }
@@ -179,7 +179,7 @@
       ],
       "credentials": {
         "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
+          "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
           "name": "Redis"
         }
       }

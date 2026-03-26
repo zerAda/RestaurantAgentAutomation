@@ -240,7 +240,7 @@
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[driver][phone_number][$eq]={{ $node['Extract Driver Info'].json.phone }}&filters[delivery_status][$eq]=DELIVERED&filters[delivered_at][$gte]={{ new Date(new Date().setHours(0,0,0,0)).toISOString() }}&pagination[limit]=50",
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/orders?filters[driver][id][$eq]={{ $node['Extract Driver Info'].json.driverId }}&filters[delivery_status][$eq]=DELIVERED&filters[delivered_at][$gte]={{ new Date(new Date().setHours(0,0,0,0)).toISOString() }}&pagination[limit]=50",
                 "method": "GET",
                 "headerParameters": {
                     "parameters": [

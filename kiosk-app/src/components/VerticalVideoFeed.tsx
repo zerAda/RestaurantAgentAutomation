@@ -119,14 +119,20 @@ export default function VerticalVideoFeed() {
 
         const fetchFeed = async () => {
             try {
-                const res = await fetch(`${STRAPI_URL}/api/products?populate=creative_assets&filters[is_kiosk_visible][$eq]=true&pagination[pageSize]=10&sort=createdAt:desc`);
-                if (!res.ok) {
-                    console.warn(`[Kiosk] Feed HTTP ${res.status} — keeping fallback feed.`);
-                } else {
-                    const json = await res.json();
-                    if (!cancelled && json.data?.length > 0) {
-                        setFeed(mapStrapiToFeed(json.data));
-                    }
+                // PERF-09: Use menuService with 5-min TTL cache instead of raw fetch()
+                // This prevents redundant Strapi API calls on repeated renders
+                const { menuService } = await import('../services/menuService');
+                const products = await menuService.getProducts();
+                if (!cancelled && products.length > 0) {
+                    setFeed(products.map((p, idx) => ({
+                        id: p.id,
+                        url: p.image,
+                        type: 'image' as const,
+                        title: p.name,
+                        price: p.price,
+                        rawPrice: `${p.price} DA`,
+                        desc: `Explore our signature recipe.`,
+                    })));
                 }
             } catch {
                 console.warn('[Kiosk] Signal drift: using fallback');

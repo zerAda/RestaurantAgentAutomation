@@ -2,7 +2,7 @@
   "name": "W4.3 - FAQ & SUPPORT AGENT",
   "active": false,
   "settings": {
-    "executionTimeout": 300,
+    "executionTimeout": 60,
     "saveExecutionProgress": true,
     "saveManualExecutions": true
   },

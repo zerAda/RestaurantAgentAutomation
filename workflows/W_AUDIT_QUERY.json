@@ -1,0 +1,100 @@
+{
+  "name": "W_AUDIT_QUERY - Workflow Audit Log Query",
+  "active": false,
+  "settings": {
+    "executionTimeout": 30,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "v1/internal/audit-log",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "audit-query-webhook",
+      "name": "IN - Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "var qs = $json.query || {};\nvar startDate = qs.start_date || new Date(Date.now() - 7 * 86400000).toISOString();\nvar endDate = qs.end_date || new Date().toISOString();\nvar workflowName = (qs.workflow_name || '').toString().trim();\nvar page = Math.max(1, parseInt(qs.page || '1', 10));\nvar pageSize = Math.min(200, Math.max(1, parseInt(qs.page_size || '50', 10)));\nvar offset = (page - 1) * pageSize;\n\nvar whereClause = \"started_at >= '\" + startDate + \"'::timestamptz AND started_at <= '\" + endDate + \"'::timestamptz\";\nif (workflowName) {\n  var escaped = workflowName.replace(/'/g, \"''\").replace(/%/g, '\\\\%').replace(/_/g, '\\\\_');\n  whereClause += \" AND workflow_name ILIKE '%\" + escaped + \"%' ESCAPE '\\\\'\";\n}\n\nvar dataQuery = \"SELECT id, workflow_name, workflow_id, execution_id, channel, status, started_at, completed_at, duration_ms, tenant_id, correlation_id, error_message, created_at FROM ops.workflow_audit WHERE \" + whereClause + \" ORDER BY started_at DESC LIMIT \" + pageSize + \" OFFSET \" + offset;\nvar countQuery = \"SELECT COUNT(*) AS total FROM ops.workflow_audit WHERE \" + whereClause;\n\nreturn [{ json: { dataQuery: dataQuery, countQuery: countQuery, page: page, pageSize: pageSize, offset: offset } }];"
+      },
+      "id": "audit-query-parse",
+      "name": "B0 - Parse Params",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-350, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.dataQuery }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "RestoBot PG (n8n DB)"
+        }
+      },
+      "id": "audit-query-pg",
+      "name": "PG - Query Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-100, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "var items = $input.all().map(function(i) { return i.json; });\nreturn [{ json: { rows: items } }];"
+      },
+      "id": "audit-query-format",
+      "name": "B0 - Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [150, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "audit-query-respond",
+      "name": "RESP - 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 0]
+    }
+  ],
+  "connections": {
+    "IN - Webhook": {
+      "main": [[{ "node": "B0 - Parse Params", "type": "main", "index": 0 }]]
+    },
+    "B0 - Parse Params": {
+      "main": [[{ "node": "PG - Query Audit", "type": "main", "index": 0 }]]
+    },
+    "PG - Query Audit": {
+      "main": [[{ "node": "B0 - Format Response", "type": "main", "index": 0 }]]
+    },
+    "B0 - Format Response": {
+      "main": [[{ "node": "RESP - 200", "type": "main", "index": 0 }]]
+    }
+  }
+}

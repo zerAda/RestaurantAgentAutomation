@@ -2,8 +2,9 @@
     "name": "W25 - Gamification Google Review Wheel",
     "active": false,
     "settings": {
-        "executionTimeout": 60,
-        "saveExecutionProgress": true
+        "executionTimeout": 30,
+        "saveExecutionProgress": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
     },
     "nodes": [
         {
@@ -24,12 +25,12 @@
         },
         {
             "parameters": {
-                "operation": "executeQuery",
-                "query": "SELECT * FROM reward_campaigns WHERE is_active = true LIMIT 1;"
+                "language": "javascript",
+                "jsCode": "/**\n * CRIT-03 FIX: Input Validation & Auth Guard\n * - Requires phone number (no anonymous spins)\n * - Validates phone format (E.164)\n * - Extracts and sanitizes input\n */\nconst body = $json.body || $json;\nconst phone = (body.phone || body.customer_phone || '').toString().trim();\nconst reviewUrl = (body.review_url || '').toString().trim();\n\n// Reject anonymous/guest spins\nif (!phone || phone === 'GUEST' || phone.length < 8) {\n  return [{\n    json: {\n      _code: 400,\n      _error: true,\n      _resp: { success: false, error: 'PHONE_REQUIRED', message: 'Un numéro de téléphone valide est requis pour tourner la roue.' }\n    }\n  }];\n}\n\n// Basic E.164 validation\nconst cleanPhone = phone.replace(/[^0-9+]/g, '');\nif (!/^\\+?[1-9]\\d{7,14}$/.test(cleanPhone)) {\n  return [{\n    json: {\n      _code: 400,\n      _error: true,\n      _resp: { success: false, error: 'INVALID_PHONE', message: 'Format de numéro invalide.' }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    phone: cleanPhone,\n    reviewUrl,\n    _error: false\n  }\n}];"
             },
-            "id": "get-campaign-strapi",
-            "name": "Get Active Campaign (DB)",
-            "type": "n8n-nodes-base.postgres",
+            "id": "validate-input",
+            "name": "B0 - Validate Input",
+            "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
                 200,
@@ -38,12 +39,18 @@
         },
         {
             "parameters": {
-                "language": "javascript",
-                "jsCode": "const campaign = $input.first().json;\nif (!campaign) throw new Error('No active campaign');\n\nconst matrix = campaign.probability_matrix || {\"Prizes\": [{\"name\": \"Lost\", \"weight\": 50}, {\"name\": \"Drink\", \"weight\": 30}, {\"name\": \"Dessert\", \"weight\": 20}]};\n\n// Actuarial RNG\nlet totalWeight = matrix.Prizes.reduce((sum, prize) => sum + prize.weight, 0);\nlet randomNum = Math.random() * totalWeight;\nlet selectedPrize = null;\n\nfor (let prize of matrix.Prizes) {\n  if (randomNum < prize.weight) {\n    selectedPrize = prize;\n    break;\n  }\n  randomNum -= prize.weight;\n}\n\n// Generate standard Coupon format (RALPHE-XXX)\nconst couponCode = 'RALPHE-' + Math.floor(1000 + Math.random() * 9000);\n\nreturn {\n  rewardName: selectedPrize.name,\n  couponCode: selectedPrize.name.toLowerCase().includes('lost') ? null : couponCode,\n  campaignId: campaign.id\n};"
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{$json._error}}",
+                            "operation": "isTrue"
+                        }
+                    ]
+                }
             },
-            "id": "rng-actuarial",
-            "name": "Run RNG \u0026 Determine Prize",
-            "type": "n8n-nodes-base.code",
+            "id": "check-validation",
+            "name": "Validation Error?",
+            "type": "n8n-nodes-base.if",
             "typeVersion": 2,
             "position": [
                 400,
@@ -52,10 +59,158 @@
         },
         {
             "parameters": {
+                "responseCode": "={{$json._code || 400}}",
+                "respondWith": "json",
+                "responseBody": "={{JSON.stringify($json._resp)}}",
+                "options": {}
+            },
+            "id": "resp-error",
+            "name": "RESP - Error",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                600,
+                -100
+            ]
+        },
+        {
+            "parameters": {
                 "operation": "executeQuery",
-                "query": "INSERT INTO customer_rewards (customer_phone, reward_type, coupon_code, is_redeemed, created_at) VALUES ($1, $2, $3, false, NOW()) RETURNING id;",
+                "query": "SELECT COUNT(*) as spin_count FROM customer_rewards WHERE customer_phone = $1 AND created_at > NOW() - INTERVAL '24 hours';",
                 "additionalFields": {
-                    "queryParams": "={{[$json.body.phone || 'GUEST', $json.rewardName, $json.couponCode]}}"
+                    "queryParams": "={{[$json.phone]}}"
+                }
+            },
+            "id": "check-rate-limit",
+            "name": "B1 - Check Spin Rate (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                600,
+                100
+            ],
+            "notes": "CRIT-03 FIX: Rate limit - 1 spin per phone per 24 hours via DB check."
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * CRIT-03 FIX: Rate limit enforcement\n */\nconst spinCount = parseInt($json.spin_count || '0', 10);\nconst maxSpins = parseInt($env.GAMIFICATION_MAX_SPINS_24H || '1', 10);\nconst phone = $node['B0 - Validate Input'].json.phone;\n\nif (spinCount >= maxSpins) {\n  return [{\n    json: {\n      _error: true,\n      _code: 429,\n      _resp: {\n        success: false,\n        error: 'RATE_LIMITED',\n        message: `Tu as déjà tourné la roue aujourd'hui ! Reviens demain 🎡`,\n        next_spin_available: 'tomorrow'\n      }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    phone,\n    _error: false,\n    spinsToday: spinCount\n  }\n}];"
+            },
+            "id": "rate-limit-check",
+            "name": "B1 - Rate Limit Gate",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{$json._error}}",
+                            "operation": "isTrue"
+                        }
+                    ]
+                }
+            },
+            "id": "check-rate-error",
+            "name": "Rate Limited?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "responseCode": 429,
+                "respondWith": "json",
+                "responseBody": "={{JSON.stringify($json._resp)}}",
+                "options": {}
+            },
+            "id": "resp-rate-limited",
+            "name": "RESP - Rate Limited",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1200,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM reward_campaigns WHERE is_active = true LIMIT 1;"
+            },
+            "id": "get-campaign-strapi",
+            "name": "Get Active Campaign (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                1200,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * CRIT-03 FIX: Secure Prize Selection\n * - Uses crypto.randomInt() for CSPRNG\n * - Uses crypto.randomUUID() for coupon codes\n * - Validates campaign data\n */\nconst crypto = require('crypto');\nconst campaign = $json;\nconst phone = $node['B1 - Rate Limit Gate'].json.phone;\n\nif (!campaign || !campaign.id) {\n  return [{\n    json: {\n      _error: true,\n      _code: 503,\n      _resp: { success: false, error: 'NO_CAMPAIGN', message: 'Aucune campagne active actuellement.' }\n    }\n  }];\n}\n\nconst matrix = campaign.probability_matrix || {\n  Prizes: [\n    { name: 'Perdu', weight: 50 },\n    { name: 'Boisson Offerte', weight: 30 },\n    { name: 'Dessert Offert', weight: 20 }\n  ]\n};\n\n// CSPRNG prize selection\nconst totalWeight = matrix.Prizes.reduce((sum, prize) => sum + prize.weight, 0);\nlet randomNum = crypto.randomInt(0, totalWeight);\nlet selectedPrize = matrix.Prizes[matrix.Prizes.length - 1]; // fallback\n\nfor (const prize of matrix.Prizes) {\n  if (randomNum < prize.weight) {\n    selectedPrize = prize;\n    break;\n  }\n  randomNum -= prize.weight;\n}\n\nconst isLoss = selectedPrize.name.toLowerCase().includes('perdu') || selectedPrize.name.toLowerCase().includes('lost');\n\n// CSPRNG coupon code (UUID-based, collision-proof)\nconst couponCode = isLoss ? null : ('RALPHE-' + crypto.randomUUID().slice(0, 8).toUpperCase());\n\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'WHEEL_SPIN',\n  phone: phone.slice(0, 4) + '****',\n  prize: selectedPrize.name,\n  hasCoupon: !!couponCode,\n  campaignId: campaign.id,\n  ts: new Date().toISOString()\n}));\n\nreturn [{\n  json: {\n    _error: false,\n    phone,\n    rewardName: selectedPrize.name,\n    couponCode,\n    campaignId: campaign.id,\n    isLoss\n  }\n}];"
+            },
+            "id": "rng-actuarial",
+            "name": "Run Secure RNG & Determine Prize",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1400,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{$json._error}}",
+                            "operation": "isTrue"
+                        }
+                    ]
+                }
+            },
+            "id": "check-campaign-error",
+            "name": "Campaign Error?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                1600,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "responseCode": "={{$json._code || 503}}",
+                "respondWith": "json",
+                "responseBody": "={{JSON.stringify($json._resp)}}",
+                "options": {}
+            },
+            "id": "resp-campaign-error",
+            "name": "RESP - No Campaign",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1800,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO customer_rewards (customer_phone, reward_type, coupon_code, is_redeemed, campaign_id, created_at) VALUES ($1, $2, $3, false, $4, NOW()) RETURNING id;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.phone, $json.rewardName, $json.couponCode, $json.campaignId]}}"
                 }
             },
             "id": "save-reward-strapi",
@@ -63,30 +218,100 @@
             "type": "n8n-nodes-base.postgres",
             "typeVersion": 2,
             "position": [
-                600,
-                0
+                1800,
+                300
             ],
-            "executeOnce": true
+            "executeOnce": true,
+            "notes": "CRIT-03 FIX: Uses parameterized phone from validated input, not raw body."
         },
         {
             "parameters": {
                 "respondWith": "json",
-                "responseBody": "={\n  \"success\": true,\n  \"reward\": \"{{$json.rewardName}}\",\n  \"couponCode\": \"{{$json.couponCode}}\"\n}",
+                "responseBody": "={{ JSON.stringify({ success: true, reward: $json.rewardName || $node['Run Secure RNG & Determine Prize'].json.rewardName, couponCode: $json.couponCode || $node['Run Secure RNG & Determine Prize'].json.couponCode, isLoss: $node['Run Secure RNG & Determine Prize'].json.isLoss || false }) }}",
                 "options": {}
             },
             "id": "return-to-frontend",
-            "name": "Return Prize Payload to Frontend",
+            "name": "RESP - Prize Payload",
             "type": "n8n-nodes-base.respondToWebhook",
             "typeVersion": 1,
             "position": [
-                800,
-                0
+                2000,
+                300
             ]
         }
     ],
     "connections": {
         "IN - Wheel Spin Request": {
             "main": [
+                [
+                    {
+                        "node": "B0 - Validate Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Validate Input": {
+            "main": [
+                [
+                    {
+                        "node": "Validation Error?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validation Error?": {
+            "main": [
+                [
+                    {
+                        "node": "RESP - Error",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "B1 - Check Spin Rate (DB)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B1 - Check Spin Rate (DB)": {
+            "main": [
+                [
+                    {
+                        "node": "B1 - Rate Limit Gate",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B1 - Rate Limit Gate": {
+            "main": [
+                [
+                    {
+                        "node": "Rate Limited?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Rate Limited?": {
+            "main": [
+                [
+                    {
+                        "node": "RESP - Rate Limited",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
                 [
                     {
                         "node": "Get Active Campaign (DB)",
@@ -100,15 +325,33 @@
             "main": [
                 [
                     {
-                        "node": "Run RNG \u0026 Determine Prize",
+                        "node": "Run Secure RNG & Determine Prize",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Run RNG \u0026 Determine Prize": {
+        "Run Secure RNG & Determine Prize": {
             "main": [
+                [
+                    {
+                        "node": "Campaign Error?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Campaign Error?": {
+            "main": [
+                [
+                    {
+                        "node": "RESP - No Campaign",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
                 [
                     {
                         "node": "Save Reward (DB)",
@@ -122,7 +365,7 @@
             "main": [
                 [
                     {
-                        "node": "Return Prize Payload to Frontend",
+                        "node": "RESP - Prize Payload",
                         "type": "main",
                         "index": 0
                     }

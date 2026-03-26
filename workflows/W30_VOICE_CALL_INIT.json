@@ -3,7 +3,8 @@
     "active": true,
     "settings": {
         "executionTimeout": 30,
-        "saveExecutionProgress": true
+        "saveExecutionProgress": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
     },
     "nodes": [
         {
@@ -26,10 +27,61 @@
         },
         {
             "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * HIGH-02 FIX: Webhook Auth Guard for Voice Provider\n * Validates shared secret header to prevent unauthorized call injection.\n * Supports Vapi, Retell, or custom voice providers.\n */\nconst headers = $json.headers || {};\nconst body = $json.body || {};\n\n// Auth: Check shared secret\nconst expectedSecret = $env.VOICE_WEBHOOK_SECRET || '';\nconst providedSecret = headers['x-voice-secret'] || headers['x-webhook-secret'] || '';\n\nif (expectedSecret && providedSecret !== expectedSecret) {\n  console.log(JSON.stringify({\n    level: 'WARN',\n    event: 'VOICE_AUTH_FAILED',\n    ip: headers['x-forwarded-for'] || 'unknown',\n    ts: new Date().toISOString()\n  }));\n  return [{\n    json: {\n      _authFailed: true,\n      _resp: { error: 'UNAUTHORIZED', message: 'Invalid webhook secret' }\n    }\n  }];\n}\n\n// Extract caller number safely\nconst callerNumber = body.message?.call?.customer?.number \n  || body.caller_number \n  || body.from \n  || '';\n\nif (!callerNumber) {\n  return [{\n    json: {\n      _authFailed: true,\n      _resp: { error: 'MISSING_CALLER', message: 'No caller number provided' }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    _authFailed: false,\n    callerNumber: callerNumber.replace(/[^0-9+]/g, ''),\n    rawBody: body\n  }\n}];"
+            },
+            "id": "voice-auth-guard",
+            "name": "B0 - Voice Auth Guard",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                200,
+                0
+            ],
+            "notes": "HIGH-02 FIX: Validates x-voice-secret header. Rejects unauthorized calls."
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{$json._authFailed}}",
+                            "operation": "isTrue"
+                        }
+                    ]
+                }
+            },
+            "id": "check-auth",
+            "name": "Auth Failed?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                400,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "responseCode": 401,
+                "respondWith": "json",
+                "responseBody": "={{JSON.stringify($json._resp)}}",
+                "options": {}
+            },
+            "id": "resp-auth-fail",
+            "name": "RESP - 401 Unauthorized",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                600,
+                -100
+            ]
+        },
+        {
+            "parameters": {
                 "operation": "executeQuery",
                 "query": "SELECT * FROM customers WHERE phone = $1 LIMIT 1;",
                 "additionalFields": {
-                    "queryParams": "={{[$json.body.message.call.customer.number]}}"
+                    "queryParams": "={{[$json.callerNumber]}}"
                 }
             },
             "id": "get-customer-context",
@@ -37,8 +89,8 @@
             "type": "n8n-nodes-base.postgres",
             "typeVersion": 2,
             "position": [
-                250,
-                0
+                600,
+                100
             ],
             "credentials": {
                 "postgres": {
@@ -58,8 +110,8 @@
             "type": "n8n-nodes-base.postgres",
             "typeVersion": 2,
             "position": [
-                500,
-                0
+                800,
+                100
             ],
             "credentials": {
                 "postgres": {
@@ -71,15 +123,15 @@
         {
             "parameters": {
                 "language": "javascript",
-                "jsCode": "const menuItems = $node[\"Fetch Grounded Menu (DB)\"].all();\nconst categories = {};\nmenuItems.forEach(i => {\n  const cat = i.json.category || 'Autres';\n  if (!categories[cat]) categories[cat] = [];\n  categories[cat].push(`${i.json.name} (${i.json.price}DZD)`);\n});\n\nlet menuStr = '';\nfor (const [cat, items] of Object.entries(categories)) {\n  menuStr += `\\n### ${cat}\\n- ${items.join('\\n- ')}`;\n}\n\nconst caller = $('Identify Caller (DB)').first()?.json || { name: 'Client' };\n\nconst systemPrompt = `Tu es Ralphé Voice, l'agent IA premium de prise de commande.\n\nCONTEXTURE :\n- Client : ${caller.name}\n- Menu Actuel : ${menuStr}\n\nDIRECTIVES :\n1. Accueil : Salue chaleureusement le client.\n2. Menu : Ne propose QUE les articles listés ci-dessus. Si un article est indisponible, excuse-toi.\n3. Clôture : Une fois la commande prise, récapitule les articles et utilise 'finalizeOrder'.\n4. Style : Sois efficace, courtois et utilise un ton naturel (Français/Darja possible).`;\n\nreturn [{\n  json: {\n    assistantId: 'ralphe_voice_v1',\n    dynamicSystemPrompt: systemPrompt,\n    voice: { name: 'french-natural', speed: 1.05 },\n    metadata: { \n      customerPhone: $('IN - Vapi/Retell Webhook').first().json.body?.message?.call?.customer?.number, \n      platform: 'voice' \n    }\n  }\n}];"
+                "jsCode": "const menuItems = $node[\"Fetch Grounded Menu (DB)\"].all();\nconst categories = {};\nmenuItems.forEach(i => {\n  const cat = i.json.category || 'Autres';\n  if (!categories[cat]) categories[cat] = [];\n  categories[cat].push(`${i.json.name} (${i.json.price}DZD)`);\n});\n\nlet menuStr = '';\nfor (const [cat, items] of Object.entries(categories)) {\n  menuStr += `\\n### ${cat}\\n- ${items.join('\\n- ')}`;\n}\n\nconst caller = $('Identify Caller (DB)').first()?.json || { name: 'Client' };\n\nconst systemPrompt = `Tu es Ralphé Voice, l'agent IA premium de prise de commande.\\n\\nCONTEXTURE :\\n- Client : ${caller.name}\\n- Menu Actuel : ${menuStr}\\n\\nDIRECTIVES :\\n1. Accueil : Salue chaleureusement le client.\\n2. Menu : Ne propose QUE les articles listés ci-dessus. Si un article est indisponible, excuse-toi.\\n3. Clôture : Une fois la commande prise, récapitule les articles et utilise 'finalizeOrder'.\\n4. Style : Sois efficace, courtois et utilise un ton naturel (Français/Darja possible).`;\n\nreturn [{\n  json: {\n    assistantId: 'ralphe_voice_v1',\n    dynamicSystemPrompt: systemPrompt,\n    voice: { name: 'french-natural', speed: 1.05 },\n    metadata: { \n      customerPhone: $node['B0 - Voice Auth Guard'].json.callerNumber, \n      platform: 'voice' \n    }\n  }\n}];"
             },
             "id": "format-rag-prompt",
             "name": "Format System Prompt",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                750,
-                0
+                1000,
+                100
             ]
         },
         {
@@ -93,14 +145,43 @@
             "type": "n8n-nodes-base.respondToWebhook",
             "typeVersion": 1,
             "position": [
-                1000,
-                0
+                1200,
+                100
             ]
         }
     ],
     "connections": {
         "IN - Vapi/Retell Webhook": {
             "main": [
+                [
+                    {
+                        "node": "B0 - Voice Auth Guard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Voice Auth Guard": {
+            "main": [
+                [
+                    {
+                        "node": "Auth Failed?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Auth Failed?": {
+            "main": [
+                [
+                    {
+                        "node": "RESP - 401 Unauthorized",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
                 [
                     {
                         "node": "Identify Caller (DB)",

@@ -1,6 +1,11 @@
 {
     "name": "W58 - Dynamic Weather Surge Pricing",
     "active": true,
+    "settings": {
+        "executionTimeout": 60,
+        "saveExecutionProgress": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
+    },
     "nodes": [
         {
             "parameters": {
@@ -25,7 +30,9 @@
         {
             "parameters": {
                 "url": "https://api.open-meteo.com/v1/forecast?latitude=36.7525&longitude=3.042&current_weather=true",
-                "options": {}
+                "options": {
+                    "timeout": 10000
+                }
             },
             "id": "weather",
             "name": "Get Weather Algiers",
@@ -34,16 +41,30 @@
             "position": [
                 200,
                 0
+            ],
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * DIAMOND-FIX CRIT-01: Surge Pricing Guard\n * - Prevents compounding price increases\n * - Enforces MAX_SURGE_CENTS ceiling\n * - Idempotent: only applies surge once via surge_active flag\n * - Logs all pricing decisions\n */\nconst weather = $json;\nconst currentWeather = weather.current_weather || {};\nconst weatherCode = Number(currentWeather.weathercode || 0);\nconst temperature = Number(currentWeather.temperature || 25);\n\n// Config\nconst isRaining = weatherCode >= 50;\nconst surgeAmountCents = parseInt($env.SURGE_AMOUNT_CENTS || '10000', 10);\nconst maxSurgeCents = parseInt($env.MAX_SURGE_CENTS || '30000', 10);\n\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'SURGE_PRICING_CHECK',\n  weatherCode,\n  temperature,\n  isRaining,\n  surgeAmountCents,\n  maxSurgeCents,\n  ts: new Date().toISOString()\n}));\n\nreturn [{\n  json: {\n    isRaining,\n    weatherCode,\n    temperature,\n    surgeAmountCents,\n    maxSurgeCents\n  }\n}];"
+            },
+            "id": "surge-guard",
+            "name": "B0 - Surge Decision Guard",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                400,
+                0
             ]
         },
         {
             "parameters": {
                 "conditions": {
-                    "number": [
+                    "boolean": [
                         {
-                            "value1": "={{ $json.current_weather.weathercode }}",
-                            "operation": "largerEqual",
-                            "value2": 50
+                            "value1": "={{$json.isRaining}}",
+                            "operation": "isTrue"
                         }
                     ]
                 }
@@ -53,37 +74,59 @@
             "type": "n8n-nodes-base.if",
             "typeVersion": 2,
             "position": [
-                400,
+                600,
                 0
             ]
         },
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "UPDATE delivery_zones SET price_cents = price_cents + 10000 WHERE active = true AND price_cents < 50000;"
+                "query": "UPDATE delivery_zones SET price_cents = LEAST(price_cents + $1, base_price_cents + $2), surge_active = true, surge_applied_at = NOW() WHERE active = true AND surge_active = false AND price_cents < (base_price_cents + $2) RETURNING id, price_cents, base_price_cents;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.surgeAmountCents, $json.maxSurgeCents]}}"
+                }
             },
             "id": "activate_surge",
-            "name": "Activate Surge Pricing",
+            "name": "Activate Surge (Idempotent)",
             "type": "n8n-nodes-base.postgres",
             "typeVersion": 2.3,
             "position": [
-                620,
+                820,
                 -100
-            ]
+            ],
+            "continueOnFail": true,
+            "notes": "CRIT-01 FIX: Uses surge_active flag for idempotency, LEAST() for ceiling cap, base_price_cents to prevent compound increases. Parameterized query prevents SQL injection."
         },
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "UPDATE delivery_zones SET price_cents = GREATEST(price_cents - 10000, 15000) WHERE active = true AND price_cents >= 25000;"
+                "query": "UPDATE delivery_zones SET price_cents = base_price_cents, surge_active = false, surge_applied_at = NULL WHERE active = true AND surge_active = true RETURNING id, price_cents, base_price_cents;"
             },
             "id": "deactivate_surge",
-            "name": "Deactivate Surge Pricing",
+            "name": "Deactivate Surge (Restore Base)",
             "type": "n8n-nodes-base.postgres",
             "typeVersion": 2.3,
             "position": [
-                620,
+                820,
                 100
-            ]
+            ],
+            "continueOnFail": true,
+            "notes": "CRIT-01 FIX: Restores price to base_price_cents instead of blind decrement. Only acts on zones where surge_active=true."
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * CRIT-01: Log surge pricing action for audit trail\n */\nconst action = $json.id ? 'SURGE_APPLIED' : 'SURGE_NO_CHANGE';\nconst isActivation = $items('Is Raining?', 0).length > 0;\n\nconsole.log(JSON.stringify({\n  level: action === 'SURGE_APPLIED' ? 'WARN' : 'INFO',\n  event: isActivation ? 'SURGE_ACTIVATED' : 'SURGE_DEACTIVATED',\n  zones_affected: Array.isArray($input.all()) ? $input.all().length : 0,\n  ts: new Date().toISOString()\n}));\n\nreturn $input.all();"
+            },
+            "id": "log-surge",
+            "name": "Log Surge Action",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1040,
+                0
+            ],
+            "continueOnFail": true
         }
     ],
     "connections": {
@@ -102,6 +145,17 @@
             "main": [
                 [
                     {
+                        "node": "B0 - Surge Decision Guard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Surge Decision Guard": {
+            "main": [
+                [
+                    {
                         "node": "Is Raining?",
                         "type": "main",
                         "index": 0
@@ -113,20 +167,41 @@
             "main": [
                 [
                     {
-                        "node": "Activate Surge Pricing",
+                        "node": "Activate Surge (Idempotent)",
                         "type": "main",
                         "index": 0
                     }
                 ],
                 [
                     {
-                        "node": "Deactivate Surge Pricing",
+                        "node": "Deactivate Surge (Restore Base)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Activate Surge (Idempotent)": {
+            "main": [
+                [
+                    {
+                        "node": "Log Surge Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Deactivate Surge (Restore Base)": {
+            "main": [
+                [
+                    {
+                        "node": "Log Surge Action",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         }
-    },
-    "settings": {}
+    }
 }

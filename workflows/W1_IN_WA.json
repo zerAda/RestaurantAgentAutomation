@@ -778,6 +778,58 @@
         -550,
         -200
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n-main:5678/webhook/v1/internal/audit-write",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "workflow_name", "value": "W1_IN_WA" },
+            { "name": "workflow_id", "value": "W1" },
+            { "name": "execution_id", "value": "={{ $executionId }}" },
+            { "name": "channel", "value": "whatsapp" },
+            { "name": "status", "value": "started" },
+            { "name": "started_at", "value": "={{ $now.toISO() }}" },
+            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+          ]
+        },
+        "options": { "timeout": 3000 }
+      },
+      "id": "audit-inbound-started-wa",
+      "name": "AUDIT - Inbound Started",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-1750, -300],
+      "continueOnFail": true,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n-main:5678/webhook/v1/internal/audit-write",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "workflow_name", "value": "W1_IN_WA" },
+            { "name": "workflow_id", "value": "W1" },
+            { "name": "execution_id", "value": "={{ $executionId }}" },
+            { "name": "channel", "value": "whatsapp" },
+            { "name": "status", "value": "completed" },
+            { "name": "completed_at", "value": "={{ $now.toISO() }}" },
+            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+          ]
+        },
+        "options": { "timeout": 3000 }
+      },
+      "id": "audit-inbound-completed-wa",
+      "name": "AUDIT - Inbound Completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3800, -550],
+      "continueOnFail": true,
+      "alwaysOutputData": false
     }
   ],
   "connections": {
@@ -826,6 +878,11 @@
         [
           {
             "node": "B0 - Contract Valid?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AUDIT - Inbound Started",
             "type": "main",
             "index": 0
           }
@@ -1282,7 +1339,7 @@
       "main": [
         [
           {
-            "node": "END - Drop/Done",
+            "node": "AUDIT - Inbound Completed",
             "type": "main",
             "index": 0
           }
@@ -1290,6 +1347,17 @@
       ]
     },
     "B1 - Execute CORE_AGENT": {
+      "main": [
+        [
+          {
+            "node": "AUDIT - Inbound Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUDIT - Inbound Completed": {
       "main": [
         [
           {

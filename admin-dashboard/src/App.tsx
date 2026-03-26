@@ -1,22 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { strapi } from './services/strapiClient';
-import { StockView } from './components/StockView';
-import { QuickAdjust } from './components/QuickAdjust';
-import { KitchenView } from './components/KitchenView';
-import { MarketingView } from './components/MarketingView';
-import { AutomationView } from './components/AutomationView';
-import { SupportView } from './components/SupportView';
-import { CustomerView } from './components/CustomerView';
-import { BrandView } from './components/BrandView';
+// PERF-07: Lazy-loaded view components (route-level code splitting)
+// Only app-shell components remain eager: LoginView, AppSwitcher, AIChatBubble, NotificationCenter
+const StockView = lazy(() => import('./components/StockView').then(m => ({ default: m.StockView })));
+const QuickAdjust = lazy(() => import('./components/QuickAdjust').then(m => ({ default: m.QuickAdjust })));
+const KitchenView = lazy(() => import('./components/KitchenView').then(m => ({ default: m.KitchenView })));
+const MarketingView = lazy(() => import('./components/MarketingView').then(m => ({ default: m.MarketingView })));
+const AutomationView = lazy(() => import('./components/AutomationView').then(m => ({ default: m.AutomationView })));
+const SupportView = lazy(() => import('./components/SupportView').then(m => ({ default: m.SupportView })));
+const CustomerView = lazy(() => import('./components/CustomerView').then(m => ({ default: m.CustomerView })));
+const BrandView = lazy(() => import('./components/BrandView').then(m => ({ default: m.BrandView })));
+const AnalyticsView = lazy(() => import('./components/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
+const DashboardHome = lazy(() => import('./pages/DashboardHome'));
+const AiObservatoryView = lazy(() => import('./components/AiObservatoryView').then(m => ({ default: m.AiObservatoryView })));
+const GrowthAgentView = lazy(() => import('./components/GrowthAgentView').then(m => ({ default: m.GrowthAgentView })));
+const ControlPlaneView = lazy(() => import('./pages/ControlPlaneView').then(m => ({ default: m.ControlPlaneView })));
+const AuditLogView = lazy(() => import('./pages/AuditLogView').then(m => ({ default: m.AuditLogView })));
+// Eager imports (always needed at app shell level)
 import { LoginView } from './components/LoginView';
 import { AppSwitcher } from './components/AppSwitcher';
 import { AIChatBubble } from './components/AIChatBubble';
-import { AnalyticsView } from './components/AnalyticsView';
 import { NotificationCenter } from './components/NotificationCenter';
-import DashboardHome from './pages/DashboardHome';
-import { AiObservatoryView } from './components/AiObservatoryView';
-import { GrowthAgentView } from './components/GrowthAgentView';
-import { ControlPlaneView } from './pages/ControlPlaneView';
 import { ToastProvider } from './components/ToastProvider';
 import { PageTransition } from './components/PageTransition';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -38,6 +42,7 @@ import {
   TrendingUp,
   Zap,
   Diamond,
+  FileText,
   LogOut
 } from 'lucide-react';
 import { cn } from './lib/utils';
@@ -175,6 +180,7 @@ function App() {
                     <NavItem active={activeTab === 'ai-observatory'} onClick={() => { navigate('/ai-observatory'); setIsMobileMenuOpen(false); }} label="AI Observ." icon={Brain} lang={lang} />
                     <NavItem active={activeTab === 'control-plane'} onClick={() => { navigate('/control-plane'); setIsMobileMenuOpen(false); }} label="Control Plane" icon={Zap} lang={lang} />
                     <NavItem active={activeTab === 'brand'} onClick={() => { navigate('/brand'); setIsMobileMenuOpen(false); }} label="DNA Studio" icon={Diamond} lang={lang} />
+                    <NavItem active={activeTab === 'audit-log'} onClick={() => { navigate('/audit-log'); setIsMobileMenuOpen(false); }} label="Audit Trail" icon={FileText} lang={lang} />
                   </div>
                 </>
               )}
@@ -248,6 +254,7 @@ function App() {
                   {activeTab === 'control-plane' && 'Control Plane'}
                   {activeTab === 'brand' && "Brand DNA"}
                   {activeTab === 'growth' && 'Growth Intelligence'}
+                  {activeTab === 'audit-log' && 'Audit Trail'}
                 </h2>
                 <p className="text-zinc-500 font-medium max-w-xl mt-3">
                   RestoBot Quantum Engine v3.5. Real-time data aggregation across cluster nodes.
@@ -266,6 +273,20 @@ function App() {
             </header>
 
             <ErrorBoundary>
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[60vh]">
+                  <div className="space-y-4 w-full max-w-2xl px-8">
+                    <div className="h-8 bg-white/5 rounded-xl animate-pulse w-1/3" />
+                    <div className="h-4 bg-white/5 rounded-lg animate-pulse w-2/3" />
+                    <div className="grid grid-cols-3 gap-4 mt-8">
+                      <div className="h-32 bg-white/5 rounded-2xl animate-pulse" />
+                      <div className="h-32 bg-white/5 rounded-2xl animate-pulse delay-100" />
+                      <div className="h-32 bg-white/5 rounded-2xl animate-pulse delay-200" />
+                    </div>
+                    <div className="h-64 bg-white/5 rounded-2xl animate-pulse mt-4" />
+                  </div>
+                </div>
+              }>
               <Routes>
                 <Route path="/dashboard" element={<ViewWrapper activeKey="dashboard" component={<DashboardHome />} />} />
                 <Route path="/stock" element={<ViewWrapper activeKey="stock" component={<StockView />} />} />
@@ -282,6 +303,7 @@ function App() {
                     <Route path="/ai-observatory" element={<ViewWrapper activeKey="ai-observatory" component={<AiObservatoryView />} />} />
                     <Route path="/control-plane" element={<ViewWrapper activeKey="control-plane" component={<ControlPlaneView />} />} />
                     <Route path="/brand" element={<ViewWrapper activeKey="brand" component={<BrandView lang={lang} />} />} />
+                    <Route path="/audit-log" element={<ViewWrapper activeKey="audit-log" component={<AuditLogView />} />} />
                   </>
                 )}
                 
@@ -290,6 +312,7 @@ function App() {
                 
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
+              </Suspense>
             </ErrorBoundary>
             <AIChatBubble />
           </main>

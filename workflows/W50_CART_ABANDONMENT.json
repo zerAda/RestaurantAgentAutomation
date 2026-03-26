@@ -3,7 +3,8 @@
     "active": true,
     "settings": {
         "executionTimeout": 30,
-        "saveExecutionProgress": true
+        "saveExecutionProgress": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
     },
     "nodes": [
         {
@@ -29,7 +30,7 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT customer_phone, payload_json->'cart' as cart, updated_at FROM conversational_state WHERE state = 'ORDERING' AND updated_at < NOW() - INTERVAL '30 minutes' AND updated_at > NOW() - INTERVAL '45 minutes';"
+                "query": "SELECT cs.customer_phone, cs.payload_json->'cart' as cart, cs.updated_at FROM conversational_state cs LEFT JOIN cart_recovery_sent crs ON cs.customer_phone = crs.customer_phone AND crs.sent_at > NOW() - INTERVAL '24 hours' WHERE cs.state = 'ORDERING' AND cs.updated_at < NOW() - INTERVAL '30 minutes' AND cs.updated_at > NOW() - INTERVAL '45 minutes' AND crs.id IS NULL;"
             },
             "id": "find-abandoned-carts",
             "name": "Find Abandoned Carts (DB)",
@@ -44,7 +45,8 @@
                     "id": "POSTGRES_CREDENTIAL_ID",
                     "name": "Postgres"
                 }
-            }
+            },
+            "notes": "HIGH-04 FIX: Added LEFT JOIN to cart_recovery_sent table to prevent sending duplicate recovery messages within 24h."
         },
         {
             "parameters": {
@@ -69,10 +71,10 @@
         {
             "parameters": {
                 "language": "javascript",
-                "jsCode": "const carts = $input.all();\nreturn carts.map(c => {\n  const items = c.json.cart?.items?.map(i => i.name).join(', ') || 'ton repas';\n  return {\n    json: {\n      customerPhone: c.json.customer_phone,\n      message: `Salut ! Tu as oublié ${items} dans ton panier 🍔. Finalise ta commande dans les 15 prochaines minutes et la boisson est offerte avec le code RALPHE-GIFT ! (Clique ici pour reprendre : https://ralphe.app/checkout)`\n    }\n  }\n});"
+                "jsCode": "/**\n * HIGH-04 FIX: Dynamic unique coupons per cart\n * - Generate single-use coupon via crypto.randomUUID()\n * - Insert into coupons table for validation\n * - Track recovery sends to avoid spam\n */\nconst crypto = require('crypto');\nconst carts = $input.all();\n\nreturn carts.map(c => {\n  const items = c.json.cart?.items?.map(i => i.name).join(', ') || 'ton repas';\n  const couponCode = 'RECUP-' + crypto.randomUUID().slice(0, 8).toUpperCase();\n  const phone = c.json.customer_phone;\n\n  return {\n    json: {\n      customerPhone: phone,\n      couponCode,\n      message: `Salut ! Tu as oublié ${items} dans ton panier 🍔. Finalise ta commande dans les 15 prochaines minutes et profite de -10% avec le code ${couponCode} ! (Clique ici pour reprendre : https://ralphe.app/checkout)`\n    }\n  };\n});"
             },
             "id": "format-recovery-message",
-            "name": "Format Recovery Msg",
+            "name": "Format Recovery Msg (Dynamic Coupon)",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
@@ -82,20 +84,85 @@
         },
         {
             "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO coupons (code, type, discount_percent, max_uses, used_count, valid_until, created_at) VALUES ($1, 'CART_RECOVERY', 10, 1, 0, NOW() + INTERVAL '24 hours', NOW()) ON CONFLICT (code) DO NOTHING;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.couponCode]}}"
+                }
+            },
+            "id": "save-coupon",
+            "name": "Save Unique Coupon (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                0
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "POSTGRES_CREDENTIAL_ID",
+                    "name": "Postgres"
+                }
+            },
+            "continueOnFail": true,
+            "notes": "HIGH-04 FIX: Creates single-use coupon with 24h expiry. ON CONFLICT prevents duplicate codes."
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.WA_SEND_URL || `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/${$env.WA_PHONE_NUMBER_ID}/messages` }}",
                 "method": "POST",
-                "url": "={{ $env.WHATSAPP_API_URL }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.WA_API_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{JSON.stringify({ to: $json.customerPhone, message: $json.message })}}"
+                "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $json.customerPhone, type: 'text', text: { body: $json.message } }) }}"
             },
             "id": "send-whatsapp-recovery",
             "name": "Send WhatsApp Recovery",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                1000,
+                1250,
                 0
-            ]
+            ],
+            "continueOnFail": true,
+            "notes": "HIGH-04 FIX: Added Authorization header + proper WA Business API format."
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO cart_recovery_sent (customer_phone, coupon_code, sent_at) VALUES ($1, $2, NOW()) ON CONFLICT (customer_phone, coupon_code) DO NOTHING;",
+                "additionalFields": {
+                    "queryParams": "={{[$json.customerPhone, $json.couponCode]}}"
+                }
+            },
+            "id": "track-send",
+            "name": "Track Recovery Send (DB)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                0
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "POSTGRES_CREDENTIAL_ID",
+                    "name": "Postgres"
+                }
+            },
+            "continueOnFail": true,
+            "notes": "HIGH-04 FIX: Tracks who received recovery messages for dedup."
         }
     ],
     "connections": {
@@ -125,18 +192,40 @@
             "main": [
                 [
                     {
-                        "node": "Format Recovery Msg",
+                        "node": "Format Recovery Msg (Dynamic Coupon)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Format Recovery Msg": {
+        "Format Recovery Msg (Dynamic Coupon)": {
+            "main": [
+                [
+                    {
+                        "node": "Save Unique Coupon (DB)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Unique Coupon (DB)": {
             "main": [
                 [
                     {
                         "node": "Send WhatsApp Recovery",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send WhatsApp Recovery": {
+            "main": [
+                [
+                    {
+                        "node": "Track Recovery Send (DB)",
                         "type": "main",
                         "index": 0
                     }

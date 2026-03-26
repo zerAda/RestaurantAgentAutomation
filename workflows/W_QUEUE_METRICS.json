@@ -1,0 +1,131 @@
+{
+  "name": "W_QUEUE_METRICS - Queue Depth & Disk Alert",
+  "active": false,
+  "settings": {
+    "executionTimeout": 120,
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      },
+      "id": "queue-metrics-cron",
+      "name": "CRON - Every 5min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const queueThreshold = parseInt($env.QUEUE_ALERT_THRESHOLD || '50', 10);\nconst diskAlertPct = parseInt($env.DISK_ALERT_PCT || '80', 10);\nconst diskTotalGB = 119;\nreturn [{ json: { queueThreshold, diskAlertPct, diskTotalGB, ts: new Date().toISOString() } }];"
+      },
+      "id": "metrics-config",
+      "name": "B0 - Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-550, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COUNT(*) FILTER (WHERE status IN ('new','waiting')) AS pending_count,\n  COUNT(*) FILTER (WHERE status = 'running') AS running_count,\n  COUNT(*) FILTER (WHERE status IN ('error','crashed') AND \"startedAt\" > now() - interval '1 hour') AS errors_last_hour,\n  COUNT(*) FILTER (WHERE \"startedAt\" > now() - interval '1 hour') AS total_last_hour\nFROM execution_entity;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "={{$env.N8N_DB_CREDENTIAL_ID || ''}}",
+          "name": "RestoBot PG (n8n DB)"
+        }
+      },
+      "id": "query-queue-depth",
+      "name": "PG - Queue Depth",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-300, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * MED-09 FIX: Removed execSync('df -k /') shell execution.\n * Disk usage is handled externally via Docker/Prometheus.\n */\nvar cfg = $('B0 - Config').first().json;\nvar pgRow = $input.first().json;\n\nvar pendingCount = parseInt(pgRow.pending_count || '0', 10);\nvar runningCount = parseInt(pgRow.running_count || '0', 10);\nvar errorsLastHour = parseInt(pgRow.errors_last_hour || '0', 10);\nvar totalLastHour = parseInt(pgRow.total_last_hour || '0', 10);\nvar errorRate = totalLastHour > 0 ? (errorsLastHour / totalLastHour) : 0;\n\n// MED-09: Disk metrics now handled by external monitoring (no shell exec)\nvar diskUsedGB = -1;\nvar diskUsedPct = -1;\n\nvar ts = new Date().toISOString();\n\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'QUEUE_DEPTH_METRIC',\n  pending_count: pendingCount,\n  running_count: runningCount,\n  errors_last_hour: errorsLastHour,\n  error_rate_1h: Math.round(errorRate * 1000) / 1000,\n  ts: ts\n}));\n\nvar alerts = [];\nvar queueAbove = pendingCount > cfg.queueThreshold;\n\nreturn [{ json: {\n  pendingCount: pendingCount,\n  runningCount: runningCount,\n  errorsLastHour: errorsLastHour,\n  errorRate: errorRate,\n  diskUsedGB: diskUsedGB,\n  diskUsedPct: diskUsedPct,\n  queueAbove: queueAbove,\n  queueThreshold: cfg.queueThreshold,\n  diskAlertPct: cfg.diskAlertPct,\n  alerts: alerts,\n  ts: ts\n}}];"
+      },
+      "id": "compute-metrics",
+      "name": "B0 - Compute Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-50, 0]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "ralphe:metrics:queue_above_threshold_count"
+      },
+      "credentials": {
+        "redis": {
+          "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
+          "name": "RestoBot Redis"
+        }
+      },
+      "id": "redis-get-queue-counter",
+      "name": "Redis - Get Queue Counter",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "var metrics = $('B0 - Compute Metrics').first().json;\nvar redisVal = $input.first().json;\nvar currentCount = parseInt(redisVal?.value || redisVal || '0', 10) || 0;\n\nvar newCount = metrics.queueAbove ? currentCount + 1 : 0;\n\nvar queueAlert = null;\nif (metrics.queueAbove && newCount >= 2) {\n  queueAlert = {\n    level: 'CRITICAL',\n    event: 'QUEUE_DEPTH_ALERT',\n    message: 'Queue depth ' + metrics.pendingCount + ' exceeds threshold ' + metrics.queueThreshold + ' for ' + newCount + ' consecutive 5-min windows',\n    pending_count: metrics.pendingCount,\n    threshold: metrics.queueThreshold,\n    consecutive_windows: newCount,\n    ts: metrics.ts\n  };\n  console.log(JSON.stringify(queueAlert));\n}\n\nreturn [{ json: {\n  pendingCount: metrics.pendingCount,\n  runningCount: metrics.runningCount,\n  errorsLastHour: metrics.errorsLastHour,\n  errorRate: metrics.errorRate,\n  diskUsedGB: metrics.diskUsedGB,\n  diskUsedPct: metrics.diskUsedPct,\n  queueAbove: metrics.queueAbove,\n  queueThreshold: metrics.queueThreshold,\n  diskAlertPct: metrics.diskAlertPct,\n  alerts: metrics.alerts,\n  ts: metrics.ts,\n  newCount: newCount,\n  queueAlert: queueAlert\n}}];"
+      },
+      "id": "alert-decision",
+      "name": "B0 - Alert Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 0]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "ralphe:metrics:queue_above_threshold_count",
+        "value": "={{$json.newCount}}",
+        "expire": true,
+        "ttl": 900
+      },
+      "credentials": {
+        "redis": {
+          "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
+          "name": "RestoBot Redis"
+        }
+      },
+      "id": "redis-set-queue-counter",
+      "name": "Redis - Set Queue Counter",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [700, 0]
+    }
+  ],
+  "connections": {
+    "CRON - Every 5min": {
+      "main": [[{ "node": "B0 - Config", "type": "main", "index": 0 }]]
+    },
+    "B0 - Config": {
+      "main": [[{ "node": "PG - Queue Depth", "type": "main", "index": 0 }]]
+    },
+    "PG - Queue Depth": {
+      "main": [[{ "node": "B0 - Compute Metrics", "type": "main", "index": 0 }]]
+    },
+    "B0 - Compute Metrics": {
+      "main": [[{ "node": "Redis - Get Queue Counter", "type": "main", "index": 0 }]]
+    },
+    "Redis - Get Queue Counter": {
+      "main": [[{ "node": "B0 - Alert Decision", "type": "main", "index": 0 }]]
+    },
+    "B0 - Alert Decision": {
+      "main": [[{ "node": "Redis - Set Queue Counter", "type": "main", "index": 0 }]]
+    }
+  }
+}

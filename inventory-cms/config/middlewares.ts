@@ -1,4 +1,5 @@
 export default ({ env }: { env: any }) => [
+  'global::request-id',
   'strapi::logger',
   'strapi::errors',
   {

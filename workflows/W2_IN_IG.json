@@ -388,6 +388,58 @@
         50,
         -540
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n-main:5678/webhook/v1/internal/audit-write",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "workflow_name", "value": "W2_IN_IG" },
+            { "name": "workflow_id", "value": "W2" },
+            { "name": "execution_id", "value": "={{ $executionId }}" },
+            { "name": "channel", "value": "instagram" },
+            { "name": "status", "value": "started" },
+            { "name": "started_at", "value": "={{ $now.toISO() }}" },
+            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+          ]
+        },
+        "options": { "timeout": 3000 }
+      },
+      "id": "audit-inbound-started-ig",
+      "name": "AUDIT - Inbound Started",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-1700, -300],
+      "continueOnFail": true,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n-main:5678/webhook/v1/internal/audit-write",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "workflow_name", "value": "W2_IN_IG" },
+            { "name": "workflow_id", "value": "W2" },
+            { "name": "execution_id", "value": "={{ $executionId }}" },
+            { "name": "channel", "value": "instagram" },
+            { "name": "status", "value": "completed" },
+            { "name": "completed_at", "value": "={{ $now.toISO() }}" },
+            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+          ]
+        },
+        "options": { "timeout": 3000 }
+      },
+      "id": "audit-inbound-completed-ig",
+      "name": "AUDIT - Inbound Completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [520, -360],
+      "continueOnFail": true,
+      "alwaysOutputData": false
     }
   ],
   "connections": {
@@ -555,6 +607,17 @@
       "main": [
         [
           {
+            "node": "AUDIT - Inbound Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUDIT - Inbound Completed": {
+      "main": [
+        [
+          {
             "node": "END - Drop/Done",
             "type": "main",
             "index": 0
@@ -600,6 +663,11 @@
         [
           {
             "node": "B0 - Resolve Client (DB)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AUDIT - Inbound Started",
             "type": "main",
             "index": 0
           }

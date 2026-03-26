@@ -1,5 +1,9 @@
 {
     "name": "W_HIVE_MIND_DISPATCH",
+    "settings": {
+        "executionTimeout": 60,
+        "errorWorkflow": "W_ERROR_HANDLER"
+    },
     "nodes": [
         {
             "parameters": {
@@ -14,6 +18,21 @@
                 100,
                 300
             ]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * HIGH-03 FIX: HMAC Auth Guard for Dispatch Webhook\n * Prevents unauthorized order assignment to drivers.\n */\nconst crypto = require('crypto');\nconst secret = $env.DISPATCH_WEBHOOK_SECRET || $env.TENANT_CONTEXT_SECRET || '';\nconst headers = $json.headers || {};\nconst signature = headers['x-dispatch-signature'] || headers['x-webhook-secret'] || '';\nconst body = $json.body || {};\n\nif (secret) {\n  const expected = crypto.createHmac('sha256', secret)\n    .update(JSON.stringify(body))\n    .digest('hex');\n  if (!crypto.timingSafeEqual(Buffer.from(signature || ''), Buffer.from(expected))) {\n    console.log(JSON.stringify({ level: 'WARN', event: 'DISPATCH_AUTH_FAILED', ip: headers['x-forwarded-for'] || 'unknown', ts: new Date().toISOString() }));\n    throw new Error('AUTH_FAILED: Invalid dispatch signature');\n  }\n}\n\nreturn [{ json: body }];"
+            },
+            "id": "dispatch-auth-guard",
+            "name": "B0 - Auth Guard",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                100,
+                400
+            ],
+            "notes": "HIGH-03 FIX: HMAC signature verification for dispatch webhook."
         },
         {
             "parameters": {

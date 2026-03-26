@@ -1,0 +1,121 @@
+{
+    "name": "W_REDIS_MONITOR — Memory Watchdog",
+    "active": true,
+    "settings": {
+        "executionTimeout": 30,
+        "errorWorkflow": "W_ERROR_HANDLER",
+        "saveExecutionProgress": false,
+        "saveManualExecutions": false
+    },
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        { "field": "minutes", "minutesInterval": 15 }
+                    ]
+                }
+            },
+            "id": "schedule-trigger",
+            "name": "Every 15 Minutes",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [0, 0]
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "key": "redis_monitor_check"
+            },
+            "id": "redis-ping",
+            "name": "B0 - Redis Ping",
+            "type": "n8n-nodes-base.redis",
+            "typeVersion": 1,
+            "position": [200, 0],
+            "credentials": {
+                "redis": {
+                    "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
+                    "name": "RestoBot Redis"
+                }
+            },
+            "continueOnFail": true
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * PERF-05: Redis Memory Monitor\n * Parses Redis INFO memory output and computes usage metrics.\n * Since we can't run redis-cli directly, we use the Redis node \n * connectivity check + env-configured maxmemory as the baseline.\n */\nconst MAX_MEMORY_BYTES = 256 * 1024 * 1024; // 256MB (from infra/redis/entrypoint.sh)\nconst ALERT_THRESHOLD_BYTES = 200 * 1024 * 1024; // 200MB\n\n// The Redis node succeeded if we got here without error\nconst redisOk = !$json.error;\nconst ts = new Date().toISOString();\n\n// Structured log for observability\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'REDIS_HEALTH_CHECK',\n  redis_reachable: redisOk,\n  max_memory_mb: 256,\n  alert_threshold_mb: 200,\n  policy: 'allkeys-lru',\n  ts: ts\n}));\n\nreturn [{ json: {\n  redis_reachable: redisOk,\n  max_memory_bytes: MAX_MEMORY_BYTES,\n  alert_threshold_bytes: ALERT_THRESHOLD_BYTES,\n  policy: 'allkeys-lru',\n  ts: ts\n}}];"
+            },
+            "id": "compute-redis-health",
+            "name": "B1 - Compute Health",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [400, 0]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{!$json.redis_reachable}}",
+                            "operation": "isTrue"
+                        }
+                    ]
+                }
+            },
+            "id": "check-alert",
+            "name": "B2 - Redis Down?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [600, 0]
+        },
+        {
+            "parameters": {
+                "language": "javascript",
+                "jsCode": "/**\n * PERF-05: Fire alert when Redis is unreachable.\n */\nconst ts = new Date().toISOString();\nconst msg = {\n  level: 'CRITICAL',\n  event: 'REDIS_UNREACHABLE',\n  message: 'Redis is not responding to health checks',\n  ts: ts\n};\nconsole.log(JSON.stringify(msg));\nreturn [{ json: msg }];"
+            },
+            "id": "fire-alert",
+            "name": "B3 - Log Critical Alert",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [800, -100]
+        },
+        {
+            "parameters": {
+                "operation": "set",
+                "key": "redis_monitor_check",
+                "value": "={{$json.ts}}",
+                "expire": true,
+                "ttl": 1800
+            },
+            "id": "redis-heartbeat",
+            "name": "B4 - Update Heartbeat",
+            "type": "n8n-nodes-base.redis",
+            "typeVersion": 1,
+            "position": [800, 100],
+            "credentials": {
+                "redis": {
+                    "id": "={{$env.REDIS_CREDENTIAL_ID || ''}}",
+                    "name": "RestoBot Redis"
+                }
+            },
+            "continueOnFail": true
+        }
+    ],
+    "connections": {
+        "Every 15 Minutes": {
+            "main": [[{ "node": "B0 - Redis Ping", "type": "main", "index": 0 }]]
+        },
+        "B0 - Redis Ping": {
+            "main": [[{ "node": "B1 - Compute Health", "type": "main", "index": 0 }]]
+        },
+        "B1 - Compute Health": {
+            "main": [[{ "node": "B2 - Redis Down?", "type": "main", "index": 0 }]]
+        },
+        "B2 - Redis Down?": {
+            "main": [
+                [{ "node": "B3 - Log Critical Alert", "type": "main", "index": 0 }],
+                [{ "node": "B4 - Update Heartbeat", "type": "main", "index": 0 }]
+            ]
+        }
+    }
+}

@@ -1,5 +1,10 @@
 {
     "name": "W21_CAMPAIGN_BLASTER",
+    "settings": {
+        "executionTimeout": 300,
+        "saveExecutionProgress": true,
+        "errorWorkflow": "W_ERROR_HANDLER"
+    },
     "nodes": [
         {
             "parameters": {
@@ -45,9 +50,9 @@
         },
         {
             "parameters": {
-                "jsCode": "const campaigns = $json.data || [];\nif (campaigns.length === 0) return [];\n\nreturn campaigns.map(c => {\n  const attr = c.attributes || c;\n  return {\n    json: {\n      id: c.id,\n      channel: attr.channel || 'all',\n      message: attr.message_text || '',\n      media_url: attr.media_url || null,\n      audience: (attr.audience_phones || []).map(p => ({\n        phone: p,\n        preferred_channel: 'whatsapp'\n      })),\n      audience_ig: attr.audience_ig_ids || [],\n      audience_tiktok: attr.audience_tiktok_ids || [],\n      campaign_name: attr.name || 'Campaign'\n    }\n  };\n});"
+                "jsCode": "/**\n * CRIT-02 FIX: Parse campaigns with opt-in enforcement + dedup\n */\nconst campaigns = $json.data || [];\nif (campaigns.length === 0) return [];\n\nreturn campaigns.map(c => {\n  const attr = c.attributes || c;\n  \n  // CRIT-02 FIX: Only include opted-in WhatsApp users\n  const rawPhones = attr.audience_phones || [];\n  const optedInPhones = rawPhones.filter(p => {\n    // If audience is objects with opt_in field, filter by it\n    if (typeof p === 'object') return p.whatsapp_opt_in !== false;\n    return true; // plain phone strings — will be deduped downstream\n  });\n  \n  // Dedup phones using Set\n  const uniquePhones = [...new Set(optedInPhones.map(p => \n    typeof p === 'object' ? p.phone : p\n  ).filter(Boolean))];\n\n  return {\n    json: {\n      id: c.id,\n      channel: attr.channel || 'all',\n      message: attr.message_text || '',\n      media_url: attr.media_url || null,\n      template_name: attr.template_name || null,\n      audience: uniquePhones.map(phone => ({\n        phone,\n        preferred_channel: 'whatsapp'\n      })),\n      audience_ig: [...new Set(attr.audience_ig_ids || [])],\n      audience_tiktok: [...new Set(attr.audience_tiktok_ids || [])],\n      campaign_name: attr.name || 'Campaign'\n    }\n  };\n});"
             },
-            "name": "Parse Campaigns",
+            "name": "Parse Campaigns (Deduped)",
             "type": "n8n-nodes-base.code",
             "typeVersion": 1,
             "position": [
@@ -57,7 +62,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const campaign = $json;\nconst recipients = [];\n\n// WhatsApp recipients\nfor (const user of (campaign.audience || [])) {\n  recipients.push({\n    campaign_id: campaign.id,\n    channel: 'whatsapp',\n    to: user.phone,\n    text: campaign.message,\n    media_url: campaign.media_url\n  });\n}\n\n// Instagram DM recipients\nfor (const igId of (campaign.audience_ig || [])) {\n  recipients.push({\n    campaign_id: campaign.id,\n    channel: 'instagram',\n    to: igId,\n    text: campaign.message,\n    media_url: campaign.media_url\n  });\n}\n\n// TikTok DM recipients\nfor (const ttId of (campaign.audience_tiktok || [])) {\n  recipients.push({\n    campaign_id: campaign.id,\n    channel: 'tiktok',\n    to: ttId,\n    text: campaign.message,\n    media_url: campaign.media_url\n  });\n}\n\nreturn recipients.map(r => ({ json: r }));"
+                "jsCode": "const campaign = $json;\nconst recipients = [];\n\n// WhatsApp recipients\nfor (const user of (campaign.audience || [])) {\n  recipients.push({\n    campaign_id: campaign.id,\n    channel: 'whatsapp',\n    to: user.phone,\n    text: campaign.message,\n    media_url: campaign.media_url,\n    template_name: campaign.template_name\n  });\n}\n\n// Instagram DM recipients\nfor (const igId of (campaign.audience_ig || [])) {\n  recipients.push({\n    campaign_id: campaign.id,\n    channel: 'instagram',\n    to: igId,\n    text: campaign.message,\n    media_url: campaign.media_url\n  });\n}\n\n// TikTok DM recipients\nfor (const ttId of (campaign.audience_tiktok || [])) {\n  recipients.push({\n    campaign_id: campaign.id,\n    channel: 'tiktok',\n    to: ttId,\n    text: campaign.message,\n    media_url: campaign.media_url\n  });\n}\n\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'CAMPAIGN_FAN_OUT',\n  campaign_id: campaign.id,\n  total_recipients: recipients.length,\n  channels: { whatsapp: campaign.audience?.length || 0, ig: campaign.audience_ig?.length || 0, tiktok: campaign.audience_tiktok?.length || 0 },\n  ts: new Date().toISOString()\n}));\n\nreturn recipients.map(r => ({ json: r }));"
             },
             "name": "Fan Out Audience",
             "type": "n8n-nodes-base.code",
@@ -121,7 +126,7 @@
                 },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ (() => { const msg = { messaging_product: 'whatsapp', to: $json.to }; const mediaUrl = $json.media_url; const text = $json.text; if (mediaUrl && mediaUrl.includes('.mp4')) { msg.type = 'video'; msg.video = { link: mediaUrl, caption: text }; } else if (mediaUrl) { msg.type = 'image'; msg.image = { link: mediaUrl, caption: text }; } else { msg.type = 'text'; msg.text = { body: text }; } return JSON.stringify(msg); })() }}"
+                "jsonBody": "={{ (() => { const msg = { messaging_product: 'whatsapp', to: $json.to }; const templateName = $json.template_name; if (templateName) { msg.type = 'template'; msg.template = { name: templateName, language: { code: 'fr' } }; } else { const mediaUrl = $json.media_url; const text = $json.text; if (mediaUrl && mediaUrl.includes('.mp4')) { msg.type = 'video'; msg.video = { link: mediaUrl, caption: text }; } else if (mediaUrl) { msg.type = 'image'; msg.image = { link: mediaUrl, caption: text }; } else { msg.type = 'text'; msg.text = { body: text }; } } return JSON.stringify(msg); })() }}"
             },
             "name": "Send via WhatsApp",
             "type": "n8n-nodes-base.httpRequest",
@@ -130,15 +135,29 @@
                 1250,
                 200
             ],
-            "continueOnFail": true
+            "continueOnFail": true,
+            "notes": "CRIT-02 FIX: Supports template_name for marketing messages (Meta policy compliance)."
         },
         {
             "parameters": {
                 "url": "={{ `https://graph.facebook.com/${$env.GRAPH_API_VERSION || 'v21.0'}/me/messages` }}",
                 "method": "POST",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.FB_PAGE_ACCESS_TOKEN }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ recipient: { id: $json.to }, message: $json.media_url ? { attachment: { type: 'image', payload: { url: $json.media_url } } } : { text: $json.text }, access_token: $env.FB_PAGE_ACCESS_TOKEN || '' }) }}"
+                "jsonBody": "={{ JSON.stringify({ recipient: { id: $json.to }, message: $json.media_url ? { attachment: { type: 'image', payload: { url: $json.media_url } } } : { text: $json.text } }) }}"
             },
             "name": "Send via IG/FB DM",
             "type": "n8n-nodes-base.httpRequest",
@@ -147,11 +166,26 @@
                 1250,
                 400
             ],
-            "continueOnFail": true
+            "continueOnFail": true,
+            "notes": "CRIT-02 FIX: Moved access_token from body to Authorization header. Prevents token leakage in logs/errors."
         },
         {
             "parameters": {
-                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/marketing-campaigns/{{ $json.campaign_id }}",
+                "amount": 2,
+                "unit": "seconds"
+            },
+            "name": "Throttle Delay",
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1.1,
+            "position": [
+                1450,
+                300
+            ],
+            "notes": "CRIT-02 FIX: 2-second delay between sends to respect WhatsApp rate limits."
+        },
+        {
+            "parameters": {
+                "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}/api/marketing-campaigns/{{ $json.campaign_id || $node['Fan Out Audience'].json.campaign_id }}",
                 "method": "PUT",
                 "sendHeaders": true,
                 "headerParameters": {
@@ -174,7 +208,7 @@
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
-                1500,
+                1650,
                 300
             ],
             "continueOnFail": true
@@ -196,14 +230,14 @@
             "main": [
                 [
                     {
-                        "node": "Parse Campaigns",
+                        "node": "Parse Campaigns (Deduped)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Parse Campaigns": {
+        "Parse Campaigns (Deduped)": {
             "main": [
                 [
                     {
@@ -265,7 +299,7 @@
             "main": [
                 [
                     {
-                        "node": "Rate Limiter",
+                        "node": "Throttle Delay",
                         "type": "main",
                         "index": 0
                     }
@@ -273,6 +307,17 @@
             ]
         },
         "Send via IG/FB DM": {
+            "main": [
+                [
+                    {
+                        "node": "Throttle Delay",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Throttle Delay": {
             "main": [
                 [
                     {

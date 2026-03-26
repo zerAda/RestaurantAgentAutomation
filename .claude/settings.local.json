@@ -141,7 +141,8 @@
       "Bash(/tmp/start_nemoclaw.sh:*)",
       "Bash(/tmp/nemoclaw.service:*)",
       "Skill(gsd:add-todo)",
-      "Bash(/tmp/fix_w2.js:*)"
+      "Bash(/tmp/fix_w2.js:*)",
+      "Bash(rm:*)"
     ],
     "additionalDirectories": [
       "\\tmp",

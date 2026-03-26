@@ -30,9 +30,9 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "INSERT INTO public.restaurant_users (tenant_id, restaurant_id, channel, user_id, role)\nVALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'whatsapp', $1, 'kitchen')\nON CONFLICT (restaurant_id, channel, user_id) DO NOTHING;",
+                "query": "INSERT INTO public.restaurant_users (tenant_id, restaurant_id, channel, user_id, role)\nVALUES ($2, $3, 'whatsapp', $1, 'driver')\nON CONFLICT (restaurant_id, channel, user_id) DO NOTHING;",
                 "additionalFields": {
-                    "queryParams": "={{[$json.phone]}}"
+                    "queryParams": "={{[$json.phone, $json.tenant_id || $env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001', $json.restaurant_id || $env.DEFAULT_RESTAURANT_ID || '00000000-0000-0000-0000-000000000000']}}"
                 }
             },
             "id": "e6a4b12c-3d4f-4e5a-8b6c-7d8e9f0a1b2c",

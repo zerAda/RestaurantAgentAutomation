@@ -97,8 +97,8 @@
         {
             "parameters": {
                 "name": "Strapi_Manager",
-                "description": "Use this tool to read or write data to the Strapi CMS. Example: Update a menu item price, or change a delivery zone status. Use standard REST API paths like /api/menu-items or /api/delivery-zones. You MUST provide a 'method' parameter (GET, POST, PUT, DELETE) and a 'path' parameter.",
-                "method": "={{ $parameter.method || 'GET' }}",
+                "description": "Use this tool to read or update data in the Strapi CMS. SECURITY RULES: 1) You can only use GET and PUT methods (POST only for /api/marketing-trigger-logs). DELETE is FORBIDDEN. 2) You can ONLY access these paths: /api/menu-items, /api/delivery-zones, /api/products, /api/ingredients, /api/orders (GET only), /api/marketing-trigger-logs. 3) NEVER access /api/system-config, /api/users, /api/admin, /api/upload. 4) Before any PUT, state what you will change and ask for confirmation.",
+                "method": "={{ (['GET','PUT'].includes($parameter.method) ? $parameter.method : 'GET') }}",
                 "url": "={{ $env.STRAPI_URL || 'http://strapi:1337' }}{{ $parameter.path }}",
                 "authentication": "predefinedCredentialType",
                 "nodeCredentialType": "strapiApi",

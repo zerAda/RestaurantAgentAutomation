@@ -1,0 +1,75 @@
+{
+  "name": "W_AUDIT_ARCHIVE - 90-Day Audit Archival",
+  "active": false,
+  "settings": {
+    "executionTimeout": 300,
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 24 }],
+          "triggerAtHour": 3
+        }
+      },
+      "id": "archive-cron",
+      "name": "CRON - Daily 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "var cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();\nvar batchSize = 500;\nreturn [{ json: { cutoff: cutoff, batchSize: batchSize, ts: new Date().toISOString() } }];"
+      },
+      "id": "archive-compute-cutoff",
+      "name": "B0 - Compute Cutoff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-550, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH archived AS (\n  DELETE FROM ops.workflow_audit\n  WHERE id IN (\n    SELECT id FROM ops.workflow_audit\n    WHERE started_at < '{{ $json.cutoff }}'::timestamptz\n    ORDER BY started_at ASC\n    LIMIT {{ $json.batchSize }}\n  )\n  RETURNING *\n)\nINSERT INTO ops.workflow_audit_archive\n  (id, workflow_name, workflow_id, execution_id, channel, status, started_at,\n   completed_at, duration_ms, tenant_id, correlation_id, error_message,\n   metadata_json, created_at, archived_at)\nSELECT id, workflow_name, workflow_id, execution_id, channel, status, started_at,\n       completed_at, duration_ms, tenant_id, correlation_id, error_message,\n       metadata_json, created_at, now()\nFROM archived\nRETURNING id",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "RestoBot PG (n8n DB)"
+        }
+      },
+      "id": "archive-pg-batch",
+      "name": "PG - Archive Batch",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-250, 0]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "var archived = $input.all();\nvar count = archived.length;\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'AUDIT_ARCHIVE_COMPLETE',\n  rows_archived: count,\n  cutoff: $('B0 - Compute Cutoff').first().json.cutoff,\n  ts: new Date().toISOString()\n}));\nreturn [{ json: { rows_archived: count } }];"
+      },
+      "id": "archive-log-result",
+      "name": "B0 - Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [50, 0]
+    }
+  ],
+  "connections": {
+    "CRON - Daily 03:00": {
+      "main": [[{ "node": "B0 - Compute Cutoff", "type": "main", "index": 0 }]]
+    },
+    "B0 - Compute Cutoff": {
+      "main": [[{ "node": "PG - Archive Batch", "type": "main", "index": 0 }]]
+    },
+    "PG - Archive Batch": {
+      "main": [[{ "node": "B0 - Log Result", "type": "main", "index": 0 }]]
+    }
+  }
+}
