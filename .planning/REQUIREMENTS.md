@@ -126,22 +126,22 @@
 | METR-02 | Phase 3 | Pending |
 | METR-03 | Phase 3 | Pending |
 | METR-04 | Phase 3 | Pending |
-| METR-05 | Phase 3 | Pending |
-| AUDIT-01 | Phase 3 | Pending |
-| AUDIT-02 | Phase 3 | Pending |
-| AUDIT-03 | Phase 3 | Pending |
-| AUDIT-04 | Phase 3 | Pending |
+| METR-05 | Phase 7 (gap closure from Phase 3) | Pending |
+| AUDIT-01 | Phase 9 (gap closure from Phase 3) | Pending |
+| AUDIT-02 | Phase 9 (gap closure from Phase 3) | Pending |
+| AUDIT-03 | Phase 7 (gap closure from Phase 3) | Pending |
+| AUDIT-04 | Phase 9 (gap closure from Phase 3) | Pending |
 | TEST-01 | Phase 4 | Pending |
 | TEST-02 | Phase 4 | Pending |
-| TEST-03 | Phase 4 | Pending |
-| TEST-04 | Phase 4 | Pending |
+| TEST-03 | Phase 9 (gap closure from Phase 4) | Pending |
+| TEST-04 | Phase 9 (gap closure from Phase 4) | Pending |
 | TEST-05 | Phase 4 | Pending |
 | TEST-06 | Phase 4 | Pending |
 | TEST-07 | Phase 4 | Pending |
 | TEST-08 | Phase 4 | Pending |
-| TEST-09 | Phase 5 | Pending |
-| TEST-10 | Phase 5 | Pending |
-| TEST-11 | Phase 5 | Pending |
+| TEST-09 | Phase 8 (gap closure from Phase 5) | Pending |
+| TEST-10 | Phase 8 (gap closure from Phase 5) | Pending |
+| TEST-11 | Phase 8 (gap closure from Phase 5) | Pending |
 | PERF-01 | Phase 6 | Complete |
 | PERF-02 | Phase 6 | Complete |
 | PERF-03 | Phase 6 | Complete |
@@ -156,7 +156,9 @@
 - v1 requirements: 34 total
 - Mapped to phases: 34
 - Unmapped: 0
+- Gap closure phases assigned: METR-05 → Phase 7, AUDIT-03 → Phase 7, AUDIT-01 → Phase 9, AUDIT-02 → Phase 9, AUDIT-04 → Phase 9, TEST-03 → Phase 9, TEST-04 → Phase 9, TEST-09 → Phase 8, TEST-10 → Phase 8, TEST-11 → Phase 8
 
 ---
 *Requirements defined: 2026-03-18*
 *Last updated: 2026-03-28 — PERF-02 index name corrected to idx_orders_user_status (orders table has user_id, not customer_id); PERF-08 acceptance criteria updated to entry-bundle proxy measurement (monolithic baseline no longer in git history)*
+*2026-03-28 — Gap closure phases 7-10 added from v1.0 milestone audit; METR-05/AUDIT-03/TEST-09/TEST-10/TEST-11 reassigned to gap closure phases; AUDIT-01/AUDIT-02/AUDIT-04/TEST-03/TEST-04 also reassigned to Phase 9*

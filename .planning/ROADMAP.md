@@ -18,6 +18,10 @@ capability — no horizontal layers, no partial features.
 - [ ] **Phase 4: Test Coverage — Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix with automated integration tests
 - [ ] **Phase 5: Test Coverage — n8n Workflow E2E** - End-to-end tests for inbound adapters, outbox retry, and CI integration for workflow smoke tests
 - [x] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle (completed 2007-03-28)
+- [ ] **Phase 7: Fix Critical Defects** - Fix METR-05 (disk alert dead code) and AUDIT-03 (VITE_N8N_URL missing from Dockerfile + AuditLogView URL path mismatch) — both are fail gates for milestone completion
+- [ ] **Phase 8: n8n E2E Test Implementation** - Execute the Phase 5 plans (blocked since 2026-03-24): implement test-n8n-e2e.sh with DB assertion, outbound retry + Redis queue check, and wire CI job to actually run workflows
+- [ ] **Phase 9: Integration Wiring & CI Fixes** - Activate Phase 3 workflows on VPS (all active=false), fix CI to run burst-test smoke variant for TEST-03, add ops.workflow_audit to CI EXPECTED_TABLES
+- [ ] **Phase 10: Verification & Nyquist Compliance** - Create missing VERIFICATION.md for Phases 01/03/04, create VALIDATION.md for Phase 02, update draft VALIDATION.md for Phases 04/06
 
 ## Phase Details
 
@@ -133,3 +137,73 @@ Plans:
 
 - [ ] 06-01-PLAN.md — Wave 0 verification infrastructure: App.lazy.test.tsx, check-bundle-size.cjs, menuService.cache.test.ts (PERF-01 through PERF-07, PERF-09)
 - [ ] 06-02-PLAN.md — Bundle size measurement + user sign-off on PERF-05 and PERF-08
+
+### Phase 7: Fix Critical Defects
+
+**Goal**: The two milestone fail-gate defects are resolved: W_QUEUE_METRICS disk alert fires correctly, and AuditLogView can reach W_AUDIT_QUERY via the correct URL
+**Depends on**: Phase 3 (fixes artifacts produced by Phase 3)
+**Requirements**: METR-05, AUDIT-03
+**Gap Closure:** Closes gaps from v1.0 audit — METR-05 (diskUsedPct hardcoded -1) and AUDIT-03 (VITE_N8N_URL missing + path mismatch)
+**Success Criteria** (what must be TRUE):
+
+  1. W_QUEUE_METRICS.json disk check reads actual filesystem usage; alert condition `diskUsedPct > diskAlertPct` fires correctly when disk is above threshold
+  2. `admin-dashboard/Dockerfile` declares `ARG VITE_N8N_URL` and `ENV VITE_N8N_URL`; docker-compose build args pass the correct n8n URL at image build time
+  3. `AuditLogView.tsx` fetch path matches the W_AUDIT_QUERY webhook path; a real AuditLogView request reaches the workflow and returns audit entries
+**Plans:** 0 plans
+Plans:
+
+- [ ] 07-01-PLAN.md — Fix W_QUEUE_METRICS disk check (replace hardcoded -1 with real df/stat call) (METR-05)
+- [ ] 07-02-PLAN.md — Fix admin-dashboard Dockerfile VITE_N8N_URL ARG/ENV + AuditLogView.tsx fetch path correction (AUDIT-03)
+
+### Phase 8: n8n E2E Test Implementation
+
+**Goal**: scripts/test-n8n-e2e.sh exists and verifies that the WA inbound adapter creates a Strapi record and that outbound failures produce a Redis retry entry; CI executes these tests on every PR
+**Depends on**: Phase 5 (plans exist; this phase closes execution blockers and runs them)
+**Requirements**: TEST-09, TEST-10, TEST-11
+**Gap Closure:** Closes gaps from v1.0 audit — Phase 5 was entirely unexecuted; this phase resolves the 4 blockers identified in 2026-03-24 session and executes the plans
+**Success Criteria** (what must be TRUE):
+
+  1. `scripts/test-n8n-e2e.sh` exists; a POST to `/v1/inbound/whatsapp` with valid Meta-signed payload triggers W_IN_WHATSAPP_ADAPTER and a Strapi `inbound-message` record is verified in the DB
+  2. A simulated outbound failure results in a Redis Bull queue entry confirming exponential backoff wiring
+  3. `docker/docker-compose.test.yml` includes META_APP_SECRET, META_SIGNATURE_REQUIRED, REDIS_CREDENTIAL_ID env vars; CI `n8n-workflow-e2e` job executes workflows (not HTTP-only check)
+**Plans:** 0 plans
+Plans:
+
+- [ ] 08-01-PLAN.md — Resolve Phase 5 plan blockers + implement test-n8n-e2e.sh (TEST-09, TEST-10); fix docker-compose.test.yml env vars
+- [ ] 08-02-PLAN.md — Wire CI n8n-workflow-e2e job to execute workflows; fix smoke-n8n-e2e.sh to include DB assertions (TEST-11)
+
+### Phase 9: Integration Wiring & CI Fixes
+
+**Goal**: Phase 3 audit chain is live (all workflows active on VPS); CI rate-limit burst test runs against the correct smoke script; ops schema migration is verified in CI
+**Depends on**: Phase 7 (AUDIT-03 Dockerfile fix needed before AuditLogView is useful)
+**Requirements**: AUDIT-01, AUDIT-02, AUDIT-04, METR-01, METR-02, METR-04, TEST-03, TEST-04
+**Gap Closure:** Closes integration gaps from v1.0 audit — workflow activation, CI smoke script mismatch, ops schema CI verification
+**Success Criteria** (what must be TRUE):
+
+  1. W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE, W_QUEUE_METRICS, W_REDIS_MONITOR all have `active=true` on VPS; audit chain produces entries for inbound workflow executions
+  2. CI `smoke-nginx-routing` job runs `smoke-nginx-routing.sh` (burst test variant) — TEST-03 rate-limit assertion executes on every PR touching nginx.conf
+  3. `ci.yml` integration-tests `EXPECTED_TABLES` includes `ops.workflow_audit`; a P3 migration failure is caught by CI
+**Plans:** 0 plans
+Plans:
+
+- [ ] 09-01-PLAN.md — Activate Phase 3 workflows on VPS via n8n API (AUDIT-02, AUDIT-04, METR-01, METR-02, METR-04)
+- [ ] 09-02-PLAN.md — Fix CI: switch smoke-nginx-routing-v2.sh → smoke-nginx-routing.sh for TEST-03 burst test; add ops.workflow_audit to EXPECTED_TABLES (TEST-03, TEST-04, AUDIT-01)
+
+### Phase 10: Verification & Nyquist Compliance
+
+**Goal**: Every executed phase has a passing VERIFICATION.md and a non-draft VALIDATION.md; the milestone audit can complete with full coverage
+**Depends on**: Phase 7, Phase 8, Phase 9 (all fixes must be in place before verification)
+**Requirements**: (no new requirements — closes Nyquist compliance gaps for existing phases)
+**Gap Closure:** Closes Nyquist compliance tech debt from v1.0 audit — missing VERIFICATION.md for Phases 01/03/04, missing VALIDATION.md for Phase 02, draft VALIDATION.md for Phases 04/06
+**Success Criteria** (what must be TRUE):
+
+  1. Phase 01 VERIFICATION.md is re-run and reflects 01-04 gap closure results (not stale pre-01-04 state)
+  2. Phase 03 VERIFICATION.md exists and verifies observable truths against the 6 Phase 3 success criteria
+  3. Phase 04 VERIFICATION.md exists and verifies observable truths against the 5 Phase 4 success criteria
+  4. Phase 02 VALIDATION.md exists with nyquist_compliant result
+  5. Phase 04 and Phase 06 VALIDATION.md files are updated from draft state to reflect actual execution
+**Plans:** 0 plans
+Plans:
+
+- [ ] 10-01-PLAN.md — Re-verify Phase 01 and create VERIFICATION.md for Phases 03 and 04
+- [ ] 10-02-PLAN.md — Create Phase 02 VALIDATION.md; update Phase 04 and Phase 06 VALIDATION.md from draft state
