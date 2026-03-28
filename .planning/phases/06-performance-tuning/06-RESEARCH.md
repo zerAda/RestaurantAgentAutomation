@@ -430,13 +430,13 @@ function getCachedMenu(cacheKey: string): Product[] | null {
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
 | PERF-01 | `idx_orders_status_created` index created by migration | smoke/shell | `psql $DATABASE_URL -c "\d orders" | grep idx_orders_status_created` | Wave 0 |
-| PERF-02 | `idx_orders_customer_status` index created by migration | smoke/shell | `psql $DATABASE_URL -c "\d orders" | grep idx_orders_customer_status` | Wave 0 |
+| PERF-02 | `idx_orders_user_status` index created by migration | smoke/shell | `psql $DATABASE_URL -c "\d orders" | grep idx_orders_user_status` | Wave 0 |
 | PERF-03 | EXPLAIN ANALYZE confirms index usage on 3 queries | smoke/shell | `DATABASE_URL=... bash scripts/verify-orders-indexes.sh` | Wave 0 |
 | PERF-04 | Redis maxmemory-policy is allkeys-lru | smoke/shell | `docker exec current-redis-1 redis-cli CONFIG GET maxmemory-policy \| grep allkeys-lru` | Wave 0 |
 | PERF-05 | Redis memory logged every 15 min; alert fires at >200MB | manual-only | N/A — requires live n8n execution over time | manual-only |
 | PERF-06 | ENV_REFERENCE.md documents Redis config | unit (file existence) | `test -f ENV_REFERENCE.md && grep -q maxmemory-policy ENV_REFERENCE.md` | Wave 0 |
 | PERF-07 | All view components use lazy() | unit | `cd admin-dashboard && npm test -- --run src/App.lazy.test.tsx` | Wave 0 |
-| PERF-08 | Initial bundle >=30% smaller than baseline | smoke/build | `cd admin-dashboard && npm run build && node scripts/check-bundle-size.js` | Wave 0 |
+| PERF-08 | Code splitting structurally active: 5+ JS chunks, entry bundle ≤30KB | smoke/build | `cd admin-dashboard && npm run build && node scripts/check-bundle-size.cjs` | Wave 0 |
 | PERF-09 | Repeated kiosk renders don't trigger redundant Strapi calls | unit | `cd kiosk-app && npm test -- --run src/menuService.cache.test.ts` | Wave 0 |
 
 ### Sampling Rate
@@ -447,7 +447,7 @@ function getCachedMenu(cacheKey: string): Product[] | null {
 ### Wave 0 Gaps
 - [ ] `scripts/verify-orders-indexes.sh` — covers PERF-01, PERF-02, PERF-03
 - [ ] `admin-dashboard/src/App.lazy.test.tsx` — asserts lazy() used for all route components (PERF-07)
-- [ ] `admin-dashboard/scripts/check-bundle-size.js` — compares current build vs baseline (PERF-08)
+- [ ] `admin-dashboard/scripts/check-bundle-size.cjs` — verifies entry bundle ≤30KB and 5+ chunks exist (PERF-08)
 - [ ] `kiosk-app/src/menuService.cache.test.ts` — asserts getProducts() returns cached result on 2nd call (PERF-09)
 
 ---

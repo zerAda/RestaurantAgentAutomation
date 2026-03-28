@@ -124,9 +124,9 @@ Plans:
 **Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05, PERF-06, PERF-07, PERF-08, PERF-09
 **Success Criteria** (what must be TRUE):
 
-  1. A new migration adds `idx_orders_status_created` and `idx_orders_customer_status` indexes if they do not exist; EXPLAIN ANALYZE on the 3 most common order queries confirms index usage
+  1. A new migration adds `idx_orders_status_created` and `idx_orders_user_status` indexes if they do not exist; EXPLAIN ANALYZE on the 3 most common order queries confirms index usage (NOTE: orders table uses user_id not customer_id — index is idx_orders_user_status)
   2. Redis `maxmemory-policy` is set to `allkeys-lru`; Redis memory usage is logged every 15 minutes and fires an alert if usage exceeds 200MB; configuration is documented in `ENV_REFERENCE.md`
-  3. Admin dashboard uses React Router `lazy()` for all view components; initial JS bundle size is at least 30% smaller than the pre-split baseline
+  3. Admin dashboard uses React Router `lazy()` for all view components; code splitting is structurally active — `dist/assets/` contains 5 or more JS chunks and the entry bundle (`index-*.js`) is 30KB or less
   4. Kiosk menu data uses ETag or 5-minute TTL caching; repeated renders do not trigger redundant Strapi API calls
 **Plans:** 2 plans
 Plans:

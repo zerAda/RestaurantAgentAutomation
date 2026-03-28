@@ -62,7 +62,7 @@
 ### Performance — Database
 
 - [ ] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists
-- [ ] **PERF-02**: Migration adds `CREATE INDEX idx_orders_customer_status ON orders(customer_id, status)` if not exists
+- [ ] **PERF-02**: Migration adds `CREATE INDEX idx_orders_user_status ON orders(user_id, status)` if not exists (NOTE: orders table has no customer_id column; the actual column is user_id — canonical index name is idx_orders_user_status)
 - [ ] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage
 
 ### Performance — Redis
@@ -74,7 +74,7 @@
 ### Performance — Frontend
 
 - [ ] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting)
-- [ ] **PERF-08**: Initial JS bundle size is reduced by at least 30% compared to current monolithic build
+- [ ] **PERF-08**: Code splitting is structurally active: `dist/assets/` contains 5 or more JS chunks AND the entry bundle (`index-*.js`) is 30KB or less (monolithic baseline no longer exists in git; entry-bundle size is the measurable proxy for the 30% reduction intent)
 - [ ] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render
 
 ## v2 Requirements
@@ -159,4 +159,4 @@
 
 ---
 *Requirements defined: 2026-03-18*
-*Last updated: 2026-03-23 — OBS-01 marked complete after n8n upgrade to 2.9.4 on VPS; OBS-02, OBS-03, OBS-04 complete — all Phase 02 observability requirements satisfied*
+*Last updated: 2026-03-28 — PERF-02 index name corrected to idx_orders_user_status (orders table has user_id, not customer_id); PERF-08 acceptance criteria updated to entry-bundle proxy measurement (monolithic baseline no longer in git history)*
