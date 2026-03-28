@@ -80,4 +80,4 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 | Brownfield: fix-first milestone | Platform is live; stabilize before adding features | — Pending |
 
 ---
-*Last updated: 2026-03-18 after brownfield initialization*
+*Last updated: 2026-03-28 — Phase 06 complete (performance-tuning): all 9 PERF requirements verified — DB indexes, Redis allkeys-lru + live monitor deployed on VPS, 14-component code splitting, kiosk TTL cache*
