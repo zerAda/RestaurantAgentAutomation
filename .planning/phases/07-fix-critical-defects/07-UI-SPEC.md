@@ -49,7 +49,7 @@ Declared values (must be multiples of 4):
 | 3xl | 64px | Reserved for outer page-level margins |
 
 Exceptions:
-- `p-5` (20px) — card padding (`px-5 py-4` for table cells; `p-5` for stat cards). Matches existing AuditLogView card padding — do not change.
+- `p-5` — 20px (non-standard, preserved from existing implementation) — card padding (`px-5 py-4` for table cells; `p-5` for stat cards). Matches existing AuditLogView card padding — do not change.
 - Touch targets for pagination buttons: `p-2` (8px) wrapping a 16px icon = 32px total — below the 44px min but acceptable for desktop-only admin panel.
 
 **Source:** Measured from `AuditLogView.tsx` existing implementation. Do not change.
@@ -69,7 +69,7 @@ Exceptions:
 
 Notes:
 - Table headers: `text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em]` — do not change.
-- Workflow name cell: `font-bold text-white` at base `text-sm` (14px).
+- Workflow name cell: `font-black text-white` at base `text-sm` (14px).
 - Execution ID / Correlation ID: `text-[10px] font-mono text-zinc-600` — truncated to 12-16 chars.
 - Duration: `font-mono text-zinc-400 text-xs` (12px).
 
