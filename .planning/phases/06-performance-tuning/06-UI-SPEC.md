@@ -79,10 +79,10 @@ Source: `admin-dashboard/src/index.css` `.btn-quantum` (px-5 py-2.5), `kiosk-app
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
+| Label | 10px (text-[10px]) | 700 bold | 1.0 |
 | Body | 14px (text-sm) | 400 regular | 1.5 |
-| Label | 10px (text-[10px]) | 700 bold | 1.0 (uppercase tracking-widest) |
-| Heading | 20px (text-xl) or 28px (text-2xl) | 900 black | 1.2 |
-| Display | 36–48px (text-4xl / text-5xl) | 900 black (font-black) | 1.0 (tracking-tighter) |
+| Heading | 20–28px (text-xl / text-2xl, responsive) | 900 black | 1.2 |
+| Display | 36–48px (text-4xl / text-5xl, responsive) | 900 black | 1.0 |
 
 ### Kiosk App (`kiosk-app/src/index.css`)
 
