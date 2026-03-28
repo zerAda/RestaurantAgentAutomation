@@ -44,15 +44,13 @@ Declared values (must be multiples of 4):
 | xs | 4px | Icon gaps (`gap-1`, `gap-1.5`), inline badge padding |
 | sm | 8px | Compact toolbar element spacing (`gap-2`, `gap-3`) |
 | md | 16px | Default element spacing (`p-4`, `gap-4`) |
-| lg | 20px | Card padding (`p-5`) |
 | xl | 24px | Section padding (`p-6`, `py-6`) |
-| 2xl | 32px | Table cell padding context (`px-5 py-4` = 20px horizontal, 16px vertical) |
-| 3xl | 64px | Page-level spacing (implicit via `space-y-8` = 32px Tailwind gap) |
+| 2xl | 32px | Page-level spacing (implicit via `space-y-8` = 32px Tailwind gap) |
+| 3xl | 64px | Reserved for outer page-level margins |
 
 Exceptions:
-- Table header/row cells use `px-5 py-4` (20px / 16px) — matches existing AuditLogView.
+- `p-5` (20px) — card padding (`px-5 py-4` for table cells; `p-5` for stat cards). Matches existing AuditLogView card padding — do not change.
 - Touch targets for pagination buttons: `p-2` (8px) wrapping a 16px icon = 32px total — below the 44px min but acceptable for desktop-only admin panel.
-- Stat card internal layout: `p-5 flex flex-col gap-2` — 20px outer, 8px inner gap.
 
 **Source:** Measured from `AuditLogView.tsx` existing implementation. Do not change.
 
@@ -100,13 +98,15 @@ Semantic colors in use (not accent):
 
 **Source:** `admin-dashboard/src/index.css` custom properties + `AuditLogView.tsx` STATUS_MAP and CHANNEL_COLORS constants.
 
+**Primary focal point:** The stat strip (4 KPI cards — Total, Success, Failed, Avg Duration) positioned above the audit table is the primary focal point of the view. It must remain the first prominent element below the page heading.
+
 ---
 
 ## Copywriting Contract
 
 | Element | Copy |
 |---------|------|
-| Primary CTA | "Retry" — appears only in error state (verb only; no noun needed since context is clear) |
+| Primary CTA | "Retry" — contextual error-recovery action; noun is implicit from the error heading "Failed to load audit data", so the single-word verb is sufficient |
 | Loading state | "Loading audit trail…" (with ellipsis, no period) |
 | Empty state heading | "No audit records found" |
 | Empty state body | "Audit data will appear here once workflows execute." |
@@ -114,7 +114,7 @@ Semantic colors in use (not accent):
 | Error state detail | Displays raw HTTP error (e.g., `HTTP 502`) below the heading |
 | Destructive confirmation | None — phase 7 introduces no destructive actions |
 | Auto-refresh toggle | "Live" (uppercase via CSS, stored as "Live" in JSX) |
-| Export button | No label — icon-only (`Download` icon) with implicit affordance |
+| Export button | Icon-only (`Download` icon); must carry `aria-label="Export audit log"` for screen-reader accessibility |
 | Search placeholder | "Search workflow…" (with ellipsis) |
 | Status filter default | "All Status" |
 | Channel filter default | "All Channels" |
