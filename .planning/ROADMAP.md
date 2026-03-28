@@ -13,11 +13,11 @@ capability — no horizontal layers, no partial features.
 ## Phases
 
 - [ ] **Phase 1: CMS Stability & Base Upgrade** - Eliminate the docker-cp runtime hack; bake all 15 Strapi API routes into source; upgrade Node.js 18 -> 20 across all services
-- [x] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end (completed 2026-03-23)
+- [x] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end (completed 2007-03-23)
 - [ ] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table
 - [ ] **Phase 4: Test Coverage — Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix with automated integration tests
 - [ ] **Phase 5: Test Coverage — n8n Workflow E2E** - End-to-end tests for inbound adapters, outbox retry, and CI integration for workflow smoke tests
-- [x] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle (completed 2026-03-28)
+- [x] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle (completed 2007-03-28)
 
 ## Phase Details
 
@@ -133,37 +133,3 @@ Plans:
 
 - [ ] 06-01-PLAN.md — Wave 0 verification infrastructure: App.lazy.test.tsx, check-bundle-size.cjs, menuService.cache.test.ts (PERF-01 through PERF-07, PERF-09)
 - [ ] 06-02-PLAN.md — Bundle size measurement + user sign-off on PERF-05 and PERF-08
-
-### Phase 7: NemoClaw Telegram Bot NVIDIA NIM integration and reliability improvements
-
-**Goal**: The NemoClaw Telegram bot (@AdelClaw_Nemobot) responds to messages using NVIDIA NIM LLM inference, with async non-blocking processing, typing indicators, retry logic for transient errors, and auto-restart via systemd
-**Depends on**: Nothing (independent of main platform phases)
-**Requirements**: NIM-01, NIM-02, BOT-01, BOT-02, BOT-03, SVC-01, SVC-02
-**Success Criteria** (what must be TRUE):
-
-  1. NVIDIA NIM API returns HTTP 200 for model `meta/llama-3.3-70b-instruct` with the configured API key
-  2. `openclaw agent` responds to a test message end-to-end without 404 or auth errors
-  3. Telegram bot responds to messages within 30 seconds with AI-generated text
-  4. Typing indicator appears during processing and clears after response
-  5. Rate-limited (429) and server errors produce user-friendly messages, not raw errors
-  6. systemd service restarts automatically after process kill (Restart=always)
-  7. Service survives SSH disconnect and VPS reboot (loginctl linger enabled)
-**Plans:** 1/4 plans executed
-Plans:
-
-- [ ] 07-01-PLAN.md — Fix NVIDIA NIM model config and API key auth
-- [ ] 07-02-PLAN.md — Patch Telegram bridge for async spawn, typing keepalive, retries, and error handling
-- [ ] 07-03-PLAN.md — Fix systemd service and E2E Telegram verification
-- [ ] 07-04-PLAN.md — Create dedicated GitHub repo for NemoClaw (separate project from RESTO BOT)
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. CMS Stability & Base Upgrade | 3/4 | In progress (gap closure) | - |
-| 2. Structured Logging & Correlation | 5/5 | Complete   | 2026-03-23 |
-| 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
-| 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
-| 5. Test Coverage — n8n Workflow E2E | 0/2 | Not started | - |
-| 6. Performance Tuning | 2/2 | Complete   | 2026-03-28 |
-| 7. NemoClaw Telegram Bot | 1/4 | In Progress|  |
