@@ -1,7 +1,8 @@
 ---
 phase: 6
 slug: performance-tuning
-status: draft
+status: approved
+reviewed_at: 2026-03-28
 shadcn_initialized: false
 preset: none
 created: 2026-03-28
@@ -79,7 +80,7 @@ Source: `admin-dashboard/src/index.css` `.btn-quantum` (px-5 py-2.5), `kiosk-app
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
-| Label | 10px (text-[10px]) | 700 bold | 1.0 |
+| Label | 10px (text-[10px]) | 900 black | 1.0 |
 | Body | 14px (text-sm) | 400 regular | 1.5 |
 | Heading | 20–28px (text-xl / text-2xl, responsive) | 900 black | 1.2 |
 | Display | 36–48px (text-4xl / text-5xl, responsive) | 900 black | 1.0 |
@@ -89,7 +90,7 @@ Source: `admin-dashboard/src/index.css` `.btn-quantum` (px-5 py-2.5), `kiosk-app
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 16px (text-base) | 400 regular | 1.5 |
-| Label | 12px (text-xs) | 700 bold | 1.0 |
+| Label | 12px (text-xs) | 900 black | 1.0 |
 | Heading | 24px (text-2xl) | 900 black | 1.2 |
 | Display | 40px+ (text-4xl) | 900 black | 1.0 |
 
@@ -244,11 +245,11 @@ Source: RESEARCH.md "No new packages required. All implementation uses existing 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-03-28
