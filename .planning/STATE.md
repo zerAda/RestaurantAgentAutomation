@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-03-23T22:22:10.752Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-28T12:25:59.479Z"
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 17
-  completed_plans: 9
+  total_plans: 21
+  completed_plans: 10
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 02 — structured-logging-and-correlation
+**Current focus:** Phase 06 — performance-tuning
 
 ## Current Position
 
-Phase: 02 (structured-logging-and-correlation) — COMPLETE
-Plan: 5 of 5
+Phase: 06 (performance-tuning) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: 5 of 5
 
 *Updated after each plan completion*
 | Phase 02 P05 | 3 | 2 tasks | 2 files |
+| Phase 06-performance-tuning P01 | 6 | 4 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,9 @@ Plan: 5 of 5
 - [02-05] OBS-02 confirmed complete: Strapi CMS emits 50+ structured JSON lines with service='strapi-cms' field
 - [Phase 02-05]: OBS-01 not marked complete: VPS n8n is 1.80.0 (not 2.9.4) and does not honor N8N_LOG_FORMAT=json — requires n8n upgrade to resolve
 - [Phase 02-05]: OBS-02 confirmed complete: Strapi CMS emits structured JSON logs with service='strapi-cms' field (50+ lines confirmed by smoke test)
+- [Phase 06-01]: PERF-08 structural proxy: check chunkCount >= 5 and entryKB <= 30 vs smallest index-*.js — monolithic baseline no longer in git
+- [Phase 06-01]: npm install --legacy-peer-deps: lucide-react peer dep conflict blocks npm ci — use legacy mode for test execution
+- [Phase 06-01]: vi.mock hoisting: declare vi.mock at module top before dynamic import for menuService cache test
 
 ### Roadmap Evolution
 
@@ -87,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T22:11:05.682Z
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-03-28T12:25:59.474Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

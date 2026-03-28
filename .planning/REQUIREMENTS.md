@@ -61,21 +61,21 @@
 
 ### Performance — Database
 
-- [ ] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists
-- [ ] **PERF-02**: Migration adds `CREATE INDEX idx_orders_user_status ON orders(user_id, status)` if not exists (NOTE: orders table has no customer_id column; the actual column is user_id — canonical index name is idx_orders_user_status)
-- [ ] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage
+- [x] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists
+- [x] **PERF-02**: Migration adds `CREATE INDEX idx_orders_user_status ON orders(user_id, status)` if not exists (NOTE: orders table has no customer_id column; the actual column is user_id — canonical index name is idx_orders_user_status)
+- [x] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage
 
 ### Performance — Redis
 
-- [ ] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill)
-- [ ] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used
-- [ ] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md`
+- [x] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill)
+- [x] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used
+- [x] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md`
 
 ### Performance — Frontend
 
-- [ ] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting)
-- [ ] **PERF-08**: Code splitting is structurally active: `dist/assets/` contains 5 or more JS chunks AND the entry bundle (`index-*.js`) is 30KB or less (monolithic baseline no longer exists in git; entry-bundle size is the measurable proxy for the 30% reduction intent)
-- [ ] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render
+- [x] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting)
+- [x] **PERF-08**: Code splitting is structurally active: `dist/assets/` contains 5 or more JS chunks AND the entry bundle (`index-*.js`) is 30KB or less (monolithic baseline no longer exists in git; entry-bundle size is the measurable proxy for the 30% reduction intent)
+- [x] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render
 
 ## v2 Requirements
 
@@ -142,15 +142,15 @@
 | TEST-09 | Phase 5 | Pending |
 | TEST-10 | Phase 5 | Pending |
 | TEST-11 | Phase 5 | Pending |
-| PERF-01 | Phase 6 | Pending |
-| PERF-02 | Phase 6 | Pending |
-| PERF-03 | Phase 6 | Pending |
-| PERF-04 | Phase 6 | Pending |
-| PERF-05 | Phase 6 | Pending |
-| PERF-06 | Phase 6 | Pending |
-| PERF-07 | Phase 6 | Pending |
-| PERF-08 | Phase 6 | Pending |
-| PERF-09 | Phase 6 | Pending |
+| PERF-01 | Phase 6 | Complete |
+| PERF-02 | Phase 6 | Complete |
+| PERF-03 | Phase 6 | Complete |
+| PERF-04 | Phase 6 | Complete |
+| PERF-05 | Phase 6 | Complete |
+| PERF-06 | Phase 6 | Complete |
+| PERF-07 | Phase 6 | Complete |
+| PERF-08 | Phase 6 | Complete |
+| PERF-09 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total

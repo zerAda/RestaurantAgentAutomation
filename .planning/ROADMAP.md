@@ -128,7 +128,7 @@ Plans:
   2. Redis `maxmemory-policy` is set to `allkeys-lru`; Redis memory usage is logged every 15 minutes and fires an alert if usage exceeds 200MB; configuration is documented in `ENV_REFERENCE.md`
   3. Admin dashboard uses React Router `lazy()` for all view components; code splitting is structurally active — `dist/assets/` contains 5 or more JS chunks and the entry bundle (`index-*.js`) is 30KB or less
   4. Kiosk menu data uses ETag or 5-minute TTL caching; repeated renders do not trigger redundant Strapi API calls
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 
 - [ ] 06-01-PLAN.md — Wave 0 verification infrastructure: App.lazy.test.tsx, check-bundle-size.cjs, menuService.cache.test.ts (PERF-01 through PERF-07, PERF-09)
@@ -165,5 +165,5 @@ Plans:
 | 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
 | 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
 | 5. Test Coverage — n8n Workflow E2E | 0/2 | Not started | - |
-| 6. Performance Tuning | 0/2 | Not started | - |
+| 6. Performance Tuning | 1/2 | In Progress|  |
 | 7. NemoClaw Telegram Bot | 1/4 | In Progress|  |
