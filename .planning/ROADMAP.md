@@ -149,7 +149,7 @@ Plans:
   1. W_QUEUE_METRICS.json disk check reads actual filesystem usage; alert condition `diskUsedPct > diskAlertPct` fires correctly when disk is above threshold
   2. `admin-dashboard/Dockerfile` declares `ARG VITE_N8N_URL` and `ENV VITE_N8N_URL`; docker-compose build args pass the correct n8n URL at image build time
   3. `AuditLogView.tsx` fetch path matches the W_AUDIT_QUERY webhook path; a real AuditLogView request reaches the workflow and returns audit entries
-**Plans:** 0 plans
+**Plans:** 2 plans
 Plans:
 
 - [ ] 07-01-PLAN.md — Fix W_QUEUE_METRICS disk check (replace hardcoded -1 with real df/stat call) (METR-05)
