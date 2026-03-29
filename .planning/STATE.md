@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-02-PLAN.md — Phase 6 Performance Tuning fully complete
-last_updated: "2026-03-28T13:19:02.137Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-29T20:02:27.583Z"
 progress:
-  total_phases: 6
-  completed_phases: 3
-  total_plans: 21
-  completed_plans: 11
+  total_phases: 10
+  completed_phases: 6
+  total_plans: 29
+  completed_plans: 23
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 03 — metrics-alerting-and-audit-trail
+**Current focus:** Phase 07 — fix-critical-defects
 
 ## Current Position
 
-Phase: 03 (metrics-alerting-and-audit-trail) — EXECUTING
-Plan: 1 of 5
+Phase: 07 (fix-critical-defects) — EXECUTING
+Plan: 1 of 2
 
 ## Performance Metrics
 
@@ -50,6 +50,8 @@ Plan: 1 of 5
 | Phase 02 P05 | 3 | 2 tasks | 2 files |
 | Phase 06-performance-tuning P01 | 6 | 4 tasks | 3 files |
 | Phase 06-performance-tuning P02 | 1min | 2 tasks | 0 files |
+| Phase 08-n8n-e2e-test-implementation P01 | 6min | 1 tasks | 1 files |
+| Phase 09-integration-wiring-and-ci-fixes P02 | 2 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -76,6 +78,11 @@ Plan: 1 of 5
 - [Phase 06-01]: vi.mock hoisting: declare vi.mock at module top before dynamic import for menuService cache test
 - [Phase 06-02]: PERF-05 accepted as deployment-ready: W_REDIS_MONITOR.json structurally correct; live execution requires VPS import
 - [Phase 06-02]: PERF-08 verified via structural proxy: 35 chunks (>= 5) and entry 0.06 KB (<= 30 KB) — monolithic baseline not needed
+- [Phase 08-01]: META_APP_SECRET defaults to ci-test (matches docker-compose.test.yml) — any mismatch causes sig_mismatch in W1_IN_WA and no inbound_messages row is written
+- [Phase 08-01]: Outbox seed entry requires retryable=true: W15 only re-queues if retryable=true AND attempts < maxAttempts(7); missing field routes entry to DLQ instead of pending
+- [Phase 09-02]: smoke-nginx-routing.sh manages its own Docker container — services: nginx block removed to prevent port conflict
+- [Phase 09-02]: PR trigger for smoke-nginx-routing uses github.event_name == 'pull_request' (job-level paths: filter not supported in GitHub Actions)
+- [Phase 09-02]: ops schema verification resets MISSING=0 before ops loop for explicit correctness
 
 ### Roadmap Evolution
 
@@ -94,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T12:35:55.788Z
-Stopped at: Completed 06-02-PLAN.md — Phase 6 Performance Tuning fully complete
+Last session: 2026-03-29T20:02:27.575Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None

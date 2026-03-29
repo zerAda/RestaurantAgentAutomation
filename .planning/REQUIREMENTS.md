@@ -34,7 +34,7 @@
 
 ### Observability — Audit Trail
 
-- [ ] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at)
+- [x] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at)
 - [ ] **AUDIT-02**: All inbound adapter workflows (W_IN_WHATSAPP, W_IN_INSTAGRAM, W_IN_MESSENGER) write an audit entry on execution start and end
 - [ ] **AUDIT-03**: Audit log is queryable from the admin dashboard (basic search by date range + workflow name)
 - [ ] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted)
@@ -43,8 +43,8 @@
 
 - [ ] **TEST-01**: Smoke test verifies each of the 8 nginx routing zones returns the expected HTTP status (not 502/404)
 - [ ] **TEST-02**: Smoke test verifies `Access-Control-Allow-Origin` header appears exactly once on kiosk endpoints (no duplicates)
-- [ ] **TEST-03**: Rate limiting smoke test: 25 rapid requests to `/v1/inbound/whatsapp` triggers 429 after burst limit
-- [ ] **TEST-04**: Smoke tests run automatically in CI on every PR that touches `infra/gateway/nginx.conf`
+- [x] **TEST-03**: Rate limiting smoke test: 25 rapid requests to `/v1/inbound/whatsapp` triggers 429 after burst limit
+- [x] **TEST-04**: Smoke tests run automatically in CI on every PR that touches `infra/gateway/nginx.conf`
 
 ### Test Coverage — Strapi Permissions
 
@@ -55,8 +55,8 @@
 
 ### Test Coverage — n8n Workflows
 
-- [ ] **TEST-09**: E2E test: POST to `/v1/inbound/whatsapp` with valid Meta payload triggers W_IN_WHATSAPP_ADAPTER and creates a record in Strapi `inbound-message`
-- [ ] **TEST-10**: E2E test: failed outbound message is retried with exponential backoff (verify Redis queue entry exists after first failure)
+- [x] **TEST-09**: E2E test: POST to `/v1/inbound/whatsapp` with valid Meta payload triggers W_IN_WHATSAPP_ADAPTER and creates a record in Strapi `inbound-message`
+- [x] **TEST-10**: E2E test: failed outbound message is retried with exponential backoff (verify Redis queue entry exists after first failure)
 - [ ] **TEST-11**: Workflow smoke tests run in CI using n8n test mode or mock webhook triggers
 
 ### Performance — Database
@@ -127,20 +127,20 @@
 | METR-03 | Phase 3 | Pending |
 | METR-04 | Phase 3 | Pending |
 | METR-05 | Phase 7 (gap closure from Phase 3) | Pending |
-| AUDIT-01 | Phase 9 (gap closure from Phase 3) | Pending |
+| AUDIT-01 | Phase 9 (gap closure from Phase 3) | Complete |
 | AUDIT-02 | Phase 9 (gap closure from Phase 3) | Pending |
 | AUDIT-03 | Phase 7 (gap closure from Phase 3) | Pending |
 | AUDIT-04 | Phase 9 (gap closure from Phase 3) | Pending |
 | TEST-01 | Phase 4 | Pending |
 | TEST-02 | Phase 4 | Pending |
-| TEST-03 | Phase 9 (gap closure from Phase 4) | Pending |
-| TEST-04 | Phase 9 (gap closure from Phase 4) | Pending |
+| TEST-03 | Phase 9 (gap closure from Phase 4) | Complete |
+| TEST-04 | Phase 9 (gap closure from Phase 4) | Complete |
 | TEST-05 | Phase 4 | Pending |
 | TEST-06 | Phase 4 | Pending |
 | TEST-07 | Phase 4 | Pending |
 | TEST-08 | Phase 4 | Pending |
-| TEST-09 | Phase 8 (gap closure from Phase 5) | Pending |
-| TEST-10 | Phase 8 (gap closure from Phase 5) | Pending |
+| TEST-09 | Phase 8 (gap closure from Phase 5) | Complete |
+| TEST-10 | Phase 8 (gap closure from Phase 5) | Complete |
 | TEST-11 | Phase 8 (gap closure from Phase 5) | Pending |
 | PERF-01 | Phase 6 | Complete |
 | PERF-02 | Phase 6 | Complete |

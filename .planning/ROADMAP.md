@@ -166,7 +166,7 @@ Plans:
   1. `scripts/test-n8n-e2e.sh` exists; a POST to `/v1/inbound/whatsapp` with valid Meta-signed payload triggers W_IN_WHATSAPP_ADAPTER and an `inbound_messages` record is verified in the n8n Postgres DB
   2. A simulated outbound failure results in a Redis queue entry confirming exponential backoff wiring
   3. `docker/docker-compose.test.yml` includes META_APP_SECRET, META_SIGNATURE_REQUIRED, REDIS_CREDENTIAL_ID env vars; CI `n8n-workflow-e2e` job executes workflows (not HTTP-only check)
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 
 - [ ] 08-01-PLAN.md — Create test-n8n-e2e.sh with TEST-09 (Meta-signed WA inbound + Postgres DB assertion) and TEST-10 (outbox retry + Redis re-queue) (TEST-09, TEST-10)
@@ -183,7 +183,7 @@ Plans:
   1. W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE, W_QUEUE_METRICS, W_REDIS_MONITOR all have `active=true` on VPS; audit chain produces entries for inbound workflow executions
   2. CI `smoke-nginx-routing` job runs `smoke-nginx-routing.sh` (burst test variant) — TEST-03 rate-limit assertion executes on every PR touching nginx.conf
   3. `ci.yml` integration-tests `EXPECTED_TABLES` includes `ops.workflow_audit`; a P3 migration failure is caught by CI
-**Plans:** 0 plans
+**Plans:** 1/2 plans executed
 Plans:
 
 - [ ] 09-01-PLAN.md — Activate Phase 3 workflows on VPS via n8n API (AUDIT-02, AUDIT-04, METR-01, METR-02, METR-04)
