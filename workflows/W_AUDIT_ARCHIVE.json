@@ -1,6 +1,6 @@
 {
   "name": "W_AUDIT_ARCHIVE - 90-Day Audit Archival",
-  "active": false,
+  "active": true,
   "settings": {
     "executionTimeout": 300,
     "saveExecutionProgress": true,
@@ -39,7 +39,7 @@
       },
       "credentials": {
         "postgres": {
-          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "id": "1mZZJEscADgQ8InR",
           "name": "RestoBot PG (n8n DB)"
         }
       },

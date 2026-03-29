@@ -1,6 +1,6 @@
 {
   "name": "W_AUDIT_WRITE - Workflow Audit Write",
-  "active": false,
+  "active": true,
   "settings": {
     "executionTimeout": 30,
     "saveExecutionProgress": false,
@@ -87,7 +87,7 @@
       },
       "credentials": {
         "postgres": {
-          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "id": "1mZZJEscADgQ8InR",
           "name": "RestoBot PG (n8n DB)"
         }
       },
@@ -105,7 +105,7 @@
       },
       "credentials": {
         "postgres": {
-          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "id": "1mZZJEscADgQ8InR",
           "name": "RestoBot PG (n8n DB)"
         }
       },
