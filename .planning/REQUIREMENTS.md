@@ -57,7 +57,7 @@
 
 - [x] **TEST-09**: E2E test: POST to `/v1/inbound/whatsapp` with valid Meta payload triggers W_IN_WHATSAPP_ADAPTER and creates a record in Strapi `inbound-message`
 - [x] **TEST-10**: E2E test: failed outbound message is retried with exponential backoff (verify Redis queue entry exists after first failure)
-- [ ] **TEST-11**: Workflow smoke tests run in CI using n8n test mode or mock webhook triggers
+- [x] **TEST-11**: Workflow smoke tests run in CI using n8n test mode or mock webhook triggers
 
 ### Performance — Database
 
@@ -141,7 +141,7 @@
 | TEST-08 | Phase 4 | Pending |
 | TEST-09 | Phase 8 (gap closure from Phase 5) | Complete |
 | TEST-10 | Phase 8 (gap closure from Phase 5) | Complete |
-| TEST-11 | Phase 8 (gap closure from Phase 5) | Pending |
+| TEST-11 | Phase 8 (gap closure from Phase 5) | Complete |
 | PERF-01 | Phase 6 | Complete |
 | PERF-02 | Phase 6 | Complete |
 | PERF-03 | Phase 6 | Complete |

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Phase 09 Plan 01 — Task 2 checkpoint (human-verify)
-last_updated: "2026-03-29T20:06:14.554Z"
+status: in-progress
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-29T20:10:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 6
   total_plans: 29
-  completed_plans: 23
+  completed_plans: 24
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 09 — Integration Wiring & CI Fixes
+**Current focus:** Phase 08 — n8n E2E Test Implementation (complete)
 
 ## Current Position
 
-Phase: 09 (integration-wiring-and-ci-fixes) — COMPLETE (2/2 plans done)
+Phase: 08 (n8n-e2e-test-implementation) — COMPLETE (2/2 plans done)
 Plan: 2 of 2
 
 ## Performance Metrics
@@ -51,6 +51,7 @@ Plan: 2 of 2
 | Phase 06-performance-tuning P01 | 6 | 4 tasks | 3 files |
 | Phase 06-performance-tuning P02 | 1min | 2 tasks | 0 files |
 | Phase 08-n8n-e2e-test-implementation P01 | 6min | 1 tasks | 1 files |
+| Phase 08-n8n-e2e-test-implementation P02 | 3min | 1 tasks | 1 files |
 | Phase 09-integration-wiring-and-ci-fixes P02 | 2 | 2 tasks | 1 files |
 
 ## Accumulated Context
@@ -83,6 +84,9 @@ Plan: 2 of 2
 - [Phase 09-02]: smoke-nginx-routing.sh manages its own Docker container — services: nginx block removed to prevent port conflict
 - [Phase 09-02]: PR trigger for smoke-nginx-routing uses github.event_name == 'pull_request' (job-level paths: filter not supported in GitHub Actions)
 - [Phase 09-02]: ops schema verification resets MISSING=0 before ops loop for explicit correctness
+- [Phase 08-02]: CI job inlines full compose stack lifecycle because test_harness.sh tears down at step 8 (docker compose down -v) — cannot be reused as setup-only script
+- [Phase 08-02]: n8n-workflow-e2e depends on [integrity-gate, test-harness] so it only runs on isolated runner after basic stack health is confirmed
+- [Phase 08-02]: Workflow activation via DB UPDATE workflow_entity SET active = true — n8n 2.x PATCH returns active=unknown and is unreliable
 
 ### Roadmap Evolution
 
@@ -101,6 +105,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T20:06:14.549Z
-Stopped at: Phase 09 Plan 01 — Task 2 checkpoint (human-verify)
+Last session: 2026-03-29T20:10:00.000Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None
