@@ -7,6 +7,8 @@ ARG VITE_STRAPI_URL
 ARG VITE_DOMAIN
 ENV VITE_STRAPI_URL=${VITE_STRAPI_URL}
 ENV VITE_DOMAIN=${VITE_DOMAIN}
+ARG VITE_N8N_URL
+ENV VITE_N8N_URL=${VITE_N8N_URL}
 
 COPY admin-dashboard/package.json admin-dashboard/package-lock.json ./
 RUN npm ci --legacy-peer-deps

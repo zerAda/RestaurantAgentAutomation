@@ -11,6 +11,7 @@ services:
       args:
         VITE_DOMAIN: ${DOMAIN_NAME}
         VITE_STRAPI_URL: https://cms.${DOMAIN_NAME}
+        VITE_N8N_URL: https://${CONSOLE_SUBDOMAIN}.${DOMAIN_NAME}
       context: .
       dockerfile: admin-dashboard/Dockerfile
     deploy:

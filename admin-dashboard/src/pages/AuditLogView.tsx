@@ -108,7 +108,7 @@ export function AuditLogView() {
       if (channelFilter !== 'all') params.set('channel', channelFilter);
       if (searchTerm.trim()) params.set('workflow_name', searchTerm.trim());
 
-      const url = `${apiBase}/webhook/v1/internal/audit-query?${params}`;
+      const url = `${apiBase}/webhook/v1/internal/audit-log?${params}`;
 
       const res = await fetch(url, {
         headers: { 'Content-Type': 'application/json' },

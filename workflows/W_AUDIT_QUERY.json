@@ -1,6 +1,6 @@
 {
   "name": "W_AUDIT_QUERY - Workflow Audit Log Query",
-  "active": false,
+  "active": true,
   "settings": {
     "executionTimeout": 30,
     "saveExecutionProgress": false,
@@ -39,7 +39,7 @@
       },
       "credentials": {
         "postgres": {
-          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "id": "1mZZJEscADgQ8InR",
           "name": "RestoBot PG (n8n DB)"
         }
       },
@@ -52,7 +52,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "var items = $input.all().map(function(i) { return i.json; });\nreturn [{ json: { rows: items } }];"
+        "jsCode": "var cfg = $('B0 - Parse Params').first().json;\nvar items = $input.all().map(function(i) { return i.json; });\nreturn [{ json: { data: items, total: items.length, page: cfg.page, limit: cfg.pageSize } }];"
       },
       "id": "audit-query-format",
       "name": "B0 - Format Response",
