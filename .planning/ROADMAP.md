@@ -157,20 +157,20 @@ Plans:
 
 ### Phase 8: n8n E2E Test Implementation
 
-**Goal**: scripts/test-n8n-e2e.sh exists and verifies that the WA inbound adapter creates a Strapi record and that outbound failures produce a Redis retry entry; CI executes these tests on every PR
+**Goal**: scripts/test-n8n-e2e.sh exists and verifies that the WA inbound adapter creates an inbound_messages DB row (direct Postgres write, not Strapi) and that outbound failures produce a Redis retry entry; CI executes these tests via a full compose stack lifecycle
 **Depends on**: Phase 5 (plans exist; this phase closes execution blockers and runs them)
 **Requirements**: TEST-09, TEST-10, TEST-11
 **Gap Closure:** Closes gaps from v1.0 audit — Phase 5 was entirely unexecuted; this phase resolves the 4 blockers identified in 2026-03-24 session and executes the plans
 **Success Criteria** (what must be TRUE):
 
-  1. `scripts/test-n8n-e2e.sh` exists; a POST to `/v1/inbound/whatsapp` with valid Meta-signed payload triggers W_IN_WHATSAPP_ADAPTER and a Strapi `inbound-message` record is verified in the DB
-  2. A simulated outbound failure results in a Redis Bull queue entry confirming exponential backoff wiring
+  1. `scripts/test-n8n-e2e.sh` exists; a POST to `/v1/inbound/whatsapp` with valid Meta-signed payload triggers W_IN_WHATSAPP_ADAPTER and an `inbound_messages` record is verified in the n8n Postgres DB
+  2. A simulated outbound failure results in a Redis queue entry confirming exponential backoff wiring
   3. `docker/docker-compose.test.yml` includes META_APP_SECRET, META_SIGNATURE_REQUIRED, REDIS_CREDENTIAL_ID env vars; CI `n8n-workflow-e2e` job executes workflows (not HTTP-only check)
-**Plans:** 0 plans
+**Plans:** 2 plans
 Plans:
 
-- [ ] 08-01-PLAN.md — Resolve Phase 5 plan blockers + implement test-n8n-e2e.sh (TEST-09, TEST-10); fix docker-compose.test.yml env vars
-- [ ] 08-02-PLAN.md — Wire CI n8n-workflow-e2e job to execute workflows; fix smoke-n8n-e2e.sh to include DB assertions (TEST-11)
+- [ ] 08-01-PLAN.md — Create test-n8n-e2e.sh with TEST-09 (Meta-signed WA inbound + Postgres DB assertion) and TEST-10 (outbox retry + Redis re-queue) (TEST-09, TEST-10)
+- [ ] 08-02-PLAN.md — Wire CI n8n-workflow-e2e job with full inline compose stack lifecycle (TEST-11)
 
 ### Phase 9: Integration Wiring & CI Fixes
 
