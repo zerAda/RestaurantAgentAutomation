@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 07 — fix-critical-defects
+**Current focus:** Phase 09 — Integration Wiring & CI Fixes
 
 ## Current Position
 
-Phase: 07 (fix-critical-defects) — EXECUTING
-Plan: 1 of 2
+Phase: 09 (integration-wiring-and-ci-fixes) — COMPLETE (2/2 plans done)
+Plan: 2 of 2
 
 ## Performance Metrics
 
