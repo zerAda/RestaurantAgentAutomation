@@ -363,6 +363,23 @@ jobs:
             exit 1
           fi
 
+          # Verify ops schema tables (Phase 3 migration — AUDIT-01)
+          MISSING=0
+          OPS_EXPECTED_TABLES="workflow_audit"
+          for table in $OPS_EXPECTED_TABLES; do
+            EXISTS=$(psql -h localhost -U n8n -d n8n -t -c "SELECT 1 FROM information_schema.tables WHERE table_schema='ops' AND table_name='$table';" | tr -d ' ')
+            if [ "$EXISTS" != "1" ]; then
+              echo "::error::Missing ops schema table: $table"
+              MISSING=$((MISSING + 1))
+            else
+              echo "ops.$table: OK"
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING ops schema tables missing"
+            exit 1
+          fi
+
   # PG16 matrix entry (only on main/release branches)
   integration-tests-pg16:
     name: Integration Tests (PG 16)
@@ -489,6 +506,23 @@ jobs:
 
           if [ $MISSING -gt 0 ]; then
             echo "::error::$MISSING critical tables missing"
+            exit 1
+          fi
+
+          # Verify ops schema tables (Phase 3 migration — AUDIT-01)
+          MISSING=0
+          OPS_EXPECTED_TABLES="workflow_audit"
+          for table in $OPS_EXPECTED_TABLES; do
+            EXISTS=$(psql -h localhost -U n8n -d n8n -t -c "SELECT 1 FROM information_schema.tables WHERE table_schema='ops' AND table_name='$table';" | tr -d ' ')
+            if [ "$EXISTS" != "1" ]; then
+              echo "::error::Missing ops schema table: $table"
+              MISSING=$((MISSING + 1))
+            else
+              echo "ops.$table: OK"
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING ops schema tables missing"
             exit 1
           fi
 
