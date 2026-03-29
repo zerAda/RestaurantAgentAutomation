@@ -8,9 +8,10 @@
 #                    ├──► docker-build [matrix: cms, admin, kiosk] (main/release only)
 #                    ├──► security-scan
 #                    ├──► frontend-lint [matrix: admin-dashboard, kiosk-app]
-#                    └──► test-harness (main/release only, needs: integration-tests)
-#                              │
-#                         ci-summary (needs: all, if: always())
+#                    ├──► test-harness (main/release only, needs: integration-tests)
+#                    ├──► n8n-workflow-e2e (main/release only, needs: integrity-gate, test-harness)
+#                    │         │
+#                    └─────────┴──► ci-summary (needs: all, if: always())
 #
 # PR: integrity-gate, lint, python-tests, integration-tests (PG15), security-scan, frontend-lint
 # main: all + test-harness, docker-build, matrix PG15+16
@@ -697,30 +698,20 @@ jobs:
     name: Nginx Routing Smoke
     runs-on: ubuntu-latest
     needs: [integrity-gate, lint-validate]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/heads/release/') ||
+      github.event_name == 'pull_request'
     timeout-minutes: 10
-
-    services:
-      nginx:
-        image: nginx:1.27-alpine
-        ports:
-          - 8080:8080
-        options: >-
-          --health-cmd "curl -sf http://localhost:8080/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Run nginx routing smoke tests
+      - name: Run nginx routing smoke tests (burst variant)
         run: |
-          chmod +x scripts/smoke-nginx-routing-v2.sh
-          bash scripts/smoke-nginx-routing-v2.sh "http://localhost:8080" || {
-            echo "::warning::Some routing tests failed (expected without live backends)"
-          }
+          chmod +x scripts/smoke-nginx-routing.sh
+          bash scripts/smoke-nginx-routing.sh
 
   # ==========================================================================
   # JOB 6c: Strapi Permission Smoke Tests (Phase 4 - Plan 04-02)
@@ -806,6 +797,229 @@ jobs:
           retention-days: 14
 
   # ==========================================================================
+  # JOB 8c: n8n Workflow E2E Tests (main/release only, after test-harness)
+  # Starts its own compose stack -- CI runners are isolated.
+  # CANNOT reuse test_harness.sh because it tears down at step 8.
+  # ==========================================================================
+  n8n-workflow-e2e:
+    name: n8n Workflow E2E
+    runs-on: ubuntu-latest
+    needs: [integrity-gate, test-harness]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Start compose stack and wait for readiness
+        run: |
+          set -euo pipefail
+          COMPOSE_FILE=docker/docker-compose.test.yml
+
+          # Step 1: Start dependencies
+          echo "[1/6] Starting postgres + redis + mock-api..."
+          docker compose -f "$COMPOSE_FILE" up -d postgres redis mock-api
+
+          echo "Waiting for postgres..."
+          for i in $(seq 1 60); do
+            if docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -U n8n -d n8n -c 'SELECT 1'" >/dev/null 2>&1; then
+              echo "postgres ready after $((i * 2))s"
+              break
+            fi
+            sleep 2
+            if [ "$i" -eq 60 ]; then echo "FATAL: postgres not ready after 120s"; exit 1; fi
+          done
+
+          # Step 1.5: Create strapi DB (needed by migration 006)
+          docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+            "psql -U n8n -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'strapi'\" | grep -q 1 || psql -U n8n -d postgres -c 'CREATE DATABASE strapi OWNER n8n;'"
+
+          # Step 2: Apply migrations
+          echo "[2/6] Applying migrations..."
+          for m in $(ls -1 db/migrations/*.sql 2>/dev/null | sort); do
+            echo "  - $m"
+            if grep -q '\\c ' "$m"; then
+              ./scripts/db_migrate.sh "$COMPOSE_FILE" "$m" || echo "::warning::Cross-database migration had issues: $m"
+            else
+              ./scripts/db_migrate.sh "$COMPOSE_FILE" "$m"
+            fi
+          done
+
+          # Step 3: Seed fixtures
+          echo "[3/6] Seeding fixtures..."
+          for f in $(ls -1 tests/fixtures/*.sql 2>/dev/null | sort); do
+            echo "  - $f"
+            docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U n8n -d n8n < /dev/stdin" < "$f"
+          done
+
+          # Step 4: Start n8n
+          echo "[4/6] Starting n8n..."
+          docker compose -f "$COMPOSE_FILE" up -d n8n
+
+          echo "Waiting for n8n to be ready (up to 180s)..."
+          for i in $(seq 1 90); do
+            resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
+            if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then
+              echo "n8n ready after $((i * 2))s"
+              break
+            fi
+            sleep 2
+            if [ "$i" -eq 90 ]; then echo "FATAL: n8n not ready after 180s"; exit 1; fi
+          done
+
+      - name: Import and activate workflows
+        run: |
+          set -euo pipefail
+          COMPOSE_FILE=docker/docker-compose.test.yml
+          N8N_JAR="/tmp/n8n_cookies"
+
+          # Create owner account
+          echo "[5/6] Setting up n8n owner account..."
+          for i in $(seq 1 30); do
+            setup_status="$(curl -s -o /tmp/n8n_setup_resp.json -w "%{http_code}" -c "$N8N_JAR" \
+              -X POST "http://localhost:25678/rest/owner/setup" \
+              -H "Content-Type: application/json" \
+              -d '{"email":"test@example.com","firstName":"Test","lastName":"User","password":"TestPassw0rd!"}')"
+            if [ "$setup_status" = "200" ] || [ "$setup_status" = "400" ]; then break; fi
+            sleep 2
+            if [ "$i" -eq 30 ]; then echo "Warning: owner setup returned $setup_status"; fi
+          done
+
+          # Login
+          echo "Logging in to n8n..."
+          login_ok=false
+          for field in email emailOrLdapLoginId; do
+            rm -f "$N8N_JAR"
+            code="$(curl -s -o /tmp/n8n_login_resp.json -w "%{http_code}" -c "$N8N_JAR" \
+              -X POST "http://localhost:25678/rest/login" \
+              -H "Content-Type: application/json" \
+              -d "{\"$field\":\"test@example.com\",\"password\":\"TestPassw0rd!\"}")"
+            if [ "$code" = "200" ]; then login_ok=true; break; fi
+          done
+          if [ "$login_ok" != "true" ]; then echo "FATAL: n8n login failed"; exit 1; fi
+
+          # Import workflows
+          echo "Importing workflows..."
+          import_wf() {
+            local wf_file="$1" label="$2" active="${3:-false}"
+            jq "del(.id) | .active = $active" "$wf_file" > /tmp/_wf_payload.json
+            local http_code
+            http_code="$(curl -s -o /tmp/_wf_resp.json -w "%{http_code}" -b "$N8N_JAR" \
+              -X POST "http://localhost:25678/rest/workflows" \
+              -H "Content-Type: application/json" \
+              -d @/tmp/_wf_payload.json)"
+            local wf_id
+            wf_id="$(jq -r '.data.id // .id // empty' /tmp/_wf_resp.json 2>/dev/null)"
+            if [ -n "$wf_id" ] && [ "$wf_id" != "null" ]; then
+              echo "  $label -> id=$wf_id"
+              printf "%s" "$wf_id"
+            else
+              echo "::warning::Failed to import $label (HTTP $http_code)"
+              return 1
+            fi
+          }
+
+          # Import W4_CORE first (needed by other workflows)
+          CORE_ID="$(import_wf workflows/W4_CORE.json "W4_CORE" false)" || true
+          export CORE_WORKFLOW_ID="${CORE_ID:-}"
+
+          # Import webhook workflows (inactive, then activate via DB)
+          WEBHOOK_IDS=""
+          for wf in W1_IN_WA.json W2_IN_IG.json W3_IN_MSG.json W9_ADMIN_PING.json; do
+            wf_id="$(import_wf "workflows/$wf" "$wf" false 2>/dev/null)" || continue
+            WEBHOOK_IDS="$WEBHOOK_IDS $wf_id"
+          done
+
+          # Import W15_OUTBOX_WORKER (needed for TEST-10)
+          W15_ID="$(import_wf workflows/W15_OUTBOX_WORKER.json "W15_OUTBOX_WORKER" false)" || true
+          echo "W15_OUTBOX_WORKER ID: ${W15_ID:-FAILED}"
+
+          # Create Redis credential for W15 (REDIS_CREDENTIAL_ID env var must match)
+          echo "Creating Redis credential..."
+          REDIS_CRED_RESP="$(curl -s -o /tmp/_redis_cred.json -w "%{http_code}" -b "$N8N_JAR" \
+            -X POST "http://localhost:25678/rest/credentials" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"Redis Test","type":"redis","data":{"host":"redis","port":6379,"db":0}}')"
+          REDIS_CRED_ID="$(jq -r '.data.id // .id // empty' /tmp/_redis_cred.json 2>/dev/null)"
+          echo "  Redis credential created: id=${REDIS_CRED_ID:-FAILED} (HTTP ${REDIS_CRED_RESP})"
+
+          # If credential ID differs from env default (43SDqJYMGa6RvFqW), update via DB
+          if [ -n "${REDIS_CRED_ID}" ] && [ "${REDIS_CRED_ID}" != "null" ] && [ "${REDIS_CRED_ID}" != "43SDqJYMGa6RvFqW" ]; then
+            echo "  Updating REDIS_CREDENTIAL_ID in n8n container: ${REDIS_CRED_ID}"
+            docker compose -f "$COMPOSE_FILE" stop n8n
+            REDIS_CREDENTIAL_ID="${REDIS_CRED_ID}" docker compose -f "$COMPOSE_FILE" up -d n8n
+            # Wait for n8n to restart with new env
+            for i in $(seq 1 60); do
+              resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
+              if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
+              sleep 2
+            done
+          fi
+
+          # Activate webhook workflows via DB
+          echo "[6/6] Activating workflows via DB..."
+          WH_ID_LIST=""
+          for wf_id in $WEBHOOK_IDS; do
+            WH_ID_LIST="${WH_ID_LIST}'${wf_id}',"
+          done
+          WH_ID_LIST="${WH_ID_LIST%,}"
+          if [ -n "$WH_ID_LIST" ]; then
+            docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+              "psql -U n8n -d n8n -Atc \"UPDATE workflow_entity SET active = true WHERE id IN ($WH_ID_LIST);\""
+          fi
+
+          # Also activate W15 if imported
+          if [ -n "${W15_ID:-}" ]; then
+            docker compose -f "$COMPOSE_FILE" exec -T postgres sh -lc \
+              "psql -U n8n -d n8n -Atc \"UPDATE workflow_entity SET active = true WHERE id = '${W15_ID}';\""
+          fi
+
+          # Force-restart n8n so init() registers Express routes from active workflows
+          echo "Restarting n8n for webhook registration..."
+          docker compose -f "$COMPOSE_FILE" stop n8n
+          docker compose -f "$COMPOSE_FILE" up -d n8n
+
+          echo "Waiting for n8n to restart..."
+          for i in $(seq 1 90); do
+            resp="$(curl -s "http://localhost:25678/rest/settings" 2>/dev/null || true)"
+            if echo "$resp" | jq -e '.data' >/dev/null 2>&1; then break; fi
+            sleep 2
+            if [ "$i" -eq 90 ]; then echo "FATAL: n8n did not restart"; exit 1; fi
+          done
+          sleep 5  # Extra buffer for async webhook registration
+
+          echo "Stack setup complete. Ready for E2E tests."
+
+      - name: Run n8n E2E tests
+        run: |
+          chmod +x scripts/test-n8n-e2e.sh
+          bash scripts/test-n8n-e2e.sh
+
+      - name: Collect Docker logs on failure
+        if: failure()
+        run: |
+          mkdir -p n8n-e2e-logs
+          docker compose -f docker/docker-compose.test.yml logs --no-color > n8n-e2e-logs/compose.log 2>&1 || true
+          docker ps -a > n8n-e2e-logs/containers.log 2>&1 || true
+          docker compose -f docker/docker-compose.test.yml exec -T redis redis-cli LRANGE ralphe:outbox:pending 0 -1 > n8n-e2e-logs/redis-outbox.log 2>&1 || true
+          docker compose -f docker/docker-compose.test.yml exec -T redis redis-cli LRANGE ralphe:outbox:dlq 0 -1 > n8n-e2e-logs/redis-dlq.log 2>&1 || true
+          docker compose -f docker/docker-compose.test.yml exec -T postgres sh -lc "psql -U n8n -d n8n -c 'SELECT * FROM inbound_messages ORDER BY received_at DESC LIMIT 10;'" > n8n-e2e-logs/inbound-messages.log 2>&1 || true
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.6.0
+        with:
+          name: n8n-e2e-logs
+          path: n8n-e2e-logs/
+          retention-days: 14
+
+      - name: Tear down compose stack
+        if: always()
+        run: |
+          docker compose -f docker/docker-compose.test.yml down -v --remove-orphans || true
+
+  # ==========================================================================
   # JOB 9: CI Summary
   # ==========================================================================
   ci-summary:
@@ -825,6 +1039,7 @@ jobs:
       - smoke-nginx-routing
       - smoke-strapi-permissions
       - smoke-n8n-e2e
+      - n8n-workflow-e2e
     if: always()
     timeout-minutes: 2
 
@@ -846,6 +1061,7 @@ jobs:
           | Security Scan | ${{ needs.security-scan.result == 'success' && 'PASS' || needs.security-scan.result }} |
           | Frontend Lint | ${{ needs.frontend-lint.result == 'success' && 'PASS' || needs.frontend-lint.result }} |
           | Test Harness | ${{ needs.test-harness.result == 'success' && 'PASS' || needs.test-harness.result }} |
+          | n8n Workflow E2E | ${{ needs.n8n-workflow-e2e.result == 'success' && 'PASS' || needs.n8n-workflow-e2e.result }} |
 
           **Commit:** `${{ github.sha }}`
           **Branch:** `${{ github.ref_name }}`
