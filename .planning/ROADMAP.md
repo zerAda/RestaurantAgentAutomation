@@ -21,7 +21,7 @@ capability — no horizontal layers, no partial features.
 - [ ] **Phase 7: Fix Critical Defects** - Fix METR-05 (disk alert dead code) and AUDIT-03 (VITE_N8N_URL missing from Dockerfile + AuditLogView URL path mismatch) — both are fail gates for milestone completion
 - [x] **Phase 8: n8n E2E Test Implementation** - Execute the Phase 5 plans (blocked since 2026-03-24): implement test-n8n-e2e.sh with DB assertion, outbound retry + Redis queue check, and wire CI job to actually run workflows (completed 2026-03-29)
 - [ ] **Phase 9: Integration Wiring & CI Fixes** - Activate Phase 3 workflows on VPS (all active=false), fix CI to run burst-test smoke variant for TEST-03, add ops.workflow_audit to CI EXPECTED_TABLES
-- [ ] **Phase 10: Verification & Nyquist Compliance** - Create missing VERIFICATION.md for Phases 01/03/04, create VALIDATION.md for Phase 02, update draft VALIDATION.md for Phases 04/06
+- [x] **Phase 10: Verification & Nyquist Compliance** - Create missing VERIFICATION.md for Phases 01/03/04, create VALIDATION.md for Phase 02, update draft VALIDATION.md for Phases 04/06 (completed 2026-03-30)
 
 ## Phase Details
 
@@ -202,7 +202,7 @@ Plans:
   3. Phase 04 VERIFICATION.md exists and verifies observable truths against the 5 Phase 4 success criteria
   4. Phase 02 VALIDATION.md exists with nyquist_compliant result
   5. Phase 04 and Phase 06 VALIDATION.md files are updated from draft state to reflect actual execution
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 
 - [ ] 10-01-PLAN.md — Re-verify Phase 01 and create VERIFICATION.md for Phases 03 and 04

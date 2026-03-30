@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-03-30T10:14:29.000Z"
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-30T10:17:54.057Z"
 progress:
   total_phases: 10
   completed_phases: 8
@@ -55,6 +55,7 @@ Plan: 2 of 2 (COMPLETE)
 | Phase 09-integration-wiring-and-ci-fixes P02 | 2 | 2 tasks | 1 files |
 | Phase 10-verification-and-nyquist-compliance P01 | 4min | 3 tasks | 3 files |
 | Phase 10-verification-and-nyquist-compliance P02 | 3min | 3 tasks | 3 files |
+| Phase 10-verification-and-nyquist-compliance P01 | 4 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Plan: 2 of 2 (COMPLETE)
 - [Phase 08-02]: Workflow activation via DB UPDATE workflow_entity SET active = true — n8n 2.x PATCH returns active=unknown and is unreliable
 - [Phase 10-02]: Phase 02 VALIDATION.md created retroactively as status=compliant (not draft) — phase is already 6/6 verified, no pending work remains
 - [Phase 10-02]: Phase 04 VALIDATION.md had placeholder script names from pre-execution planning; corrected to actual built names: smoke-nginx-routing.sh and smoke-strapi-permissions.sh
+- [Phase 10-01]: Phase 01 VERIFICATION.md: score 5/6 accepted — INFRA-03 partial is pre-existing Phase 4 scope
+- [Phase 10-01]: Phase 03/04 VERIFICATION.md: written to post-fix state (Phase 7 disk alert fix, Phase 9 workflow activation and CI smoke script fix)
 
 ### Roadmap Evolution
 
@@ -109,6 +112,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T10:14:29.000Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-03-30T10:17:54.050Z
+Stopped at: Completed 10-01-PLAN.md
 Resume file: None
