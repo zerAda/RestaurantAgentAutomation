@@ -1,9 +1,9 @@
 ---
 phase: 6
 slug: performance-tuning
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: compliant
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-28
 ---
 
@@ -38,12 +38,12 @@ created: 2026-03-28
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 06-01-00 | 01 | 1 | PERF-01..06 | smoke/shell | `grep -c 'idx_orders_status_created' db/migrations/2026-03-26_p6_orders_indexes.sql && grep -c 'idx_orders_user_status' db/migrations/2026-03-26_p6_orders_indexes.sql && test -f scripts/verify-orders-indexes.sh && grep -q 'allkeys-lru' infra/redis/entrypoint.sh && test -f workflows/W_REDIS_MONITOR.json && grep -q 'maxmemory-policy' ENV_REFERENCE.md && echo ALL_PASS` | ✅ existing | ⬜ pending |
-| 06-01-01 | 01 | 1 | PERF-07 | unit | `cd admin-dashboard && npx vitest run src/App.lazy.test.tsx` | ❌ W0 | ⬜ pending |
-| 06-01-02 | 01 | 1 | PERF-08 | smoke/build | `cd admin-dashboard && npm run build && node scripts/check-bundle-size.cjs` | ❌ W0 | ⬜ pending |
-| 06-01-03 | 01 | 1 | PERF-09 | unit | `cd kiosk-app && npx vitest run src/menuService.cache.test.ts` | ❌ W0 | ⬜ pending |
-| 06-02-01 | 02 | 2 | PERF-08 | smoke/build | `cd admin-dashboard && npm run build 2>&1 \| tail -3 && node scripts/check-bundle-size.cjs` | ❌ W0 | ⬜ pending |
-| 06-02-02 | 02 | 2 | PERF-05, PERF-08 | manual-checkpoint | User sign-off — requires human review of bundle ratio and W_REDIS_MONITOR.json | manual-only | ⬜ pending |
+| 06-01-00 | 01 | 1 | PERF-01..06 | smoke/shell | `grep -c 'idx_orders_status_created' db/migrations/2026-03-26_p6_orders_indexes.sql && grep -c 'idx_orders_user_status' db/migrations/2026-03-26_p6_orders_indexes.sql && test -f scripts/verify-orders-indexes.sh && grep -q 'allkeys-lru' infra/redis/entrypoint.sh && test -f workflows/W_REDIS_MONITOR.json && grep -q 'maxmemory-policy' ENV_REFERENCE.md && echo ALL_PASS` | ✅ existing | ✅ green |
+| 06-01-01 | 01 | 1 | PERF-07 | unit | `cd admin-dashboard && npx vitest run src/App.lazy.test.tsx` | ✅ | ✅ green |
+| 06-01-02 | 01 | 1 | PERF-08 | smoke/build | `cd admin-dashboard && npm run build && node scripts/check-bundle-size.cjs` | ✅ | ✅ green |
+| 06-01-03 | 01 | 1 | PERF-09 | unit | `cd kiosk-app && npx vitest run src/menuService.cache.test.ts` | ✅ | ✅ green |
+| 06-02-01 | 02 | 2 | PERF-08 | smoke/build | `cd admin-dashboard && npm run build 2>&1 \| tail -3 && node scripts/check-bundle-size.cjs` | ✅ | ✅ green |
+| 06-02-02 | 02 | 2 | PERF-05, PERF-08 | manual-checkpoint | User sign-off — approved at plan-02 checkpoint | manual-only | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -51,9 +51,9 @@ created: 2026-03-28
 
 ## Wave 0 Requirements
 
-- [ ] `admin-dashboard/src/App.lazy.test.tsx` — asserts lazy() used for all 14 route components (PERF-07)
-- [ ] `admin-dashboard/scripts/check-bundle-size.cjs` — measures current build vs baseline via BUNDLE_BASELINE_KB env var (PERF-08)
-- [ ] `kiosk-app/src/menuService.cache.test.ts` — asserts getProducts() returns cached result on 2nd call (PERF-09)
+- [x] `admin-dashboard/src/App.lazy.test.tsx` — asserts lazy() used for all 14 route components (PERF-07)
+- [x] `admin-dashboard/scripts/check-bundle-size.cjs` — measures current build vs baseline via BUNDLE_BASELINE_KB env var (PERF-08)
+- [x] `kiosk-app/src/menuService.cache.test.ts` — asserts getProducts() returns cached result on 2nd call (PERF-09)
 
 Pre-existing (no Wave 0 needed):
 - [x] `db/migrations/2026-03-26_p6_orders_indexes.sql` — creates idx_orders_status_created + idx_orders_user_status (PERF-01, PERF-02)
@@ -75,11 +75,11 @@ Pre-existing (no Wave 0 needed):
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-03-29
