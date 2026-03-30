@@ -1,10 +1,11 @@
 ---
 phase: 8
 slug: n8n-e2e-test-implementation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-28
+updated: 2026-03-29
 ---
 
 # Phase 8 — Validation Strategy
@@ -38,10 +39,10 @@ created: 2026-03-28
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 8-01-01 | 01 | 1 | TEST-09, TEST-10 | structural | `bash -n scripts/test-n8n-e2e.sh` | ❌ W0 | ⬜ pending |
-| 8-01-02 | 01 | 1 | TEST-09, TEST-10 | integration | `bash scripts/test-n8n-e2e.sh` | ❌ W0 | ⬜ pending |
-| 8-02-01 | 02 | 2 | TEST-11 | structural | `grep "n8n-workflow-e2e" .github/workflows/ci.yml` | ✅ | ⬜ pending |
-| 8-02-02 | 02 | 2 | TEST-11 | structural | `grep "test-n8n-e2e.sh" .github/workflows/ci.yml` | ✅ | ⬜ pending |
+| 8-01-01 | 01 | 1 | TEST-09, TEST-10 | structural | `bash -n scripts/test-n8n-e2e.sh` | ✅ | ✅ green |
+| 8-01-02 | 01 | 1 | TEST-09, TEST-10 | integration | `bash scripts/test-n8n-e2e.sh` | ✅ | ✅ green |
+| 8-02-01 | 02 | 2 | TEST-11 | structural | `grep "n8n-workflow-e2e" .github/workflows/ci.yml` | ✅ | ✅ green |
+| 8-02-02 | 02 | 2 | TEST-11 | structural | `grep "test-n8n-e2e.sh" .github/workflows/ci.yml` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -49,8 +50,8 @@ created: 2026-03-28
 
 ## Wave 0 Requirements
 
-- [ ] `scripts/test-n8n-e2e.sh` — covers TEST-09 (Meta-signed WA inbound + Postgres DB assertion) and TEST-10 (outbox retry seeding + Redis re-queue verification)
-- [ ] `.github/workflows/ci.yml` — new `n8n-workflow-e2e` job with inline full compose lifecycle (covers TEST-11); update ci-summary `needs` and summary table
+- [x] `scripts/test-n8n-e2e.sh` — covers TEST-09 (Meta-signed WA inbound + Postgres DB assertion) and TEST-10 (outbox retry seeding + Redis re-queue verification)
+- [x] `.github/workflows/ci.yml` — new `n8n-workflow-e2e` job with inline full compose lifecycle (covers TEST-11); update ci-summary `needs` and summary table
 
 *(docker/docker-compose.test.yml already has all required env vars — no Wave 0 gap there)*
 
@@ -67,11 +68,11 @@ created: 2026-03-28
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 90s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 90s
+- [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
