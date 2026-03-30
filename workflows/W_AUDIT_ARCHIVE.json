@@ -10,11 +10,10 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{ "field": "hours", "hoursInterval": 24 }],
-          "triggerAtHour": 3
+          "interval": [{ "field": "hours", "hoursInterval": 24 }]
         }
       },
-      "id": "archive-cron",
+      "id": "a1b2c3d4-e5f6-4789-abcd-000000000001",
       "name": "CRON - Daily 03:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
@@ -25,7 +24,7 @@
         "language": "javascript",
         "jsCode": "var cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();\nvar batchSize = 500;\nreturn [{ json: { cutoff: cutoff, batchSize: batchSize, ts: new Date().toISOString() } }];"
       },
-      "id": "archive-compute-cutoff",
+      "id": "a1b2c3d4-e5f6-4789-abcd-000000000002",
       "name": "B0 - Compute Cutoff",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -43,7 +42,7 @@
           "name": "RestoBot PG (n8n DB)"
         }
       },
-      "id": "archive-pg-batch",
+      "id": "a1b2c3d4-e5f6-4789-abcd-000000000003",
       "name": "PG - Archive Batch",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
@@ -54,7 +53,7 @@
         "language": "javascript",
         "jsCode": "var archived = $input.all();\nvar count = archived.length;\nconsole.log(JSON.stringify({\n  level: 'INFO',\n  event: 'AUDIT_ARCHIVE_COMPLETE',\n  rows_archived: count,\n  cutoff: $('B0 - Compute Cutoff').first().json.cutoff,\n  ts: new Date().toISOString()\n}));\nreturn [{ json: { rows_archived: count } }];"
       },
-      "id": "archive-log-result",
+      "id": "a1b2c3d4-e5f6-4789-abcd-000000000004",
       "name": "B0 - Log Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
