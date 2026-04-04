@@ -1,5 +1,90 @@
 # CHANGELOG
 
+## 2026-03-26 — v3.5.0 (Phase 2 Logging + Phase 3 Audit + Phase 6 Performance)
+
+### Phase 2: Structured Logging & Correlation (Complete)
+- **OBS-01**: n8n configured for JSON structured logs (`N8N_LOG_FORMAT=json`) on main + worker
+- **OBS-02**: Strapi CMS Winston JSON logger with `service='strapi-cms'` field
+- **OBS-03**: Nginx access log includes `request_id` in JSON format
+- **OBS-04**: `X-Request-ID` correlation propagated from Nginx to all upstreams (Strapi, n8n)
+- `inventory-cms/src/middlewares/request-id.ts`: AsyncLocalStorage-based correlation ID capture
+- `scripts/smoke-correlation.sh`: End-to-end correlation verification (6/6 checks pass)
+
+### Phase 3: Metrics, Alerting & Audit Trail (Mostly Complete)
+- **AUDIT-01**: `workflow_audit` table via migration `2026-03-23_p3_workflow_audit.sql`
+- **AUDIT-02**: W1_IN_WA, W2_IN_IG, W3_IN_MSG patched with fire-and-forget audit hooks
+- **AUDIT-03**: `AuditLogView` page in admin dashboard (date range filter + pagination)
+- **AUDIT-04**: `W_AUDIT_ARCHIVE` workflow for 90-day retention
+- **METR-01/02**: `W_QUEUE_METRICS` workflow (queue depth + error rate export)
+- **METR-03**: Nginx rate-limit logging with zone, IP, endpoint
+- New workflows: `W_AUDIT_WRITE`, `W_AUDIT_QUERY`, `W_AUDIT_ARCHIVE`, `W_QUEUE_METRICS`
+
+### Phase 6: Performance Tuning (Mostly Complete)
+- **PERF-01/02**: DB indexes migration `2026-03-26_p6_orders_indexes.sql` (idx_orders_status_created, idx_orders_customer_status + 4 more)
+- **PERF-04/05/06**: Redis `allkeys-lru` confirmed + `W_REDIS_MONITOR` workflow (15-min checks, >200MB alert) + `ENV_REFERENCE.md` updated
+- **PERF-07**: Admin dashboard refactored with React Router `lazy()` for all view components
+- **PERF-09**: Kiosk `VerticalVideoFeed` integrated with `menuService.ts` 5-min localStorage cache
+- New scripts: `scripts/verify-orders-indexes.sh`, `scripts/smoke-nginx-routing-v2.sh`, `scripts/smoke-strapi-permissions.sh`, `scripts/smoke-n8n-e2e.sh`
+- CI: Updated `.github/workflows/ci.yml` with new test jobs
+
+### Files Added/Changed
+```
+db/migrations/2026-03-23_p3_workflow_audit.sql (new)
+db/migrations/2026-03-26_p6_orders_indexes.sql (new)
+admin-dashboard/src/App.tsx (React lazy refactor)
+admin-dashboard/src/pages/AuditLogView.tsx (new)
+kiosk-app/src/components/VerticalVideoFeed.tsx (cache integration)
+workflows/W_AUDIT_WRITE.json (new)
+workflows/W_AUDIT_QUERY.json (new)
+workflows/W_AUDIT_ARCHIVE.json (new)
+workflows/W_QUEUE_METRICS.json (new)
+workflows/W_REDIS_MONITOR.json (new)
+scripts/verify-orders-indexes.sh (new)
+scripts/smoke-nginx-routing-v2.sh (new)
+scripts/smoke-strapi-permissions.sh (new)
+scripts/smoke-n8n-e2e.sh (new)
+infra/gateway/nginx.conf (rate-limit logging + /v1/internal/ proxy)
+ENV_REFERENCE.md (Redis monitoring + DB indexes docs)
+```
+
+---
+
+## 2026-03-23 — v3.4.5 (Phase 1 CMS Stability + Node.js 20 Upgrade)
+
+### Phase 1: CMS Stability & Base Upgrade
+- **CMS-01**: All 15 Strapi API routes baked into TypeScript source (`inventory-cms/src/api/`)
+- **CMS-02**: CMS Docker image rebuilt with 4 Node.js 20 / Strapi 5 fixes (lodash ESM, broken relations, CONCURRENTLY migration, route auth object)
+- **CMS-03**: 17/17 routes verified (15 API + 2 custom handlers) — all return 200 with JWT auth
+- **INFRA-01**: admin-dashboard + kiosk-app Dockerfiles upgraded to `node:20-alpine`
+- **INFRA-02**: CMS Dockerfile upgraded to `node:20.20.0-alpine` (both build + prod stages)
+- SRE audit: CMS healthcheck `start_period` set to 180s, `container-watchdog.sh` cron, `post-deploy-verify.sh` 6-phase gate
+
+### Scripts Added
+- `scripts/smoke-post-rebuild.sh`: Post-rebuild verification (CMS health, login, products, admin)
+- `scripts/smoke-correlation.sh`: End-to-end correlation ID verification
+- `scripts/container-watchdog.sh`: Container health monitoring + alerting
+- `scripts/post-deploy-verify.sh`: 6-phase mandatory deployment health gate
+- `scripts/disk-cleanup.sh`: Proactive disk reclamation
+
+---
+
+## 2026-03-14 — v3.4.4 (Workflow Sync + Demo Seed)
+
+### Added
+- 12 new n8n workflows imported (total: 90+): W_ADMIN_AI_AGENT, W_CONTENT_AUDITOR, W_CORTEX_REGISTRY, W_FUNNEL_ANALYZER, W_GROWTH_AGENT, W_INCEPTION_PROTOCOL, W_INVENTORY_ORCHESTRATOR, W_LOGISTICS_PRO, W_LOYALTY_ENGINE, W_ORDER_FINALIZER, W_RALPHE_OMNISCIENT, W_REVENUE_INTELLIGENCE
+- Demo seed data: 16 products, 3 brands (Burger Palace, Tacos House, Al-Hana Group)
+
+---
+
+## 2026-03-14 — v3.4.3 (Platform Connectivity Fixes)
+
+### Fixed
+- Admin dashboard bundle: auth endpoint patched (`api/auth/local`)
+- Kiosk app: Strapi URL connectivity via gateway
+- All 10 production containers verified running on VPS
+
+---
+
 ## 2026-01-26 — v3.2.4 (DevSecOps Pipeline Enhancement)
 
 ### CI/CD Pipeline (Expert DevSecOps Overhaul)

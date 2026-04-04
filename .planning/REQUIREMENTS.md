@@ -26,18 +26,18 @@
 
 ### Observability — Metrics & Alerting
 
-- [ ] **METR-01**: n8n queue depth (pending executions) is exported as a metric (Prometheus or structured log)
-- [ ] **METR-02**: Workflow error rate is tracked and loggable (failures per hour per workflow)
-- [ ] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) — currently blind
+- [x] **METR-01**: n8n queue depth (pending executions) is exported as a metric (Prometheus or structured log) — delivered via `W_QUEUE_METRICS` workflow (2026-03-26)
+- [x] **METR-02**: Workflow error rate is tracked and loggable (failures per hour per workflow) — delivered via `W_QUEUE_METRICS` workflow (2026-03-26)
+- [x] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) — nginx.conf updated with `limit_req_log_level` (2026-03-26)
 - [ ] **METR-04**: Alert fires when queue depth > 50 pending executions for > 5 minutes
 - [ ] **METR-05**: Alert fires when disk usage > 80% of 119GB (< 24GB free)
 
 ### Observability — Audit Trail
 
-- [ ] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at)
-- [ ] **AUDIT-02**: All inbound adapter workflows (W_IN_WHATSAPP, W_IN_INSTAGRAM, W_IN_MESSENGER) write an audit entry on execution start and end
-- [ ] **AUDIT-03**: Audit log is queryable from the admin dashboard (basic search by date range + workflow name)
-- [ ] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted)
+- [x] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at) — migration `2026-03-23_p3_workflow_audit.sql` (2026-03-26)
+- [x] **AUDIT-02**: All inbound adapter workflows (W_IN_WHATSAPP, W_IN_INSTAGRAM, W_IN_MESSENGER) write an audit entry on execution start and end — audit hooks added to W1/W2/W3 + `W_AUDIT_WRITE` workflow (2026-03-26)
+- [x] **AUDIT-03**: Audit log is queryable from the admin dashboard (basic search by date range + workflow name) — `AuditLogView` page + `W_AUDIT_QUERY` workflow (2026-03-26)
+- [x] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted) — `W_AUDIT_ARCHIVE` workflow (2026-03-26)
 
 ### Test Coverage — Nginx Routing
 
@@ -61,21 +61,21 @@
 
 ### Performance — Database
 
-- [ ] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists
-- [ ] **PERF-02**: Migration adds `CREATE INDEX idx_orders_customer_status ON orders(customer_id, status)` if not exists
-- [ ] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage
+- [x] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists — migration `2026-03-26_p6_orders_indexes.sql` (2026-03-26)
+- [x] **PERF-02**: Migration adds `CREATE INDEX idx_orders_customer_status ON orders(customer_id, status)` if not exists — migration `2026-03-26_p6_orders_indexes.sql` (2026-03-26)
+- [ ] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage — tooling ready (`scripts/verify-orders-indexes.sh`), needs VPS execution
 
 ### Performance — Redis
 
-- [ ] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill)
-- [ ] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used
-- [ ] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md`
+- [x] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill) — confirmed in `infra/redis/entrypoint.sh`
+- [x] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used — `W_REDIS_MONITOR` workflow (2026-03-26)
+- [x] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md` — updated 2026-03-26
 
 ### Performance — Frontend
 
-- [ ] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting)
-- [ ] **PERF-08**: Initial JS bundle size is reduced by at least 30% compared to current monolithic build
-- [ ] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render
+- [x] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting) — `admin-dashboard/src/App.tsx` refactored (2026-03-26)
+- [ ] **PERF-08**: Initial JS bundle size is reduced by at least 30% compared to current monolithic build — lazy loading applied, needs build measurement
+- [x] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render — `menuService.ts` 5-min localStorage cache + VerticalVideoFeed integration (2026-03-26)
 
 ## v2 Requirements
 
@@ -122,15 +122,15 @@
 | OBS-02 | Phase 2 | Complete |
 | OBS-03 | Phase 2 | Complete |
 | OBS-04 | Phase 2 | Complete |
-| METR-01 | Phase 3 | Pending |
-| METR-02 | Phase 3 | Pending |
-| METR-03 | Phase 3 | Pending |
+| METR-01 | Phase 3 | Complete (W_QUEUE_METRICS, 2026-03-26) |
+| METR-02 | Phase 3 | Complete (W_QUEUE_METRICS, 2026-03-26) |
+| METR-03 | Phase 3 | Complete (nginx.conf rate-limit logging, 2026-03-26) |
 | METR-04 | Phase 3 | Pending |
 | METR-05 | Phase 3 | Pending |
-| AUDIT-01 | Phase 3 | Pending |
-| AUDIT-02 | Phase 3 | Pending |
-| AUDIT-03 | Phase 3 | Pending |
-| AUDIT-04 | Phase 3 | Pending |
+| AUDIT-01 | Phase 3 | Complete (workflow_audit migration, 2026-03-26) |
+| AUDIT-02 | Phase 3 | Complete (W1/W2/W3 audit hooks, 2026-03-26) |
+| AUDIT-03 | Phase 3 | Complete (AuditLogView + W_AUDIT_QUERY, 2026-03-26) |
+| AUDIT-04 | Phase 3 | Complete (W_AUDIT_ARCHIVE, 2026-03-26) |
 | TEST-01 | Phase 4 | Pending |
 | TEST-02 | Phase 4 | Pending |
 | TEST-03 | Phase 4 | Pending |
@@ -142,21 +142,23 @@
 | TEST-09 | Phase 5 | Pending |
 | TEST-10 | Phase 5 | Pending |
 | TEST-11 | Phase 5 | Pending |
-| PERF-01 | Phase 6 | Pending |
-| PERF-02 | Phase 6 | Pending |
-| PERF-03 | Phase 6 | Pending |
-| PERF-04 | Phase 6 | Pending |
-| PERF-05 | Phase 6 | Pending |
-| PERF-06 | Phase 6 | Pending |
-| PERF-07 | Phase 6 | Pending |
-| PERF-08 | Phase 6 | Pending |
-| PERF-09 | Phase 6 | Pending |
+| PERF-01 | Phase 6 | Complete (migration, 2026-03-26) |
+| PERF-02 | Phase 6 | Complete (migration, 2026-03-26) |
+| PERF-03 | Phase 6 | Tooling ready, needs VPS execution |
+| PERF-04 | Phase 6 | Complete (entrypoint.sh) |
+| PERF-05 | Phase 6 | Complete (W_REDIS_MONITOR, 2026-03-26) |
+| PERF-06 | Phase 6 | Complete (ENV_REFERENCE.md, 2026-03-26) |
+| PERF-07 | Phase 6 | Complete (React lazy, 2026-03-26) |
+| PERF-08 | Phase 6 | Pending (needs build measurement) |
+| PERF-09 | Phase 6 | Complete (menuService cache, 2026-03-26) |
 
 **Coverage:**
 - v1 requirements: 34 total
+- Complete: 21
+- In progress / pending: 13
 - Mapped to phases: 34
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-18*
-*Last updated: 2026-03-23 — OBS-01 marked complete after n8n upgrade to 2.9.4 on VPS; OBS-02, OBS-03, OBS-04 complete — all Phase 02 observability requirements satisfied*
+*Last updated: 2026-04-04 — Phase 6 performance tuning delivered (PERF-01/02/04-07/09 complete); Phase 3 audit trail delivered (AUDIT-01-04 complete, METR-01-03 complete); 7 PERF + 4 AUDIT + 3 METR requirements closed*
