@@ -7,14 +7,14 @@
 
 ### CMS Stability
 
-- [ ] **CMS-01**: CMS routes for all 15 APIs (ingredient, system-config, restaurant-brand, delivery-assignment, feedback, supplier, marketing-campaign, loyalty-tier, and 7 others) are defined in TypeScript source files and survive container rebuild
-- [ ] **CMS-02**: CMS Docker image can be rebuilt (`docker compose build cms`) without losing any API routes
-- [ ] **CMS-03**: All Strapi API routes return correct HTTP status codes after a fresh container start (no manual injection needed)
+- [x] **CMS-01**: CMS routes for all 15 APIs (ingredient, system-config, restaurant-brand, delivery-assignment, feedback, supplier, marketing-campaign, loyalty-tier, and 7 others) are defined in TypeScript source files and survive container rebuild
+- [x] **CMS-02**: CMS Docker image can be rebuilt (`docker compose build cms`) without losing any API routes
+- [x] **CMS-03**: All Strapi API routes return correct HTTP status codes after a fresh container start (no manual injection needed)
 
 ### Infrastructure Upgrade
 
-- [ ] **INFRA-01**: All frontend Dockerfiles (admin-dashboard, kiosk-app) use `node:20-alpine` base image (was: node:18-alpine, EOL)
-- [ ] **INFRA-02**: CMS Dockerfile uses `node:20-alpine` (consistent base across all services)
+- [x] **INFRA-01**: All frontend Dockerfiles (admin-dashboard, kiosk-app) use `node:20-alpine` base image (was: node:18-alpine, EOL)
+- [x] **INFRA-02**: CMS Dockerfile uses `node:20-alpine` (consistent base across all services)
 - [ ] **INFRA-03**: Rebuilt images are verified to function correctly (login, product display, CMS health)
 
 ### Observability — Structured Logging
@@ -28,7 +28,7 @@
 
 - [ ] **METR-01**: n8n queue depth (pending executions) is exported as a metric (Prometheus or structured log)
 - [ ] **METR-02**: Workflow error rate is tracked and loggable (failures per hour per workflow)
-- [ ] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) — currently blind
+- [x] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) — currently blind
 - [ ] **METR-04**: Alert fires when queue depth > 50 pending executions for > 5 minutes
 - [ ] **METR-05**: Alert fires when disk usage > 80% of 119GB (< 24GB free)
 
@@ -39,19 +39,20 @@
 - [ ] **AUDIT-03**: Audit log is queryable from the admin dashboard (basic search by date range + workflow name)
 - [ ] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted)
 
+
 ### Test Coverage — Nginx Routing
 
-- [ ] **TEST-01**: Smoke test verifies each of the 8 nginx routing zones returns the expected HTTP status (not 502/404)
-- [ ] **TEST-02**: Smoke test verifies `Access-Control-Allow-Origin` header appears exactly once on kiosk endpoints (no duplicates)
+- [x] **TEST-01**: Smoke test verifies each of the 8 nginx routing zones returns the expected HTTP status (not 502/404)
+- [x] **TEST-02**: Smoke test verifies `Access-Control-Allow-Origin` header appears exactly once on kiosk endpoints (no duplicates)
 - [x] **TEST-03**: Rate limiting smoke test: 25 rapid requests to `/v1/inbound/whatsapp` triggers 429 after burst limit
 - [x] **TEST-04**: Smoke tests run automatically in CI on every PR that touches `infra/gateway/nginx.conf`
 
 ### Test Coverage — Strapi Permissions
 
-- [ ] **TEST-05**: Integration test: unauthenticated request to `GET /api/products` returns 200 with data (public role works)
-- [ ] **TEST-06**: Integration test: unauthenticated request to `POST /api/orders` returns 403 or 401 (kiosk can't create orders without auth... or verify intended behavior)
-- [ ] **TEST-07**: Integration test: authenticated admin user can `GET /api/orders` with full data
-- [ ] **TEST-08**: Permission tests run automatically in CI against a local Strapi instance
+- [x] **TEST-05**: Integration test: unauthenticated request to `GET /api/products` returns 200 with data (public role works)
+- [x] **TEST-06**: Integration test: unauthenticated request to `POST /api/orders` returns 403 or 401 (kiosk can't create orders without auth... or verify intended behavior)
+- [x] **TEST-07**: Integration test: authenticated admin user can `GET /api/orders` with full data
+- [x] **TEST-08**: Permission tests run automatically in CI against a local Strapi instance
 
 ### Test Coverage — n8n Workflows
 
@@ -112,33 +113,33 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CMS-01 | Phase 1 | In progress (smoke scripts added; rebuild in plan 02) |
-| CMS-02 | Phase 1 | In progress (smoke scripts added; rebuild in plan 02) |
-| CMS-03 | Phase 1 | In progress (smoke scripts added; rebuild in plan 02) |
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | In progress (smoke-post-rebuild.sh added; verification runs in plan 02) |
+| CMS-01 | Phase 1 | Complete |
+| CMS-02 | Phase 1 | Complete |
+| CMS-03 | Phase 1 | Complete |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Partial (gateway 403s pre-existing, accepted) |
 | OBS-01 | Phase 2 | Complete |
 | OBS-02 | Phase 2 | Complete |
 | OBS-03 | Phase 2 | Complete |
 | OBS-04 | Phase 2 | Complete |
-| METR-01 | Phase 3 | Pending |
-| METR-02 | Phase 3 | Pending |
-| METR-03 | Phase 3 | Pending |
-| METR-04 | Phase 3 | Pending |
-| METR-05 | Phase 7 (gap closure from Phase 3) | Pending |
+| METR-01 | Phase 12 (gap closure from Phase 3) | Pending |
+| METR-02 | Phase 12 (gap closure from Phase 3) | Pending |
+| METR-03 | Phase 3 | Complete |
+| METR-04 | Phase 12 (gap closure from Phase 3) | Pending |
+| METR-05 | Phase 12 (gap closure from Phase 7) | Pending |
 | AUDIT-01 | Phase 9 (gap closure from Phase 3) | Complete |
-| AUDIT-02 | Phase 9 (gap closure from Phase 3) | Pending |
-| AUDIT-03 | Phase 7 (gap closure from Phase 3) | Pending |
-| AUDIT-04 | Phase 9 (gap closure from Phase 3) | Pending |
-| TEST-01 | Phase 4 | Pending |
-| TEST-02 | Phase 4 | Pending |
+| AUDIT-02 | Phase 11 (gap closure from Phase 9) | Pending |
+| AUDIT-03 | Phase 13 (gap closure from Phase 7) | Pending |
+| AUDIT-04 | Phase 11 (gap closure from Phase 9) | Pending |
+| TEST-01 | Phase 4 | Complete |
+| TEST-02 | Phase 4 | Complete |
 | TEST-03 | Phase 9 (gap closure from Phase 4) | Complete |
 | TEST-04 | Phase 9 (gap closure from Phase 4) | Complete |
-| TEST-05 | Phase 4 | Pending |
-| TEST-06 | Phase 4 | Pending |
-| TEST-07 | Phase 4 | Pending |
-| TEST-08 | Phase 4 | Pending |
+| TEST-05 | Phase 4 | Complete |
+| TEST-06 | Phase 4 | Complete |
+| TEST-07 | Phase 4 | Complete |
+| TEST-08 | Phase 4 | Complete |
 | TEST-09 | Phase 8 (gap closure from Phase 5) | Complete |
 | TEST-10 | Phase 8 (gap closure from Phase 5) | Complete |
 | TEST-11 | Phase 8 (gap closure from Phase 5) | Complete |
@@ -156,7 +157,8 @@
 - v1 requirements: 34 total
 - Mapped to phases: 34
 - Unmapped: 0
-- Gap closure phases assigned: METR-05 → Phase 7, AUDIT-03 → Phase 7, AUDIT-01 → Phase 9, AUDIT-02 → Phase 9, AUDIT-04 → Phase 9, TEST-03 → Phase 9, TEST-04 → Phase 9, TEST-09 → Phase 8, TEST-10 → Phase 8, TEST-11 → Phase 8
+- Satisfied: 27 | Unsatisfied (runtime): 7 (METR-01, METR-02, METR-04, METR-05, AUDIT-02, AUDIT-03, AUDIT-04)
+- Gap closure phases: METR-01/02/04/05 → Phase 12, AUDIT-02/04 → Phase 11, AUDIT-03 → Phase 13, METR-05/AUDIT-03 → previously Phase 7 (re-assigned), AUDIT-01/TEST-03/04 → Phase 9, TEST-09/10/11 → Phase 8
 
 ---
 *Requirements defined: 2026-03-18*

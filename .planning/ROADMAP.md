@@ -22,6 +22,10 @@ capability — no horizontal layers, no partial features.
 - [x] **Phase 8: n8n E2E Test Implementation** - Execute the Phase 5 plans (blocked since 2026-03-24): implement test-n8n-e2e.sh with DB assertion, outbound retry + Redis queue check, and wire CI job to actually run workflows (completed 2026-03-29)
 - [ ] **Phase 9: Integration Wiring & CI Fixes** - Activate Phase 3 workflows on VPS (all active=false), fix CI to run burst-test smoke variant for TEST-03, add ops.workflow_audit to CI EXPECTED_TABLES
 - [x] **Phase 10: Verification & Nyquist Compliance** - Create missing VERIFICATION.md for Phases 01/03/04, create VALIDATION.md for Phase 02, update draft VALIDATION.md for Phases 04/06 (completed 2026-03-30)
+- [ ] **Phase 11: VPS Ops — Apply DB Migration & Activate Audit Chain** - Apply ops.workflow_audit migration to VPS, re-import and activate W_AUDIT_ARCHIVE (n8n 2.x fix), recreate gateway container (AUDIT-02, AUDIT-04)
+- [ ] **Phase 12: W_QUEUE_METRICS Runtime Fix** - Hardcode credential IDs in W_QUEUE_METRICS.json (replace empty env var expressions), fix Alpine-incompatible stat disk check (METR-01, METR-02, METR-04, METR-05)
+- [ ] **Phase 13: Admin Dashboard Audit Log Repair** - Add VITE_API_URL to compose build args, fix W_AUDIT_QUERY countQuery/filters, fix Dockerfile RUN keyword, rebuild and deploy (AUDIT-03)
+- [ ] **Phase 14: Nyquist Compliance & Documentation Cleanup** - Create Phase 09 VERIFICATION.md, create Phase 03 VALIDATION.md, promote draft VALIDATION.md files, fix stale ROADMAP/REQUIREMENTS checkboxes
 
 ## Phase Details
 
@@ -207,3 +211,73 @@ Plans:
 
 - [ ] 10-01-PLAN.md — Re-verify Phase 01 and create VERIFICATION.md for Phases 03 and 04
 - [x] 10-02-PLAN.md — Create Phase 02 VALIDATION.md; update Phase 04 and Phase 06 VALIDATION.md from draft state (completed 2026-03-30)
+
+### Phase 11: VPS Ops — Apply DB Migration & Activate Audit Chain
+
+**Goal**: The `ops.workflow_audit` table exists on VPS Postgres; W_AUDIT_ARCHIVE is active on VPS; the gateway container serves `/v1/internal/` routes — unblocking all audit chain requirements at runtime
+**Depends on**: Phase 10 (verifies prior state before VPS ops)
+**Requirements**: AUDIT-02, AUDIT-04
+**Gap Closure:** Closes runtime gaps from v1.0 audit — INT-01 (Phase 3 DB migration never applied to VPS) and INT-05 (W_AUDIT_ARCHIVE not activated, n8n 2.x cron fix already committed 8bd4c33)
+**Success Criteria** (what must be TRUE):
+
+  1. `SELECT COUNT(*) FROM ops.workflow_audit` executes without error on VPS Postgres; table exists with correct schema
+  2. W_AUDIT_ARCHIVE workflow has `active=true` on VPS n8n; the n8n 2.x-compatible cron version (commit 8bd4c33) is the live version
+  3. Gateway container is recreated from current compose; `GET https://api.srv1258231.hstgr.cloud/v1/internal/audit-log` is routable (returns non-502)
+**Plans:** 0 plans
+Plans:
+
+- [ ] 11-01-PLAN.md — Run Phase 3 DB migration on VPS, re-import and activate W_AUDIT_ARCHIVE, recreate gateway container (AUDIT-02, AUDIT-04)
+
+### Phase 12: W_QUEUE_METRICS Runtime Fix
+
+**Goal**: W_QUEUE_METRICS.json uses hardcoded credential IDs (not empty env var expressions) and a correct Alpine-compatible disk check; queue depth, error rate, and disk alerts all fire at runtime on VPS
+**Depends on**: Phase 11 (VPS environment stabilised)
+**Requirements**: METR-01, METR-02, METR-04, METR-05
+**Gap Closure:** Closes runtime gaps from v1.0 audit — INT-02 (empty env var credential IDs in W_QUEUE_METRICS) and WARN-04 (stat Alpine incompatibility regression from Phase 09 patching)
+**Success Criteria** (what must be TRUE):
+
+  1. W_QUEUE_METRICS.json PG node `credentials.id` is hardcoded `"1mZZJEscADgQ8InR"` (not `={{$env.N8N_DB_CREDENTIAL_ID || ''}}`); Redis node credential ID is hardcoded `"43SDqJYMGa6RvFqW"`
+  2. W_QUEUE_METRICS.json disk check uses `df -k /` (not `stat -f -c`); `diskUsedPct` is computed from df output and is a real percentage (not -1)
+  3. W_QUEUE_METRICS is imported on VPS and active; a manual trigger produces queue depth and disk usage values in n8n execution log
+**Plans:** 0 plans
+Plans:
+
+- [ ] 12-01-PLAN.md — Fix W_QUEUE_METRICS.json credential IDs (hardcode PG+Redis) and disk check (stat→df), import on VPS and activate (METR-01, METR-02, METR-04, METR-05)
+
+### Phase 13: Admin Dashboard Audit Log Repair
+
+**Goal**: AuditLogView can reach W_AUDIT_QUERY via the correct built URL; W_AUDIT_QUERY returns correct pagination totals and honours status/channel filters; the admin-dashboard image is rebuilt and deployed
+**Depends on**: Phase 11 (ops.workflow_audit table must exist before queries can succeed)
+**Requirements**: AUDIT-03
+**Gap Closure:** Closes runtime gaps from v1.0 audit — INT-03 (VITE_API_URL not in compose build args), WARN-01 (countQuery never executes), WARN-02 (limit vs page_size mismatch), WARN-03 (status/channel filters ignored), WARN-06 (Dockerfile missing RUN keyword)
+**Success Criteria** (what must be TRUE):
+
+  1. `docker-compose.hostinger.prod.yml` admin-dashboard build args include `VITE_API_URL: https://api.${DOMAIN_NAME}`; a freshly built image has the correct URL baked in
+  2. W_AUDIT_QUERY executes a separate countQuery PG node and returns `total` as the global row count (not current-page item count); `page_size` param is read (not `limit`)
+  3. W_AUDIT_QUERY SQL includes WHERE clauses for `status` and `channel` when those params are provided; filters are applied at DB level
+  4. `admin-dashboard/Dockerfile` line 28 has `RUN` before the touch/chown command; image builds cleanly on non-cached rebuild
+  5. Rebuilt admin-dashboard image is deployed on VPS; `AuditLogView` fetch reaches W_AUDIT_QUERY and returns audit entries
+**Plans:** 0 plans
+Plans:
+
+- [ ] 13-01-PLAN.md — Fix compose build args (VITE_API_URL) + Dockerfile RUN keyword + W_AUDIT_QUERY countQuery/filter fixes (AUDIT-03)
+- [ ] 13-02-PLAN.md — Rebuild and deploy admin-dashboard on VPS; smoke-verify AuditLogView end-to-end (AUDIT-03)
+
+### Phase 14: Nyquist Compliance & Documentation Cleanup
+
+**Goal**: All 10 executed phases have non-draft VALIDATION.md files and Phase 09 has a VERIFICATION.md; ROADMAP.md and REQUIREMENTS.md reflect actual completion state; milestone is ready to archive
+**Depends on**: Phase 11, Phase 12, Phase 13 (all runtime fixes must be in place so verification reflects true state)
+**Requirements**: (no new requirements — closes INT-04 and Nyquist tech debt)
+**Gap Closure:** Closes documentation gaps from v1.0 audit — INT-04 (Phase 09 VERIFICATION.md missing), missing Phase 03 VALIDATION.md, draft VALIDATION.md for Phases 01/07/09/10, stale checkboxes in ROADMAP.md and REQUIREMENTS.md
+**Success Criteria** (what must be TRUE):
+
+  1. Phase 09 VERIFICATION.md exists and documents CI achievements vs VPS partial state accurately
+  2. Phase 03 VALIDATION.md exists with `nyquist_compliant` result
+  3. Phases 01, 07, 09, 10 VALIDATION.md are promoted from draft to `nyquist_compliant: true`
+  4. ROADMAP.md phase completion markers (`[ ]`/`[x]`) match actual SUMMARY.md/VERIFICATION.md existence for all 14 phases
+  5. REQUIREMENTS.md checkboxes match audit final status table; coverage count is updated
+**Plans:** 0 plans
+Plans:
+
+- [ ] 14-01-PLAN.md — Create Phase 09 VERIFICATION.md + Phase 03 VALIDATION.md + promote Phases 01/07/09/10 VALIDATION.md from draft
+- [ ] 14-02-PLAN.md — Fix stale ROADMAP.md phase markers and REQUIREMENTS.md checkboxes to match actual completion state
