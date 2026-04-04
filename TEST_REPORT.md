@@ -164,3 +164,61 @@ Full OBS-01 compliance requires n8n upgrade to ≥2.x.
 - `inventory-cms/config/logger.ts` — Winston JSON format, level='http', service+request_id fields
 - `inventory-cms/src/middlewares/request-id.ts` — X-Request-ID → AsyncLocalStorage
 - `inventory-cms/config/middlewares.ts` — global::request-id registered before strapi::logger
+
+---
+
+## Phase 06 — Performance Tuning (2026-03-26)
+
+### Database Indexes
+
+| Check | Artifact | Result |
+|-------|----------|--------|
+| Migration exists | `db/migrations/2026-03-26_p6_orders_indexes.sql` | PASS — 6 indexes defined (idx_orders_status_created, idx_orders_user_status, idx_orders_restaurant_created, idx_orders_active, idx_orders_restaurant_status, idx_orders_created) |
+| Migration is idempotent | `CREATE INDEX IF NOT EXISTS` syntax | PASS — safe for re-run |
+| Verification script | `scripts/verify-orders-indexes.sh` | PASS — script ready for VPS execution |
+| PERF-03: EXPLAIN ANALYZE | Requires VPS deployment | PENDING — tooling ready, awaits deployment |
+
+### Redis Monitoring
+
+| Check | Artifact | Result |
+|-------|----------|--------|
+| maxmemory-policy | `infra/redis/entrypoint.sh` | PASS — `allkeys-lru` configured |
+| W_REDIS_MONITOR workflow | `workflows/W_REDIS_MONITOR.json` | PASS — 15-min scheduled trigger, >200MB alert threshold |
+| ENV_REFERENCE.md | Redis monitoring section | PASS — thresholds and verification commands documented |
+
+### Admin Dashboard — Code Splitting
+
+| Check | Artifact | Result |
+|-------|----------|--------|
+| React lazy() applied | `admin-dashboard/src/App.tsx` | PASS — all page components use `React.lazy()` with `<Suspense>` fallback |
+| AuditLogView page | `admin-dashboard/src/pages/AuditLogView.tsx` | PASS — new page with date range filter, workflow name search, pagination |
+| PERF-08: Bundle size | Build comparison | PENDING — needs `npm run build` measurement pre/post |
+
+### Kiosk Caching
+
+| Check | Artifact | Result |
+|-------|----------|--------|
+| menuService cache | `kiosk-app/src/services/menuService.ts` | PASS — 5-min TTL localStorage cache |
+| VerticalVideoFeed integration | `kiosk-app/src/components/VerticalVideoFeed.tsx` | PASS — uses cached menuService instead of direct API calls |
+
+### Phase 3 Audit Trail (delivered alongside Phase 6)
+
+| Check | Artifact | Result |
+|-------|----------|--------|
+| workflow_audit table | `db/migrations/2026-03-23_p3_workflow_audit.sql` | PASS — ops.workflow_audit + ops.workflow_audit_archive tables |
+| W_AUDIT_WRITE | `workflows/W_AUDIT_WRITE.json` | PASS — webhook-triggered audit entry writer |
+| W_AUDIT_QUERY | `workflows/W_AUDIT_QUERY.json` | PASS — date range + workflow name query |
+| W_AUDIT_ARCHIVE | `workflows/W_AUDIT_ARCHIVE.json` | PASS — 90-day retention archival |
+| W1/W2/W3 audit hooks | `workflows/W1_IN_WA.json`, `W2_IN_IG.json`, `W3_IN_MSG.json` | PASS — fire-and-forget audit hooks added |
+| AuditLogView admin page | `admin-dashboard/src/pages/AuditLogView.tsx` | PASS — search, filter, pagination |
+
+### Phase 6 Summary
+- PERF-01: PASS (migration exists, idempotent)
+- PERF-02: PASS (migration exists, idempotent)
+- PERF-03: PENDING (VPS execution needed)
+- PERF-04: PASS (allkeys-lru in entrypoint.sh)
+- PERF-05: PASS (W_REDIS_MONITOR workflow)
+- PERF-06: PASS (ENV_REFERENCE.md updated)
+- PERF-07: PASS (React lazy in App.tsx)
+- PERF-08: PENDING (build measurement needed)
+- PERF-09: PASS (menuService 5-min cache)

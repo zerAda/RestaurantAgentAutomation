@@ -14,10 +14,10 @@ capability — no horizontal layers, no partial features.
 
 - [ ] **Phase 1: CMS Stability & Base Upgrade** - Eliminate the docker-cp runtime hack; bake all 15 Strapi API routes into source; upgrade Node.js 18 -> 20 across all services
 - [x] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end (completed 2026-03-23)
-- [ ] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table
+- [ ] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table (7/9 requirements complete — METR-04, METR-05 remaining)
 - [ ] **Phase 4: Test Coverage — Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix with automated integration tests
 - [ ] **Phase 5: Test Coverage — n8n Workflow E2E** - End-to-end tests for inbound adapters, outbox retry, and CI integration for workflow smoke tests
-- [ ] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle
+- [x] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle (7/9 requirements complete — PERF-03, PERF-08 remaining; completed 2026-03-26)
 - [ ] **Phase 7: NemoClaw Telegram Bot** - Fix NVIDIA NIM config, async bridge with typing keepalive, error handling with retries, systemd auto-restart
 
 ## Phase Details
@@ -53,7 +53,7 @@ Plans:
 - [x] 02-02-PLAN.md — n8n: configure N8N_LOG_FORMAT=json for structured NDJSON output on main and worker (OBS-01)
 - [x] 02-03-PLAN.md — Strapi: Pino JSON logger config + request-id Koa middleware for correlation ID capture (OBS-02, OBS-04)
 - [x] 02-04-PLAN.md — End-to-end correlation smoke test verifying all four OBS requirements on live VPS (OBS-01, OBS-02, OBS-03, OBS-04)
-- [ ] 02-05-PLAN.md — Gap closure: document OBS-01 known limitation and mark OBS-02 complete in REQUIREMENTS.md (OBS-01, OBS-02)
+- [x] 02-05-PLAN.md — Gap closure: document OBS-01 known limitation and mark OBS-02 complete in REQUIREMENTS.md (OBS-01, OBS-02)
 
 ### Phase 3: Metrics, Alerting & Audit Trail
 **Goal**: Operators can observe queue health and disk pressure in near-real-time; all inbound workflow executions are recorded in a queryable audit table with 90-day retention
@@ -66,13 +66,13 @@ Plans:
   4. A `workflow_audit` table exists in PostgreSQL; W_IN_WHATSAPP, W_IN_INSTAGRAM, and W_IN_MESSENGER write audit entries on execution start and completion
   5. The admin dashboard has a basic audit log view where operators can search by date range and workflow name
   6. Audit entries older than 90 days are archived (not deleted) by an automated process
-**Plans:** 5 plans
+**Plans:** 5 plans (4 delivered via Phase 6 commit, 1 partially delivered)
 Plans:
-- [ ] 03-01-PLAN.md — DB migration (ops.workflow_audit tables) + nginx rate-limit logging + /v1/internal/ proxy (METR-03, AUDIT-01)
-- [ ] 03-02-PLAN.md — W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-02, METR-04, METR-05)
-- [ ] 03-03-PLAN.md — W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE workflows (AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04)
-- [ ] 03-04-PLAN.md — Patch W1_IN_WA, W2_IN_IG, W3_IN_MSG with fire-and-forget audit hooks (AUDIT-02)
-- [ ] 03-05-PLAN.md — Admin dashboard AuditLogView page with date range filter and pagination (AUDIT-03)
+- [x] 03-01-PLAN.md — DB migration (ops.workflow_audit tables) + nginx rate-limit logging + /v1/internal/ proxy (METR-03, AUDIT-01) — delivered 2026-03-26
+- [ ] 03-02-PLAN.md — W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-02, METR-04, METR-05) — METR-01/02 delivered, METR-04/05 pending
+- [x] 03-03-PLAN.md — W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE workflows (AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04) — delivered 2026-03-26
+- [x] 03-04-PLAN.md — Patch W1_IN_WA, W2_IN_IG, W3_IN_MSG with fire-and-forget audit hooks (AUDIT-02) — delivered 2026-03-26
+- [x] 03-05-PLAN.md — Admin dashboard AuditLogView page with date range filter and pagination (AUDIT-03) — delivered 2026-03-26
 
 ### Phase 4: Test Coverage — Routing & Permissions
 **Goal**: Automated tests guard the two most fragile, zero-coverage surfaces: nginx routing and Strapi permission matrix; both run in CI on relevant PRs
@@ -112,7 +112,13 @@ Plans:
   2. Redis `maxmemory-policy` is set to `allkeys-lru`; Redis memory usage is logged every 15 minutes and fires an alert if usage exceeds 200MB; configuration is documented in `ENV_REFERENCE.md`
   3. Admin dashboard uses React Router `lazy()` for all view components; initial JS bundle size is at least 30% smaller than the pre-split baseline
   4. Kiosk menu data uses ETag or 5-minute TTL caching; repeated renders do not trigger redundant Strapi API calls
-**Plans**: TBD
+**Plans**: Delivered in single commit (2026-03-26)
+Plans:
+- [x] DB indexes migration (`2026-03-26_p6_orders_indexes.sql`) + verification script (PERF-01, PERF-02)
+- [x] Redis monitor workflow (`W_REDIS_MONITOR`) + ENV_REFERENCE.md update (PERF-04, PERF-05, PERF-06)
+- [x] Admin dashboard React lazy loading (`App.tsx` refactored) (PERF-07)
+- [x] Kiosk menu caching (`VerticalVideoFeed` + `menuService.ts` integration) (PERF-09)
+- [ ] Bundle size measurement (PERF-03 VPS EXPLAIN ANALYZE, PERF-08 build comparison) — pending VPS deployment
 
 ### Phase 7: NemoClaw Telegram Bot NVIDIA NIM integration and reliability improvements
 **Goal**: The NemoClaw Telegram bot (@AdelClaw_Nemobot) responds to messages using NVIDIA NIM LLM inference, with async non-blocking processing, typing indicators, retry logic for transient errors, and auto-restart via systemd
@@ -138,9 +144,9 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. CMS Stability & Base Upgrade | 3/4 | In progress (gap closure) | - |
-| 2. Structured Logging & Correlation | 5/5 | Complete   | 2026-03-23 |
-| 3. Metrics, Alerting & Audit Trail | 0/5 | Not started | - |
+| 2. Structured Logging & Correlation | 5/5 | Complete | 2026-03-23 |
+| 3. Metrics, Alerting & Audit Trail | 4/5 | Mostly complete (METR-04/05 pending) | - |
 | 4. Test Coverage — Routing & Permissions | 0/3 | Not started | - |
 | 5. Test Coverage — n8n Workflow E2E | 0/2 | Not started | - |
-| 6. Performance Tuning | 0/TBD | Not started | - |
-| 7. NemoClaw Telegram Bot | 1/4 | In Progress|  |
+| 6. Performance Tuning | 4/5 | Mostly complete (PERF-03/08 pending) | 2026-03-26 |
+| 7. NemoClaw Telegram Bot | 1/4 | In progress | - |
