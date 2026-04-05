@@ -35,64 +35,6 @@ const FALLBACK_FEED: ProductVideo[] = [
     }
 ];
 
-interface StrapiMediaItem { attributes?: { url?: string }; url?: string; }
-
-interface StrapiProductRaw {
-    id: number | string;
-    attributes?: {
-        name?: string;
-        marketing_name?: string;
-        price?: number;
-        base_price?: number;
-        description?: string;
-        creative_assets?: { data?: StrapiMediaItem[] | StrapiMediaItem };
-    };
-    name?: string;
-    marketing_name?: string;
-    price?: number;
-    base_price?: number;
-    description?: string;
-    creative_assets?: { data?: StrapiMediaItem[] | StrapiMediaItem };
-}
-
-function mapStrapiToFeed(data: StrapiProductRaw[]): ProductVideo[] {
-    return data.map((item: StrapiProductRaw, idx: number) => {
-        const attrs = item.attributes || item;
-        
-        // Handle Strapi v4 media payload structure
-        let assetUrl = null;
-        if (attrs.creative_assets?.data) {
-            const mediaData = attrs.creative_assets.data;
-            if (Array.isArray(mediaData) && mediaData.length > 0) {
-                assetUrl = mediaData[0].attributes?.url || mediaData[0].url || null;
-            } else if (!Array.isArray(mediaData)) {
-                assetUrl = (mediaData as StrapiMediaItem).attributes?.url || (mediaData as StrapiMediaItem).url || null;
-            }
-        }
-
-        const imageUrl = assetUrl
-            ? (assetUrl.startsWith('http') ? assetUrl : `${STRAPI_URL}${assetUrl}`)
-            : STRAPI_PLACEHOLDER;
-            
-        // Use base_price or price
-        const price = typeof attrs.base_price === 'number' ? attrs.base_price : (typeof attrs.price === 'number' ? attrs.price : 0);
-        
-        // Defend against missing titles
-        const safeTitle = attrs.name || attrs.marketing_name || `Missing Name ${idx}`;
-        const safeDesc = attrs.description?.substring(0, 150) || "Explore our signature recipe.";
-
-        return {
-            id: String(item.id),
-            url: imageUrl,
-            type: 'image' as const,
-            title: String(safeTitle),
-            price,
-            rawPrice: `${price} DA`,
-            desc: String(safeDesc),
-        };
-    });
-}
-
 export default function VerticalVideoFeed() {
     const [feed, setFeed] = useState<ProductVideo[]>(FALLBACK_FEED);
     const [loading, setLoading] = useState(true);
@@ -124,7 +66,7 @@ export default function VerticalVideoFeed() {
                 const { menuService } = await import('../services/menuService');
                 const products = await menuService.getProducts();
                 if (!cancelled && products.length > 0) {
-                    setFeed(products.map((p, idx) => ({
+                    setFeed(products.map((p) => ({
                         id: p.id,
                         url: p.image,
                         type: 'image' as const,

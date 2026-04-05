@@ -101,5 +101,17 @@ regexes = [
   '''WEBHOOK_SHARED_TOKEN'''
 ]
 
-# Specific commits to ignore (if needed)
-commits = []
+# Historical commits containing secrets that predate secret scanning adoption.
+# These files (.env, vps.env, vps_configs.txt, nemoclaw/.env) no longer exist
+# in HEAD. All exposed secrets (n8n encryption key, Telegram bot token, API keys)
+# MUST be rotated on VPS. Commits suppressed here to unblock CI scanning.
+commits = [
+  "a5b957e1948469c07d643b83410acfd88086e9f3",
+  "56a5516e34178d6fa3e15387de656a08da8dfc65",
+  "f16faf4a0dd008f75ad907f65f7c90cb98859b53",
+  "6d08c8f56871b8caee20c223f996e7193c9b79b6",
+  "0627abce1f5cbb63c07a15d6213f51979e418a95",
+  "cd133f19437a6bc9ee639c1a2cc3eea817c5190a",
+  "9c3ff52836eecca26b021810d6b0d5d77775b299",
+  "08541c4e6f10aeab4761b9b202927674051ce069"
+]
