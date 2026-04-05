@@ -70,6 +70,7 @@ env:
 permissions:
   contents: read
   deployments: write
+  packages: read
 
 jobs:
   # ============================================================================
