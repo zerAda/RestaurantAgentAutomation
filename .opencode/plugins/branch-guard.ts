@@ -1,45 +1,43 @@
-// branch-guard.ts
-// Blocks dangerous git operations & protects main/master from direct pushes.
+// branch-guard.ts — blocks destructive git ops against main/master
+// Runs FIRST in the tool.execute.before chain.
 
 import type { Plugin } from "@opencode-ai/plugin";
 
-const DANGEROUS_PATTERNS = [
-  /git\s+push\s+(--force|-f)\s+.*\b(main|master)\b/,
+const DANGEROUS = [
+  /git\s+push\s+(--force|-f|--force-with-lease)\s+.*\b(main|master)\b/,
   /git\s+reset\s+--hard\s+origin\/(main|master)/,
   /git\s+branch\s+-D\s+(main|master)/,
   /git\s+checkout\s+(main|master)\s+--/,
-  /git\s+push\s+.*--force-with-lease.*\b(main|master)\b/,
+  /git\s+clean\s+-[fxd]+/,
 ];
 
-const plugin: Plugin = async ({ $ }) => {
-  return {
-    "tool.execute.before": async (input, output) => {
-      if (input.tool !== "bash") return;
-      const cmd: string = (output.args as any)?.command ?? "";
-      for (const pat of DANGEROUS_PATTERNS) {
-        if (pat.test(cmd)) {
+const plugin: Plugin = async ({ $ }) => ({
+  "tool.execute.before": async (input: any, output: any) => {
+    if (input?.tool !== "bash") return;
+    const cmd: string = output?.args?.command ?? "";
+
+    for (const pat of DANGEROUS) {
+      if (pat.test(cmd)) {
+        throw new Error(
+          `[branch-guard] Blocked dangerous op: "${cmd}". Run manually outside OpenCode if intentional.`
+        );
+      }
+    }
+
+    // Block direct commits to main/master
+    if (/git\s+commit\b/.test(cmd) && !/--amend/.test(cmd)) {
+      try {
+        const branch = (await $`git branch --show-current`.text()).trim();
+        if (branch === "main" || branch === "master") {
           throw new Error(
-            `[branch-guard] Blocked dangerous git op against main/master: "${cmd}". ` +
-              `If intentional, run manually outside OpenCode.`
+            `[branch-guard] Refusing to commit on '${branch}'. Create a feature branch first.`
           );
         }
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith("[branch-guard]")) throw e;
       }
-      // Warn if not on a feature branch when committing
-      if (/git\s+commit/.test(cmd)) {
-        try {
-          const branch = (await $`git branch --show-current`.text()).trim();
-          if (branch === "main" || branch === "master") {
-            throw new Error(
-              `[branch-guard] Refusing to commit directly on '${branch}'. Create a feature branch first.`
-            );
-          }
-        } catch (e) {
-          if (e instanceof Error && e.message.startsWith("[branch-guard]")) throw e;
-          // git not available, skip
-        }
-      }
-    },
-  };
-};
+    }
+  },
+});
 
 export default plugin;
