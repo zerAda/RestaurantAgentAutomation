@@ -93,39 +93,46 @@ mkdir -p "$BACKUP_DIR"
 mkdir -p "$LOG_DIR"
 
 # ---------------------------------------------------------------------------
-# Step 1.5: Initialize minimum secrets to prevent directory-mount errors on empty VPS
+# Step 1.5: Initialize minimum secrets to prevent bind-mount errors.
+# Run on EVERY deploy (idempotent: if [ ! -f ] guards preserve existing values).
+# Traefik, postgres, and n8n-encryption-key are bind-mounted in
+# docker-compose.ghcr.yml — if any file is missing, docker compose up fails.
 # ---------------------------------------------------------------------------
-if [ "$IS_FIRST" = "true" ]; then
-  echo ">>> Step 1.5: Initializing minimum secrets on first deploy..."
+echo ">>> Step 1.5: Ensuring required secret files exist..."
+mkdir -p "$PROJECT_DIR/shared/secrets"
 
-  if [ ! -f "$PROJECT_DIR/shared/.env" ]; then
-    if [ -f "$RELEASE_DIR/config/.env.example" ]; then
-      echo "Copying .env.example as starting .env..."
-      cp "$RELEASE_DIR/config/.env.example" "$PROJECT_DIR/shared/.env"
-    else
-      touch "$PROJECT_DIR/shared/.env"
-    fi
+if [ ! -f "$PROJECT_DIR/shared/.env" ]; then
+  if [ -f "$RELEASE_DIR/config/.env.example" ]; then
+    echo "Copying .env.example as starting .env..."
+    cp "$RELEASE_DIR/config/.env.example" "$PROJECT_DIR/shared/.env"
+  else
+    touch "$PROJECT_DIR/shared/.env"
   fi
+fi
 
-  if [ ! -f "$PROJECT_DIR/shared/secrets/postgres_password" ]; then
-    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/postgres_password"
-  fi
+if [ ! -f "$PROJECT_DIR/shared/secrets/postgres_password" ]; then
+  echo "Creating postgres_password secret..."
+  tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/postgres_password"
+fi
 
-  if [ ! -f "$PROJECT_DIR/shared/secrets/n8n_encryption_key" ]; then
-    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/n8n_encryption_key"
-  fi
+if [ ! -f "$PROJECT_DIR/shared/secrets/n8n_encryption_key" ]; then
+  echo "Creating n8n_encryption_key secret..."
+  tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/n8n_encryption_key"
+fi
 
-  if [ ! -f "$PROJECT_DIR/shared/secrets/strapi_db_password" ]; then
-    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/strapi_db_password"
-  fi
+if [ ! -f "$PROJECT_DIR/shared/secrets/strapi_db_password" ]; then
+  echo "Creating strapi_db_password secret..."
+  tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > "$PROJECT_DIR/shared/secrets/strapi_db_password"
+fi
 
-  if [ ! -f "$PROJECT_DIR/shared/secrets/redis_password" ]; then
-    touch "$PROJECT_DIR/shared/secrets/redis_password"
-  fi
+if [ ! -f "$PROJECT_DIR/shared/secrets/redis_password" ]; then
+  echo "Creating redis_password secret (empty)..."
+  touch "$PROJECT_DIR/shared/secrets/redis_password"
+fi
 
-  if [ ! -f "$PROJECT_DIR/shared/secrets/traefik_usersfile" ]; then
-    touch "$PROJECT_DIR/shared/secrets/traefik_usersfile"
-  fi
+if [ ! -f "$PROJECT_DIR/shared/secrets/traefik_usersfile" ]; then
+  echo "Creating traefik_usersfile secret (empty)..."
+  touch "$PROJECT_DIR/shared/secrets/traefik_usersfile"
 fi
 
 # ---------------------------------------------------------------------------
