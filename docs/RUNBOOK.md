@@ -5,9 +5,10 @@
 2. [Commandes essentielles](#commandes-essentielles)
 3. [Healthchecks](#healthchecks)
 4. [Incidents courants](#incidents-courants)
-5. [Rollback](#rollback)
-6. [Monitoring](#monitoring)
-7. [Contacts](#contacts)
+5. [Restore from Off-site Backup](#restore-from-off-site-backup)
+6. [Rollback](#rollback)
+7. [Monitoring](#monitoring)
+8. [Contacts](#contacts)
 
 ---
 
@@ -255,6 +256,62 @@ docker compose -f docker-compose.hostinger.prod.yml exec postgres \
 
 ---
 
+## Restore from Off-site Backup
+
+### When to use
+
+- VPS disk failure or full disk (ENOSPC) that corrupted the local backup
+- Accidental data deletion from the production database
+- VPS provider outage or VM loss
+- Ransomware or other catastrophic event
+
+### Prerequisites
+
+- Docker installed on the recovery machine
+- `awscli` installed (`pip install awscli`)
+- `gpg` installed
+- S3 credentials: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
+- GPG passphrase: `BACKUP_GPG_PASSPHRASE`
+- Bucket details: `S3_BACKUP_BUCKET`, `S3_BACKUP_ENDPOINT`, `S3_BACKUP_REGION`
+
+### Quick command (restore drill / verification)
+
+```bash
+export S3_BACKUP_BUCKET=your-bucket
+export S3_BACKUP_ENDPOINT=https://s3.amazonaws.com
+export S3_BACKUP_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=xxx
+export AWS_SECRET_ACCESS_KEY=xxx
+export BACKUP_GPG_PASSPHRASE=xxx
+
+# List available backups
+aws s3 ls s3://${S3_BACKUP_BUCKET}/postgres/ \
+  --endpoint-url ${S3_BACKUP_ENDPOINT} --region ${S3_BACKUP_REGION} | sort | tail -10
+
+# Run drill against a specific backup
+BACKUP_NAME=daily-YYYYMMDD-HHMMSS bash scripts/restore_drill.sh
+# Expected final line: [DRILL PASS]
+```
+
+### After restore: restart and verify
+
+```bash
+# On the VPS — restart all services
+cd /opt/resto/current
+docker compose -f docker-compose.hostinger.prod.yml up -d
+
+# Run smoke tests
+./scripts/smoke.sh
+
+# Verify workflow counts
+docker exec -it $(docker ps -qf "name=postgres" | head -1) \
+  psql -U n8n -d n8n -c "SELECT COUNT(*) FROM workflow_entity;"
+```
+
+See full procedure in `docs/BACKUP_RESTORE.md`.
+
+---
+
 ## Rollback
 
 ### Rollback d'un workflow
@@ -445,6 +502,8 @@ Alternative GitLab dans `.gitlab-ci.yml` avec les mêmes jobs.
 - [ ] GET verify réussi sur les 3 canaux
 - [ ] Test message inbound → outbound sur chaque canal
 - [ ] Backup DB configuré et testé
+- [ ] Off-site S3 backup configuré (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, BACKUP_GPG_PASSPHRASE secrets set)
+- [ ] Restore drill passed: `BACKUP_NAME=... bash scripts/restore_drill.sh` prints `[DRILL PASS]`
 - [ ] Monitoring/alertes configurés
 - [ ] IP allowlist pour console admin
 - [ ] SSL/TLS valide (Let's Encrypt)
@@ -452,4 +511,4 @@ Alternative GitLab dans `.gitlab-ci.yml` avec les mêmes jobs.
 
 ---
 
-*Dernière mise à jour: 2026-01-28*
+*Dernière mise à jour: 2026-03-21*

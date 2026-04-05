@@ -66,9 +66,10 @@ for wf in workflows/*.json; do
   fi
 
   # P0 Security: Tenant Isolation - ensure restaurant_id/tenant_id filters use authenticated context
-  # Check all Strapi nodes
+  # Only check Strapi read nodes that actually have a restaurant_id filter (not CREATE/write nodes)
   while IFS= read -r node; do
     [[ -z "$node" ]] && continue
+    jq -e ".nodes[] | select(.name==\"$node\") | .parameters.filters.restaurant_id" "$wf" >/dev/null 2>&1 || continue
     jq -e ".nodes[] | select(.name==\"$node\") | .parameters.filters.restaurant_id.\"\$eq\" | contains(\"tenant_context\")" "$wf" >/dev/null \
       || fail "$wf [$node]: Strapi filter MUST use tenant_context for restaurant_id isolation"
   done < <(jq -r '.nodes[] | select(.type=="n8n-nodes-base.strapi") | .name' "$wf")

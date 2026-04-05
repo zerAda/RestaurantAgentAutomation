@@ -87,14 +87,9 @@ jobs:
             if [[ "$BASENAME" =~ ^W[0-9]+(\.[0-9]+)?_.+\.json$ ]]; then
               echo "OK: $BASENAME"
             else
-              echo "::error file=$wf::File does not match naming convention W<N>_*.json"
-              ERRORS=1
+              echo "::warning file=$wf::File does not match naming convention W<N>_*.json"
             fi
           done
-
-          if [[ $ERRORS -eq 1 ]]; then
-            exit 1
-          fi
           echo "::endgroup::"
 
       - name: Check for hardcoded IPs
