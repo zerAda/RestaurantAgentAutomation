@@ -70,6 +70,7 @@ env:
 permissions:
   contents: read
   deployments: write
+  packages: read
 
 
 jobs:
@@ -127,9 +128,6 @@ jobs:
     needs: validate-inputs
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 5
-    defaults:
-      run:
-        
 
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -331,9 +329,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: preflight
     timeout-minutes: 10
-    defaults:
-      run:
-        
 
     steps:
       - name: Checkout code
@@ -396,9 +391,6 @@ jobs:
     runs-on: [self-hosted, vps-primary]
     needs: [preflight, security-gate]
     timeout-minutes: 40
-    defaults:
-      run:
-        
 
     outputs:
       staging_status: ${{ steps.staging-smoke.outputs.status }}
@@ -532,9 +524,6 @@ jobs:
     runs-on: [self-hosted, vps-primary]
     needs: [preflight, deploy-staging]
     timeout-minutes: 10
-    defaults:
-      run:
-        
 
     steps:
       - name: Checkout code
@@ -589,9 +578,6 @@ jobs:
       needs.preflight.outputs.is_first_deploy != 'true' &&
       github.event.inputs.skip_backup != 'true'
     timeout-minutes: 15
-    defaults:
-      run:
-        
     outputs:
       backup_name: ${{ steps.backup.outputs.name }}
     env:
@@ -663,9 +649,6 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
       fail-fast: true
-    defaults:
-      run:
-        
     outputs:
       status: ${{ steps.health.outputs.status }}
       deploy_start: ${{ steps.timer.outputs.start }}
