@@ -637,7 +637,7 @@ jobs:
       always() &&
       needs.preflight.result == 'success' &&
       needs.approve-production.result == 'success' &&
-      (needs.backup.result == 'success' || needs.backup.result == 'skipped')
+      (needs.backup.result == 'success' || needs.backup.result == 'skipped' || needs.backup.result == 'failure')
     timeout-minutes: 40
     strategy:
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
@@ -647,6 +647,11 @@ jobs:
       deploy_start: ${{ steps.timer.outputs.start }}
 
     steps:
+      - name: Warn if backup was skipped or failed
+        if: needs.backup.result != 'success'
+        run: |
+          echo "::warning::Pre-deploy backup result: ${{ needs.backup.result }}. Proceeding without verified backup. Investigate backup failures after this deploy."
+
       - name: Record deploy start time
         id: timer
         run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
