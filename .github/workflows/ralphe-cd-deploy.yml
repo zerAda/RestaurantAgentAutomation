@@ -19,13 +19,9 @@
 # Composite actions: setup-ssh, health-check, notify
 # =============================================================================
 
-name: CD - Deploy to VPS
+name: CD - Deploy to VPS (manual)
 
 on:
-  workflow_run:
-    workflows: ["Build and Push Artifacts (GHCR)"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       environment:

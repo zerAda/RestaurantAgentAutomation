@@ -704,9 +704,9 @@ jobs:
       nginx:
         image: nginx:1.27-alpine
         ports:
-          - 8080:8080
+          - 8080:80
         options: >-
-          --health-cmd "curl -sf http://localhost:8080/healthz || exit 1"
+          --health-cmd "curl -sf http://localhost/ || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
