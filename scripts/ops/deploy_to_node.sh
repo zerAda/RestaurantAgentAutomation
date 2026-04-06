@@ -28,6 +28,9 @@
 
 set -euo pipefail
 
+# Report exact line number on any unexpected exit (visible in GitHub Step Summary)
+trap 'echo "::error::deploy_to_node.sh failed at line $LINENO (exit code $?)"' ERR
+
 # Force unbuffered output so SSH sessions flush each line immediately
 export PYTHONUNBUFFERED=1
 # Use line-buffered stdout for all commands (critical for SSH output visibility)
@@ -90,7 +93,14 @@ mkdir -p "$PROJECT_DIR/shared/secrets"
 mkdir -p "$PROJECT_DIR/shared"
 mkdir -p "$PROJECT_DIR/releases"
 mkdir -p "$BACKUP_DIR"
-mkdir -p "$LOG_DIR"
+# LOG_DIR defaults to /var/log/resto-bot; fall back to project-local dir if
+# the deploy user lacks write permission to /var/log (common on hardened VPS).
+_ORIG_LOG_DIR="$LOG_DIR"
+mkdir -p "$LOG_DIR" 2>/dev/null || {
+  echo "::warning::Cannot write to $_ORIG_LOG_DIR — falling back to $PROJECT_DIR/logs"
+  LOG_DIR="$PROJECT_DIR/logs"
+  mkdir -p "$LOG_DIR"
+}
 
 # ---------------------------------------------------------------------------
 # Step 1.5: Initialize minimum secrets to prevent bind-mount errors.
