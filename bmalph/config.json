@@ -1,0 +1,9 @@
+{
+  "name": "ralphé_final_patch",
+  "description": "Restaurant automation platform",
+  "createdAt": "2026-04-01T21:25:14.814Z",
+  "platform": "opencode",
+  "upstreamVersions": {
+    "bmadCommit": "d1163f85"
+  }
+}

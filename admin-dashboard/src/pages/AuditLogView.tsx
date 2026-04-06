@@ -93,7 +93,8 @@ export function AuditLogView() {
   // Auto-refresh
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const apiBase = import.meta.env.VITE_N8N_URL || '';
+  const n8nBase = import.meta.env.VITE_N8N_URL || '';
+  const apiBase = import.meta.env.VITE_API_URL || '/api';
 
   const fetchAuditLogs = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

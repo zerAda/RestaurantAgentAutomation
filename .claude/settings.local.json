@@ -143,7 +143,21 @@
       "Skill(gsd:add-todo)",
       "Bash(/tmp/fix_w2.js:*)",
       "Bash(rm:*)",
-      "Bash(do echo:*)"
+      "Bash(do echo:*)",
+      "mcp__ruflo__browser_open",
+      "Bash(agent-browser:*)",
+      "Bash(taskkill:*)",
+      "Bash(ss:*)",
+      "mcp__strapi-mcp__list_content_types",
+      "Bash(__NEW_LINE_539c3f52d681d3b6__ ssh:*)",
+      "Bash(__NEW_LINE_f092b0551c9455e4__ ssh:*)",
+      "Bash(__NEW_LINE_13e5d94e47146d40__ ssh:*)",
+      "Bash(__NEW_LINE_a846f59001928156__ ssh:*)",
+      "Skill(gsd:plan-milestone-gaps)",
+      "Bash(sed:*)",
+      "Bash(__NEW_LINE_f4bcbb7d8296ce66__ ssh:*)",
+      "Bash(__NEW_LINE_a58a1bc608d50dba__ ssh:*)",
+      "Bash(__NEW_LINE_6f310a6ab79264ea__ ssh:*)"
     ],
     "additionalDirectories": [
       "\\tmp",

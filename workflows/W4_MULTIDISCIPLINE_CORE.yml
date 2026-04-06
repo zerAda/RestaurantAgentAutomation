@@ -1,0 +1,42 @@
+# W4_MULTIDISCIPLINE_CORE.yml
+# Maintains JSON structure despite .yml extension (per dev.agent.yaml pattern)
+
+{
+  "name": "W4_MULTIDISCIPLINE_CORE",
+  "nodes": [
+    {
+      "name": "HMAC Validation",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "const crypto = require('crypto');\nconst secret = fs.readFileSync('/run/secrets/META_SECRET');\nconst hmac = crypto.createHmac('sha256', secret);\n// ... rest of W4_CORE.json validation logic"
+      }
+    },
+    {
+      "name": "SSRF Attack Log",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "query": "INSERT INTO security_logs (event_type, payload) VALUES ('ssrf_block', $1)"
+      }
+    },
+    {
+      "name": "FAQ Search System",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "// S1-S4 logic from reference workflow"
+      }
+    }
+  ],
+  "connections": {
+    "HMAC Validation": {
+      "main": [
+        [
+          {
+            "node": "SSRF Attack Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

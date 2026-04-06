@@ -1,0 +1,68 @@
+# ═══════════════════════════════════════════════════════════
+# .opencodeignore — Exclude heavy directories from indexing
+# Critical for low-spec PC performance
+# ═══════════════════════════════════════════════════════════
+
+# Dependencies
+node_modules/
+.npm/
+.yarn/
+
+# Build artifacts
+dist/
+build/
+.next/
+.vite/
+
+# Git internals
+.git/
+
+# Docker volumes / data
+postgres_data/
+redis_data/
+ollama_data/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Secrets (never index)
+secrets/
+*.pem
+*.key
+
+# Large binaries
+*.woff2
+*.woff
+*.ttf
+*.eot
+*.ico
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp4
+*.webm
+
+# Lock files (large, rarely useful for AI)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+.tmp/
+__pycache__/
+*.pyc
+
+# Planning archives (keep current only)
+.planning/phases/01-*
+.planning/phases/02-*
+.planning/phases/03-*
+.planning/phases/04-*
+.planning/phases/05-*

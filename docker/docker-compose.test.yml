@@ -63,6 +63,9 @@ services:
       WEBHOOK_SHARED_TOKEN: ${WEBHOOK_SHARED_TOKEN:-test_shared_token}
       ALLOW_QUERY_TOKEN: "false"
       RATE_LIMIT_PER_30S: "6"
+      META_APP_SECRET: ${META_APP_SECRET:-ci-test}
+      META_SIGNATURE_REQUIRED: ${META_SIGNATURE_REQUIRED:-warn}
+      REDIS_CREDENTIAL_ID: ${REDIS_CREDENTIAL_ID:-43SDqJYMGa6RvFqW}
       SCHEMAS_ROOT: /opt/resto/schemas
       L10N_ENABLED: "true"
       L10N_STICKY_AR_ENABLED: "true"

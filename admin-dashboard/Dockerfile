@@ -8,7 +8,9 @@ ARG VITE_DOMAIN
 ENV VITE_STRAPI_URL=${VITE_STRAPI_URL}
 ENV VITE_DOMAIN=${VITE_DOMAIN}
 ARG VITE_N8N_URL
+ARG VITE_API_URL
 ENV VITE_N8N_URL=${VITE_N8N_URL}
+ENV VITE_API_URL=${VITE_API_URL}
 
 COPY admin-dashboard/package.json admin-dashboard/package-lock.json ./
 RUN npm ci --legacy-peer-deps
@@ -23,8 +25,8 @@ COPY infra/nginx/spa-default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 USER root
-RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /etc/nginx/conf.d && \
-    touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid
+  touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid
+
 USER nginx
 
 EXPOSE 80

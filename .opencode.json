@@ -1,0 +1,10 @@
+{
+  "name": "ralphé_final_patch",
+  "icon": "R",
+  "config": ".opencode/config.json",
+  "agents": {
+    "planner": ".opencode/agents/planner.jsonc",
+    "coder": ".opencode/agents/coder.jsonc",
+    "auditor": ".opencode/agents/auditor.jsonc"
+  }
+}

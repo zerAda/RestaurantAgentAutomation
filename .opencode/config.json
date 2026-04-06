@@ -1,0 +1,100 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "planner": {
+      "description": "Architect (R1)",
+      "model": "openrouter/deepseek/deepseek-reasoner",
+      "prompt": "{file:.opencode/agents/planner.jsonc}"
+    },
+    "coder": {
+      "description": "Executioner (V3.2)",
+      "model": "openrouter/deepseek/deepseek-v3.2",
+      "prompt": "{file:.opencode/agents/coder.jsonc}"
+    },
+    "auditor": {
+      "description": "Quality Guard (R1)",
+      "model": "openrouter/deepseek/deepseek-reasoner",
+      "prompt": "{file:.opencode/agents/auditor.jsonc}"
+    }
+  },
+  "command": {
+    "vps-health": {
+      "template": "plugin load ops && ssh deploy@72.60.190.192 'bash scripts/deep-health-check.sh'",
+      "description": "VPS Diagnostic"
+    },
+    "ralphe-loop": {
+      "template": "plugin load ops && curl -X POST https://srv1258231.hstgr.cloud/webhooks/tracking-loop",
+      "description": "Tracking Loop"
+    },
+    "n8n-fix": {
+      "template": "plugin load ops && ssh deploy@72.60.190.192 'docker exec -i current-postgres-1 psql -U n8n -c \"SELECT id FROM execution_entity WHERE status = \\'failed\\' LIMIT 1;\"'",
+      "description": "Auto-fix failed n8n executions"
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."],
+      "enabled": true
+    },
+    "memory": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory"],
+      "enabled": true
+    },
+    "vps-ssh": {
+      "type": "local",
+      "command": ["npx", "-y", "@zibdie/ssh-mcp-server@latest"],
+      "enabled": true,
+      "env": {
+        "SSH_HOST": "72.60.190.192",
+        "SSH_USER": "deploy"
+      }
+    },
+    "n8n-expert": {
+      "type": "local",
+      "command": ["npx", "-y", "@l33tdawg/n8n-mcp"],
+      "enabled": true,
+      "env": {
+        "N8N_URL": "https://srv1258231.hstgr.cloud",
+        "N8N_API_KEY": "{env:N8N_API_KEY}"
+      }
+    },
+    "postgres": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-postgres", "postgresql://n8n:n8npass@72.60.190.192:5432/n8n"],
+      "enabled": true
+    },
+    "redis": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-redis", "redis://72.60.190.192:6379"],
+      "enabled": true
+    },
+    "stitch": {
+      "type": "remote",
+      "url": "https://api.stitch-mcp.com/v1",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer sk-stitch-75b2230198004fdb8d94c965e6d63e76"
+      }
+    }
+  },
+  "permission": {
+    "bash": "allow",
+    "edit": "allow",
+    "write": "allow",
+    "read": "allow",
+    "mcp": "allow",
+    "websearch": "allow",
+    "webfetch": "allow",
+    "question": "allow"
+  },
+  "model": "openrouter/deepseek/deepseek-chat",
+  "small_model": "openrouter/deepseek/deepseek-chat",
+  "plugin": [
+    "bmad",
+    "bmalph",
+    "gsd",
+    "opencode-ralph-loop"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "list"
+  ],
+  "permission": {
+    "read": {
+      "C:/Users/mon pc/Desktop/ralphé_final_patch/.opencode/get-shit-done/*": "allow"
+    },
+    "external_directory": {
+      "C:/Users/mon pc/Desktop/ralphé_final_patch/.opencode/get-shit-done/*": "allow"
+    }
+  }
+}
