@@ -29,7 +29,7 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT COUNT(id) as current_workload FROM orders WHERE status IN ('A_PREPARER', 'EN_PREPARATION');"
+                "query": "SELECT COUNT(*) as current_workload FROM orders WHERE status IN ('confirmed', 'preparing');"
             },
             "id": "get-kds-load",
             "name": "Check DB Active Tickets (Load)",

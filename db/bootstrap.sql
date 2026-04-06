@@ -183,23 +183,30 @@ CREATE TABLE IF NOT EXISTS orders (
   channel text NOT NULL CHECK (
     channel IN ('whatsapp', 'instagram', 'messenger', 'tiktok')
   ),
-  user_id text NOT NULL,
-  service_mode text NOT NULL CHECK (
-    service_mode IN ('sur_place', 'a_emporter', 'livraison')
+  customer_userId text NOT NULL,
+  customer_phone text NULL,
+  -- Strapi enforced columns
+  id serial UNIQUE, -- Added unique to allow integer references if Strapi uses it
+  total_amount decimal NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+  items_summary jsonb NULL,
+  metadata jsonb NULL,
+  review_prompted boolean NOT NULL DEFAULT false,
+  order_type text NOT NULL DEFAULT 'dine_in' CHECK (
+    order_type IN ('dine_in', 'takeaway', 'delivery')
   ),
-  status text NOT NULL DEFAULT 'NEW' CHECK (
+  source text NOT NULL DEFAULT 'kiosk' CHECK (
+    source IN ('kiosk', 'whatsapp', 'instagram', 'messenger', 'tiktok', 'voice', 'web')
+  ),
+  status text NOT NULL DEFAULT 'pending' CHECK (
     status IN (
-      'NEW',
-      'ACCEPTED',
-      'IN_PROGRESS',
-      'READY',
-      'OUT_FOR_DELIVERY',
-      'DONE',
-      'DELIVERED',
-      'CANCELLED'
+      'pending',
+      'confirmed',
+      'preparing',
+      'ready',
+      'delivered',
+      'cancelled'
     )
   ),
-  total_cents int NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
   -- Tracking
   last_notified_status text NULL,
   last_notified_at timestamptz NULL,
@@ -1490,14 +1497,12 @@ $$;
 CREATE OR REPLACE FUNCTION public.map_order_status_to_customer(p_internal_status text, p_service_mode text) RETURNS text LANGUAGE plpgsql AS $$ BEGIN IF p_internal_status IS NULL THEN RETURN NULL;
 END IF;
 CASE
-  upper(p_internal_status)
-  WHEN 'ACCEPTED' THEN RETURN 'CONFIRMED';
-WHEN 'IN_PROGRESS' THEN RETURN 'PREPARING';
-WHEN 'READY' THEN RETURN 'READY';
-WHEN 'OUT_FOR_DELIVERY' THEN RETURN 'OUT_FOR_DELIVERY';
-WHEN 'DONE' THEN RETURN 'DELIVERED';
-WHEN 'DELIVERED' THEN RETURN 'DELIVERED';
-WHEN 'CANCELLED' THEN RETURN 'CANCELLED';
+  lower(trim(p_internal_status))
+  WHEN 'confirmed' THEN RETURN 'CONFIRMED';
+WHEN 'preparing' THEN RETURN 'PREPARING';
+WHEN 'ready' THEN RETURN 'READY';
+WHEN 'delivered' THEN RETURN 'DELIVERED';
+WHEN 'cancelled' THEN RETURN 'CANCELLED';
 ELSE RETURN NULL;
 END CASE
 ;
@@ -2341,7 +2346,7 @@ BEGIN IF TG_OP <> 'UPDATE'
 OR NEW.status IS NOT DISTINCT
 FROM OLD.status THEN RETURN NEW;
 END IF;
-v_customer := public.map_order_status_to_customer(NEW.status, NEW.service_mode);
+v_customer := public.map_order_status_to_customer(NEW.status, NEW.order_type);
 INSERT INTO public.order_status_history(order_id, internal_status, customer_status)
 VALUES (NEW.order_id, NEW.status, v_customer);
 IF v_customer IS NULL THEN RETURN NEW;

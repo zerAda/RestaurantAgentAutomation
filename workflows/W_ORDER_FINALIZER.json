@@ -35,9 +35,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO orders (customer_phone, restaurant_id, total_amount, status, source, metadata) \nVALUES ($1, $2, $3, 'A_PREPARER', $4, $5) \nRETURNING id;",
+        "query": "INSERT INTO orders (customer_phone, \"customer_userId\", restaurant_id, total_amount, items_summary, status, source, metadata) \nVALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7) \nRETURNING id;",
         "additionalFields": {
-          "queryParams": "={{[$item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.restaurantId, $item(0).$node[\"Webhook - Finalize Order\"].json.body.totalAmount, $item(0).$node[\"Webhook - Finalize Order\"].json.body.source, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {})]}}"
+          "queryParams": "={{[$item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.restaurantId, $item(0).$node[\"Webhook - Finalize Order\"].json.body.totalAmount, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.items || []), $item(0).$node[\"Webhook - Finalize Order\"].json.body.source, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {})]}}"
         }
       },
       "name": "Create Order (DB)",
@@ -193,22 +193,57 @@
     },
     {
       "parameters": {
+        "workflowId": "W0_MODULE_GUARD",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "json": "={{ { module_key: 'ordering_core', tenant_id: $item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId } }}"
+          }
+        }
+      },
+      "id": "module-guard-finalize",
+      "name": "B0 - Module Guard",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        150,
+        450
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
-          "string": [
+          "boolean": [
             {
-              "value1": "={{ $json }}",
-              "operation": "equal",
-              "value2": "OK"
+              "value1": "={{ $json.allowed }}",
+              "operation": "isTrue"
             }
           ]
         }
       },
-      "name": "B0 - Lock Success?",
+      "id": "guard-check-finalize",
+      "name": "B0 - Guard OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
         350,
-        150
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "httpCode": "403",
+        "responseMode": "onNodeFinish",
+        "responseBody": "={ \"success\": false, \"error\": \"GATED_ACCESS\", \"message\": \"Access to this module is restricted. Reason: \" + ($json.reason || 'Unknown') }",
+        "options": {}
+      },
+      "id": "guard-error-finalize",
+      "name": "C0 - Error (Guard)",
+      "type": "n8n-nodes-base.webhookResponse",
+      "typeVersion": 1,
+      "position": [
+        550,
+        550
       ]
     },
     {
@@ -261,7 +296,36 @@
       "main": [
         [
           {
+            "node": "B0 - Module Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Module Guard": {
+      "main": [
+        [
+          {
+            "node": "B0 - Guard OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Guard OK?": {
+      "main": [
+        [
+          {
             "node": "B0 - Concurrency Lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "C0 - Error (Guard)",
             "type": "main",
             "index": 0
           }

@@ -18,7 +18,7 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT oi.label, count(*) as freq \nFROM orders o \nJOIN order_items oi ON o.order_id = oi.order_id \nWHERE o.user_id = $1 \nAND EXTRACT(HOUR FROM o.created_at) BETWEEN EXTRACT(HOUR FROM NOW()) - 4 AND EXTRACT(HOUR FROM NOW()) + 4 \nGROUP BY oi.label \nORDER BY freq DESC \nLIMIT 1;",
+                "query": "SELECT oi.label, count(*) as freq \nFROM orders o \nJOIN order_items oi ON o.order_id = oi.order_id \nWHERE o.\"customer_userId\" = $1 \nAND EXTRACT(HOUR FROM o.created_at) BETWEEN EXTRACT(HOUR FROM NOW()) - 4 AND EXTRACT(HOUR FROM NOW()) + 4 \nGROUP BY oi.label \nORDER BY freq DESC \nLIMIT 1;",
                 "additionalFields": {
                     "queryParams": "={{ [$json.body.user_id] }}"
                 }

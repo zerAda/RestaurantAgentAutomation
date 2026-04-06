@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_delivery_zone
 -- This dramatically speeds up "show me all active orders" which is the #1 query
 CREATE INDEX IF NOT EXISTS idx_orders_active
   ON orders (created_at DESC)
-  WHERE status IN ('NEW', 'ACCEPTED', 'IN_PROGRESS', 'READY');
+  WHERE status IN ('pending', 'confirmed', 'preparing', 'ready');
 
 -- PERF-13: Index on inbound_messages for conversation lookup
 CREATE INDEX IF NOT EXISTS idx_inbound_messages_conversation

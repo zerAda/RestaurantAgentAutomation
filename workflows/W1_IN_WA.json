@@ -173,6 +173,45 @@
     },
     {
       "parameters": {
+        "workflowId": "W0_MODULE_GUARD",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "json": "={{ { module_key: 'channel_whatsapp', tenant_id: $json.tenantId } }}"
+          }
+        }
+      },
+      "id": "module-guard-wa",
+      "name": "B0 - Module Guard",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -450
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.allowed }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "guard-check-wa",
+      "name": "B0 - Guard OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        -450
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
           "boolean": [
             {
@@ -1018,18 +1057,36 @@
         ]
       ]
     },
-    "B0 - Seal Tenant Context": {
+    "B0 - Token OK?": {
       "main": [
         [
           {
-            "node": "B0 - Token OK?",
+            "node": "B0 - Module Guard",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B0 - Log Deny (DB)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B0 - Token OK?": {
+    "B0 - Module Guard": {
+      "main": [
+        [
+          {
+            "node": "B0 - Guard OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Guard OK?": {
       "main": [
         [
           {
@@ -1040,7 +1097,7 @@
         ],
         [
           {
-            "node": "B0 - Log Deny (DB)",
+            "node": "END - Drop/Done",
             "type": "main",
             "index": 0
           }

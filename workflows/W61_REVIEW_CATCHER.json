@@ -25,7 +25,7 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT o.order_id, o.conversation_key, o.channel, o.tenant_id, o.restaurant_id, c.phone as user_id\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nWHERE o.created_at >= NOW() - INTERVAL '75 minutes'\n  AND o.created_at <= NOW() - INTERVAL '60 minutes'\n  AND o.review_prompted = false;\n"
+                "query": "SELECT o.order_id, o.conversation_key, o.channel, o.tenant_id, o.restaurant_id, o.\"customer_userId\" as user_id\nFROM orders o\nWHERE o.created_at >= NOW() - INTERVAL '75 minutes'\n  AND o.created_at <= NOW() - INTERVAL '60 minutes'\n  AND o.review_prompted = false;\n"
             },
             "id": "find_delivered_orders",
             "name": "Find Orders ~1h Ago",

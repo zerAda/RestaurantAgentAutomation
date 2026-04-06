@@ -32,16 +32,57 @@
         },
     {
       "parameters": {
-        "language": "javascript",
-        "jsCode": "/**\n * P1-00: Validate Kiosk Authenticity & Rate Limits\n * DIAMOND-FIX: Secret validation + Redis-based throttling\n */\nconst secret = $env.KIOSK_SECRET || 'fallback-kiosk-key';\nconst headers = $node[\"POST /kiosk-order\"].json.headers;\n\n// 1. Secret Validation\nif (headers['x-kiosk-secret'] !== secret) {\n  throw new Error('AUTH_FAILED: Kiosk non autorisé');\n}\n\nconst body = $json.body || {};\nconst kioskId = body.kiosk_id || headers['x-kiosk-id'] || 'unknown_kiosk';\nconst sessionId = body.kiosk_session_id || `kiosk_${Date.now()}`;\nconst items = body.items || [];\n\nif (!items || items.length === 0) {\n  throw new Error('EMPTY_CART: Aucun article dans le panier');\n}\n\nreturn [{ json: {\n  ...body,\n  kiosk_id: kioskId,\n  kiosk_session_id: sessionId,\n  rate_limit_key: `limit:kiosk:order:${kioskId}`\n}}];"
+        "workflowId": "W0_MODULE_GUARD",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "json": "={{ { module_key: 'feature_kiosk', tenant_id: $json.tenant_id || $json.restaurant_id } }}"
+          }
+        }
       },
-      "id": "kiosk-auth-guard",
-      "name": "B0 - Auth & ID Wrap",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "module-guard-kiosk",
+      "name": "B0 - Module Guard",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
       "position": [
-        100,
-        550
+        150,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.allowed }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "guard-check-kiosk",
+      "name": "B0 - Guard OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        350,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "httpCode": "403",
+        "responseMode": "onNodeFinish",
+        "responseBody": "={ \"success\": false, \"error\": \"GATED_ACCESS\", \"message\": \"Kiosk ordering is restricted for this location. Reason: \" + ($json.reason || 'Unknown') }",
+        "options": {}
+      },
+      "id": "guard-error-kiosk",
+      "name": "C0 - Error (Guard)",
+      "type": "n8n-nodes-base.webhookResponse",
+      "typeVersion": 1,
+      "position": [
+        550,
+        850
       ]
     },
     {
@@ -350,7 +391,36 @@
             "main": [
                 [
                     {
+                        "node": "B0 - Module Guard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Module Guard": {
+            "main": [
+                [
+                    {
+                        "node": "B0 - Guard OK?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "B0 - Guard OK?": {
+            "main": [
+                [
+                    {
                         "node": "B0 - Increment Counter",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "C0 - Error (Guard)",
                         "type": "main",
                         "index": 0
                     }

@@ -29,7 +29,7 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "WITH sales AS (\n  SELECT SUM(total_cents)/100.0 as revenue, COUNT(*) as volume \n  FROM orders \n  WHERE created_at > now() - interval '4 hours'\n),\nabandoned AS (\n  SELECT COUNT(*) as abandoned_carts \n  FROM carts \n  WHERE updated_at > now() - interval '4 hours'\n)\nSELECT \n  (SELECT revenue FROM sales) as revenue_4h,\n  (SELECT volume FROM sales) as orders_4h,\n  (SELECT abandoned_carts FROM abandoned) as abandoned_4h;"
+                "query": "WITH sales AS (\n  SELECT SUM(total_amount) as revenue, COUNT(*) as volume \n  FROM orders \n  WHERE created_at > now() - interval '4 hours'\n),\nabandoned AS (\n  SELECT COUNT(*) as abandoned_carts \n  FROM carts \n  WHERE updated_at > now() - interval '4 hours'\n)\nSELECT \n  (SELECT revenue FROM sales) as revenue_4h,\n  (SELECT volume FROM sales) as orders_4h,\n  (SELECT abandoned_carts FROM abandoned) as abandoned_4h;"
             },
             "id": "db-analytics",
             "name": "Fetch 4H KPIs",

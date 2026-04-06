@@ -81,6 +81,60 @@
     },
     {
       "parameters": {
+        "workflowId": "W0_MODULE_GUARD",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "json": "={{ { module_key: 'channel_tiktok', tenant_id: $json.tenantId } }}"
+          }
+        }
+      },
+      "id": "module-guard-tiktok",
+      "name": "B0 - Module Guard",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.allowed }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "guard-check-tiktok",
+      "name": "B0 - Guard OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "responseCode": 403,
+        "responseBody": "={{JSON.stringify({error:'gated_access',reason:$json.reason || 'Channel disabled'})}}",
+        "options": {}
+      },
+      "id": "guard-error-tiktok",
+      "name": "RESP - 403 Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        50
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
           "boolean": [
             {
@@ -257,7 +311,7 @@
       "main": [
         [
           {
-            "node": "B0 - Idempotency (DB)",
+            "node": "B0 - Module Guard",
             "type": "main",
             "index": 0
           }
@@ -265,6 +319,35 @@
         [
           {
             "node": "RESP - 401 Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Module Guard": {
+      "main": [
+        [
+          {
+            "node": "B0 - Guard OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Guard OK?": {
+      "main": [
+        [
+          {
+            "node": "B0 - Idempotency (DB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESP - 403 Forbidden",
             "type": "main",
             "index": 0
           }

@@ -143,6 +143,13 @@
             "relation": "manyToOne",
             "target": "api::customer.customer",
             "inversedBy": "orders"
+        },
+        "review_prompted": {
+            "type": "boolean",
+            "default": false
+        },
+        "metadata": {
+            "type": "json"
         }
     }
 }

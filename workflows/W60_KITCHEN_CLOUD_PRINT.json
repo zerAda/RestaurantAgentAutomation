@@ -20,7 +20,7 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT o.order_id, o.summary, o.total_cents, o.status, o.created_at, c.phone, dz.name as zone_name\nFROM orders o\nLEFT JOIN customers c ON o.customer_id = c.id\nLEFT JOIN delivery_zones dz ON o.zone_id = dz.id\nWHERE o.order_id = $1;",
+                "query": "SELECT o.order_id, o.items_summary, o.total_amount, o.status, o.created_at, o.customer_phone, o.delivery_commune as zone_name\nFROM orders o\nWHERE o.order_id = $1;",
                 "additionalFields": {
                     "queryParams": "={{[$json.body.order_id]}}"
                 }
@@ -36,7 +36,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const o = $json;\nif (!o || !o.order_id) return [];\n\nconst now = new Date(o.created_at || Date.now());\nconst timeStr = now.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });\n\nconst ticket = `\n================================\n       RESTAURANT RALPHE\n================================\nCOMMANDE: #${(o.order_id).substring(0,8).toUpperCase()}\nHEURE: ${timeStr}\nTEL: ${o.phone || 'N/A'}\n\n${o.zone_name ? 'LIVRAISON: ' + o.zone_name : 'SUR PLACE / A EMPORTER'}\n--------------------------------\n${o.summary}\n--------------------------------\nTOTAL: ${(Number(o.total_cents||0)/100).toFixed(2)} DA\n================================\n`;\n\nreturn [{json: {\n  ...o,\n  printer_payload: ticket\n}}];"
+                "jsCode": "const o = $json;\nif (!o || !o.order_id) return [];\n\nconst now = new Date(o.created_at || Date.now());\nconst timeStr = now.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });\n\nconst summary = typeof o.items_summary === 'object' ? JSON.stringify(o.items_summary) : (o.items_summary || 'N/A');\n\nconst ticket = `\n================================\n       RESTAURANT RALPHE\n================================\nCOMMANDE: #${(o.order_id).substring(0,8).toUpperCase()}\nHEURE: ${timeStr}\nTEL: ${o.customer_phone || 'N/A'}\n\n${o.zone_name ? 'LIVRAISON: ' + o.zone_name : 'SUR PLACE / A EMPORTER'}\n--------------------------------\n${summary}\n--------------------------------\nTOTAL: ${Number(o.total_amount||0).toFixed(2)} DA\n================================\n`;\n\nreturn [{json: {\n  ...o,\n  printer_payload: ticket\n}}];"
             },
             "id": "format-ticket",
             "name": "Format ESC/POS Payload",

@@ -25,6 +25,8 @@ This hardening pass transformed the RestaurantAgentAutomation monorepo from a mo
 | Kiosk secret baked in JS bundle | Removed `x-kiosk-secret` from client code | `kiosk-app/src/services/strapiClient.ts` |
 | `platform-setting` invalid enum default | Fixed `"ops"` → `"CORE"` | `platform-setting/schema.json` |
 | In-memory-only rate limiting | Hybrid Redis/memory rate limiter | `middlewares/auth-ratelimit.ts` |
+| W0_MODULE_GUARD fail-open | Switched to "Fail-Closed" mode for production parity | `workflows/W0_MODULE_GUARD.json` |
+| Entrypoint Exposure | Wired 7 priority adapters to Module Guard (WA, IG, MSG, TikTok, Voice, Kiosk) | `workflows/*.json` |
 
 ### 📦 Product Segmentation
 
@@ -84,7 +86,6 @@ This hardening pass transformed the RestaurantAgentAutomation monorepo from a mo
 
 ## What's Staged (Not Yet Deployed)
 
-- W0_MODULE_GUARD needs to be imported into n8n and wired to priority entrypoints
 - Tenant entitlements need to be seeded for existing tenants
 - Admin dashboard UI needs module-aware navigation (Stitch MCP)
 - Kiosk app auth flow needs server-side session token implementation
@@ -93,5 +94,4 @@ This hardening pass transformed the RestaurantAgentAutomation monorepo from a mo
 
 - `config-version` content type (versionable config rollout)
 - `secret-reference` content type (secret rotation tracking in Strapi)
-- Full fail-closed mode for W0_MODULE_GUARD (currently fail-open)
-- BFG Repo-Cleaner to purge secrets from git history
+- BFG Repo-Cleaner to purge secrets from git history (Manual Task)
