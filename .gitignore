@@ -22,3 +22,6 @@ _bmad-output/
 Thumbs.db
 *.swp
 *.swo
+
+# Dependencies
+node_modules/

@@ -6,93 +6,126 @@ export interface ProductModuleSeed {
   tier: 'shared_core' | 'product_core' | 'channel_pack' | 'addon' | 'experimental';
   description: string;
   enabled_globally?: boolean;
+  rollout_default?: string;
 }
 
+/**
+ * IMPORTANT: These keys MUST match config/product_modules.json exactly.
+ * The W0_MODULE_GUARD queries Strapi by module_key, so any mismatch
+ * will cause the guard to deny access.
+ */
 export const SAAS_MODULES: ProductModuleSeed[] = [
   {
-    key: 'shared_core',
-    display_name: 'Platform Core',
+    key: 'platform_runtime',
+    display_name: 'Platform Runtime',
     tier: 'shared_core',
-    description: 'Essential platform services, logging, and security infrastructure.',
-    enabled_globally: true
+    description: 'Always-on platform primitives: config, Redis, meta verification, outbox, DLQ, health, monitoring, error handling, audit.',
+    enabled_globally: true,
+    rollout_default: 'always_on'
+  },
+  {
+    key: 'order_bot_core',
+    display_name: 'Order Bot Core',
+    tier: 'product_core',
+    description: 'Base conversational commerce engine: router, cart, FAQ, delivery quote, admin orders.',
+    rollout_default: 'always_on'
   },
   {
     key: 'channel_whatsapp',
-    display_name: 'WhatsApp Business',
+    display_name: 'WhatsApp Channel',
     tier: 'channel_pack',
-    description: 'Official Meta WhatsApp Business API integration.'
-  },
-  {
-    key: 'channel_messenger',
-    display_name: 'Facebook Messenger',
-    tier: 'channel_pack',
-    description: 'Meta Messenger webhook and automation adapter.'
+    description: 'WhatsApp Business inbound/outbound messaging and admin support console.',
+    rollout_default: 'tenant_flagged'
   },
   {
     key: 'channel_instagram',
-    display_name: 'Instagram Direct',
+    display_name: 'Instagram Channel',
     tier: 'channel_pack',
-    description: 'Instagram DM and Story automation adapter.'
+    description: 'Instagram DM inbound/outbound messaging.',
+    rollout_default: 'tenant_flagged'
+  },
+  {
+    key: 'channel_messenger',
+    display_name: 'Messenger Channel',
+    tier: 'channel_pack',
+    description: 'Facebook Messenger inbound/outbound messaging.',
+    rollout_default: 'tenant_flagged'
   },
   {
     key: 'channel_tiktok',
-    display_name: 'TikTok Commerce',
+    display_name: 'TikTok Channel',
     tier: 'channel_pack',
-    description: 'TikTok DM and commerce webhook integration.'
+    description: 'TikTok DM inbound and content publishing.',
+    rollout_default: 'disabled_by_default'
   },
   {
-    key: 'channel_voice',
-    display_name: 'AI Voice Agent',
+    key: 'payment',
+    display_name: 'Payment Processing',
     tier: 'addon',
-    description: 'RAG-enhanced AI voice ordering (Vapi/Retell integration).'
-  },
-  {
-    key: 'ordering_kiosk',
-    display_name: 'Physical Kiosk',
-    tier: 'product_core',
-    description: 'React-based self-service ordering interface.'
+    description: 'Chargily payment initiation, callback handling, and order finalization.',
+    rollout_default: 'env_flagged'
   },
   {
     key: 'delivery_dispatch',
     display_name: 'Delivery & Dispatch',
-    tier: 'product_core',
-    description: 'Zone management, driver assignment, and status tracking.'
-  },
-  {
-    key: 'marketing_loyalty',
-    display_name: 'Loyalty & Rewards',
     tier: 'addon',
-    description: 'Customer tiers, points, and automated win-back campaigns.'
+    description: 'Driver management, dispatch, logistics, surge pricing, weather triggers.',
+    rollout_default: 'env_flagged'
   },
   {
-    key: 'payment_gateway',
-    display_name: 'Payment Gateway',
-    tier: 'product_core',
-    description: 'Secure processing for CIB, Edahabia, and Stripe.'
-  },
-  {
-    key: 'analytics_studio',
-    display_name: 'Analytics Studio',
+    key: 'inventory',
+    display_name: 'Inventory Management',
     tier: 'addon',
-    description: 'DORA metrics, sales reporting, and AI business insights.'
+    description: 'Inventory orchestration, sync, stock alerts, predictive 86ing, menu validation.',
+    rollout_default: 'env_flagged'
   },
   {
-    key: 'admin_agent',
-    display_name: 'AI Admin Assistant',
+    key: 'kiosk_instore',
+    display_name: 'Kiosk & In-Store',
     tier: 'addon',
-    description: 'Proactive agent for order management and stock alerts.'
+    description: 'In-store kiosk ordering, QR table detection, gamification wheel, kitchen printing.',
+    rollout_default: 'env_flagged'
   },
   {
-    key: 'inventory_manager',
-    display_name: 'Inventory Manager',
-    tier: 'product_core',
-    description: 'Real-time stock tracking and low-inventory triggers.'
+    key: 'voice',
+    display_name: 'Voice Ordering',
+    tier: 'addon',
+    description: 'Speech-to-text, text-to-speech, voice call initiation and confirmation.',
+    rollout_default: 'disabled_by_default'
+  },
+  {
+    key: 'loyalty_crm',
+    display_name: 'Loyalty & CRM',
+    tier: 'addon',
+    description: 'Loyalty engine, cart abandonment, VIP win-back, upsell engine, review catcher.',
+    rollout_default: 'tenant_flagged'
+  },
+  {
+    key: 'growth_marketing',
+    display_name: 'Growth & Marketing',
+    tier: 'addon',
+    description: 'Funnel tracking, AI learning, revenue intelligence, marketing autopilot, content generation.',
+    rollout_default: 'disabled_by_default'
+  },
+  {
+    key: 'admin_ai_intelligence',
+    display_name: 'Admin AI & Intelligence',
+    tier: 'addon',
+    description: 'Operator-facing AI agent, live monitoring, proactive alerts, cortex registry, omniscient brain.',
+    rollout_default: 'tenant_flagged'
+  },
+  {
+    key: 'experimental',
+    display_name: 'Experimental / Review',
+    tier: 'experimental',
+    description: 'Unclear ownership, stale, duplicated, or partially integrated workflows.',
+    rollout_default: 'disabled_by_default'
   }
 ];
 
 export async function seedSaaSEntitlements(strapi: Core.Strapi) {
   const defaultTenantId = process.env.DEFAULT_TENANT_ID || 'default';
-  strapi.log.info(`Seeding SaaS activation for tenant: ${defaultTenantId}`);
+  strapi.log.info(`[SaaS] Seeding activation for tenant: ${defaultTenantId}`);
 
   // 1. Seed Modules
   for (const mod of SAAS_MODULES) {
@@ -104,7 +137,12 @@ export async function seedSaaSEntitlements(strapi: Core.Strapi) {
       if (!existing) {
         await strapi.query('api::product-module.product-module').create({
           data: {
-            ...mod,
+            key: mod.key,
+            display_name: mod.display_name,
+            tier: mod.tier,
+            description: mod.description,
+            enabled_globally: mod.enabled_globally || false,
+            rollout_policy: mod.rollout_default || 'disabled_by_default',
             publishedAt: new Date()
           }
         });
@@ -116,9 +154,10 @@ export async function seedSaaSEntitlements(strapi: Core.Strapi) {
   }
 
   // 2. Seed Default Entitlements
-  // We enable all non-experimental modules for the default tenant to prevent service disruption
+  // Enable all non-experimental, non-shared_core modules for the default tenant
   for (const mod of SAAS_MODULES) {
-    if (mod.tier === 'shared_core' || mod.enabled_globally) continue;
+    // shared_core is always allowed globally; experimental is disabled
+    if (mod.tier === 'shared_core' || mod.enabled_globally || mod.tier === 'experimental') continue;
 
     try {
       const existingEnt = await strapi.query('api::tenant-entitlement.tenant-entitlement').findOne({
@@ -133,15 +172,15 @@ export async function seedSaaSEntitlements(strapi: Core.Strapi) {
             enabled: true,
             activated_at: new Date(),
             activated_by: 'system_bootstrap@ralphe.ai',
-            notes: 'Initial SaaS hardening bootstrap — auto-enabled for default tenant.'
+            notes: `Initial SaaS bootstrap — auto-enabled for default tenant. Rollout: ${mod.rollout_default}.`
           }
         });
-        strapi.log.info(`[SaaS] Entitled tenant ${defaultTenantId} to ${mod.key}`);
+        strapi.log.info(`[SaaS] Entitled tenant ${defaultTenantId} → ${mod.key}`);
       }
     } catch (err: any) {
       strapi.log.error(`[SaaS] Failed to entitle tenant ${defaultTenantId} to ${mod.key}: ${err.message}`);
     }
   }
 
-  strapi.log.info('SaaS activation seeding completed.');
+  strapi.log.info('[SaaS] Activation seeding completed.');
 }

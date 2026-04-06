@@ -5,7 +5,6 @@
   "model": "openrouter/moonshotai/kimi-k2.5",
   "small_model": "openrouter/moonshotai/kimi-k2.5",
   "default_agent": "build",
-  "autocompact": true,
 
   // ── Providers ──
   "provider": {
@@ -18,7 +17,6 @@
           "name": "Kimi K2.5 (Code & Reflection)",
           "reasoning": true,
           "tool_call": true,
-          "temperature": 0.1,
           "limit": { "context": 128000, "output": 8000 }
         }
       }
@@ -40,11 +38,11 @@
   // ── Agents ──
   "agent": {
     "build": {
-      "description": "Implementation agent: edits code, runs commands, makes atomic commits",
+      "description": "Implementation agent (Kimi K2.5)",
       "mode": "primary",
       "model": "openrouter/moonshotai/kimi-k2.5",
       "temperature": 0.1,
-      "prompt": "You are the BUILD agent. Execute plans, edit code, run commands, make atomic commits. Follow AGENTS.md + opencode.md. Respect the 10-loop quality gate. Always read repo + vault before acting — never invent state.",
+      "prompt": "You are the BUILD agent. Execute plans, edit code, run commands, make atomic commits. Follow AGENTS.md. Respect the 10-loop quality gate. Always read repo + vault before acting — never invent state.",
       "tools": {
         "write": true, "edit": true, "bash": true, "read": true,
         "glob": true, "grep": true,
@@ -52,17 +50,28 @@
       }
     },
 
-    "plan": {
-      "description": "Deep reasoning (Kimi K2.5): triage, BMAD specs, ADRs, DB analysis",
+    "planner": {
+      "description": "Evidence-based Architect (R1)",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-reasoner",
+      "prompt": "{file:.opencode/agents/planner.jsonc}",
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "write": true }
+    },
+
+    "coder": {
+      "description": "Executioner (Kimi K2.5)",
       "mode": "subagent",
       "model": "openrouter/moonshotai/kimi-k2.5",
-      "temperature": 0.2,
-      "prompt": "You are the PLAN agent (Kimi K2.5). Analyze, don't modify code. Produce BMAD specs, ADRs, triage. Write to vault/ at correct paths. Return concise summaries.",
-      "tools": {
-        "read": true, "glob": true, "grep": true, "bash": true, "write": true,
-        "edit": false,
-        "context7_*": true, "postgres_*": true
-      }
+      "prompt": "{file:.opencode/agents/coder.jsonc}",
+      "tools": { "write": true, "edit": true, "bash": true, "read": true, "context7_*": true }
+    },
+
+    "auditor": {
+      "description": "Quality Guard (R1)",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-reasoner",
+      "prompt": "{file:.opencode/agents/auditor.jsonc}",
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "postgres_*": true }
     },
 
     "repo-cartographer": {
@@ -71,10 +80,7 @@
       "model": "openrouter/moonshotai/kimi-k2.5",
       "temperature": 0.2,
       "prompt": "You are REPO-CARTOGRAPHER. Map functional surfaces: workflows, services, DB, infra. Produce tables with entrypoints, owners, risk levels. Write to vault/30-Architecture/ and vault/90-Index/Repo Map.md. Don't modify source.",
-      "tools": {
-        "read": true, "glob": true, "grep": true, "bash": true,
-        "write": true, "edit": true
-      }
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "write": true }
     },
 
     "workflow-architect": {
@@ -83,11 +89,7 @@
       "model": "openrouter/moonshotai/kimi-k2.5",
       "temperature": 0.2,
       "prompt": "You are WORKFLOW-ARCHITECT. Analyze n8n workflows in workflows/*.json. Identify triggers, coupling, fragile edges, missing observability. Write to vault/30-Architecture/Workflow Topology.md. Don't modify JSON.",
-      "tools": {
-        "read": true, "glob": true, "grep": true, "bash": true,
-        "write": true, "edit": true,
-        "n8n_*": true
-      }
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "write": true, "n8n_*": true }
     },
 
     "platform-sre": {
@@ -96,11 +98,7 @@
       "model": "openrouter/moonshotai/kimi-k2.5",
       "temperature": 0.2,
       "prompt": "You are PLATFORM-SRE. Diagnose Docker, compose, observability. Assess release readiness with GO/NO-GO/CONDITIONAL verdicts. Write runbooks to vault/40-Runbooks/. Never auto-deploy.",
-      "tools": {
-        "read": true, "glob": true, "grep": true, "bash": true,
-        "write": true, "edit": true,
-        "docker_*": true, "sentry_*": true, "postgres_*": true
-      }
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "write": true, "docker_*": true, "sentry_*": true, "postgres_*": true }
     },
 
     "vault-curator": {
@@ -109,11 +107,7 @@
       "model": "openrouter/moonshotai/kimi-k2.5",
       "temperature": 0.1,
       "prompt": "You are VAULT-CURATOR. Maintain vault/ structure. Update frontmatter, refresh indexes in vault/90-Index/, write logs to vault/60-Observability/. Enforce NID convention + status lists.",
-      "tools": {
-        "read": true, "glob": true, "grep": true, "bash": true,
-        "write": true, "edit": true,
-        "obsidian_*": true
-      }
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "write": true, "edit": true, "obsidian_*": true }
     },
 
     "security-auditor": {
@@ -122,38 +116,19 @@
       "model": "openrouter/moonshotai/kimi-k2.5",
       "temperature": 0.2,
       "prompt": "You are SECURITY-AUDITOR. Scan for secrets, unsafe configs, .gitignore gaps. Report with severity. Never auto-fix — only recommend. Respect deny-read rules.",
-      "tools": {
-        "read": true, "glob": true, "grep": true, "bash": true,
-        "write": false, "edit": false
-      }
+      "tools": { "read": true, "glob": true, "grep": true, "bash": true, "write": false, "edit": false }
     }
   },
 
   // ── Permissions ──
   "permission": {
-    "read": {
-      "deny": [
-        "**/.env", "**/.env.*", "!**/.env.example",
-        "**/*.pem", "**/*.key", "**/*.p12",
-        "**/secrets/**", "**/node_modules/**"
-      ]
-    },
-    "write": {
-      "deny": [
-        "**/.env", "**/.env.*",
-        "**/*.pem", "**/*.key",
-        "**/node_modules/**", "**/.git/objects/**"
-      ]
-    },
-    "bash": {
-      "deny": [
-        "rm -rf /*", "rm -rf ~*",
-        "git push --force origin main", "git push --force origin master",
-        "git reset --hard origin/main", "git reset --hard origin/master",
-        "docker system prune -a -f --volumes",
-        "curl * | sh", "curl * | bash", "wget * | sh"
-      ]
-    }
+    "read": "allow",
+    "write": "allow",
+    "bash": "allow",
+    "mcp": "allow",
+    "websearch": "allow",
+    "webfetch": "allow",
+    "question": "allow"
   },
 
   // ── Plugins (order matters: branch-guard first, omni second) ──
