@@ -363,3 +363,34 @@ These require human action and cannot be automated without credentials/access no
 | `scripts/disk-cleanup.sh` | New | Proactive disk reclamation (safe, threshold-gated) |
 | `scripts/setup-vps-sre.sh` | New | One-time VPS SRE setup (daemon.json, crons, logrotate) |
 | `infra/docker/daemon.json` | New | Docker daemon: global log rotation + live-restore |
+
+---
+
+## 7. Post-Audit Resolution Status (updated 2026-04-04)
+
+| Gap | Finding | Resolution | Status |
+|-----|---------|------------|--------|
+| Gap 1 | CMS start_period too short (60s) | `start_period: 180s` in docker-compose.hostinger.prod.yml | RESOLVED |
+| Gap 2 | Zero alerting | `container-watchdog.sh` cron + `W_QUEUE_METRICS` (queue depth/error rate) + `W_REDIS_MONITOR` (memory alerts) | RESOLVED |
+| Gap 3 | No post-deploy health gate | `post-deploy-verify.sh` 6-phase gate script | RESOLVED |
+| Gap 4 | Disk pressure risk | `disk-cleanup.sh` (prune >48h builds, npm cache) | RESOLVED |
+| Gap 5 | Stale backup | Requires `VPS_SSH_KEY` secret + S3 offload | OPEN (deferred to v2 — BAK-01..03) |
+
+### Additional improvements since audit (2026-03-26):
+- **Structured logging**: Correlation IDs (X-Request-ID) across Nginx, Strapi, n8n (Phase 2 complete)
+- **Audit trail**: `workflow_audit` table + W_AUDIT_WRITE/QUERY/ARCHIVE workflows (Phase 3)
+- **Performance indexes**: 6 new PostgreSQL indexes on orders table (Phase 6)
+- **Redis safety**: `allkeys-lru` policy confirmed, 15-min memory monitoring, >200MB alert
+- **Admin visibility**: AuditLogView page in admin dashboard for workflow audit queries
+- **Smoke test scripts**: `smoke-correlation.sh`, `smoke-nginx-routing-v2.sh`, `smoke-strapi-permissions.sh`, `smoke-n8n-e2e.sh`
+
+### CI/CD Pipeline Recovery (2026-04-06):
+
+| Issue | Root Cause | Fix | Status |
+|-------|-----------|-----|--------|
+| Production never deployed | `ralphe-cd-deploy.yml` duplicate `workflow_run:` trigger created concurrency deadlock | Removed auto-trigger; keep `workflow_dispatch:` only | FIXED |
+| CI smoke-routing never healthy | nginx CI service mapped `8080:8080` but listens on port 80 inside container | Changed to `8080:80` + `curl localhost/` | FIXED |
+| Backup failing (staging DB) | `docker ps -qf ancestor=postgres` returned staging container first when both ran concurrently | Filter by compose project label to prefer production container | FIXED |
+| Deploy fails in 21s (bind-mounts) | Secret files only created on first deploy; missing on re-deploy → Docker abort | Create all 5 secret files on every deploy with `if [ ! -f ]` guards | FIXED |
+| Deploy fails in 21s (volumes) | `external: true` volumes only created on first deploy; missing → `docker compose up` abort | Create all 6 volumes on every deploy with `2>/dev/null \|\| true` | FIXED |
+| Deploy fails in 21s (LOG_DIR) | `mkdir -p /var/log/resto-bot` fails for `deploy` user → `set -euo pipefail` kills script | Fallback to `$PROJECT_DIR/logs` + ERR trap reports exact failure line | FIXED |

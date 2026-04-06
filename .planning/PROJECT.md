@@ -30,19 +30,25 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 - ✓ CI/CD: 13 GitHub Actions workflows (lint, test, build, deploy, rollback) — v3.3
 - ✓ Multi-language support: French + Arabic (RTL) — v3.1
 - ✓ Loyalty tiers, marketing campaigns — v3.2
+- ✓ Structured logging with correlation IDs across all services (Nginx, Strapi, n8n) — v3.5.0
+- ✓ Node.js 18 → 20 upgrade in all Dockerfiles (EOL security fix) — v3.4.5
+- ✓ Redis eviction policy (allkeys-lru) + memory alerting (W_REDIS_MONITOR) — v3.5.0
+- ✓ PostgreSQL indexes on orders (status, created_at) for query performance — v3.5.0
+- ✓ Observability: metrics export (queue depth, error rate via W_QUEUE_METRICS) — v3.5.0
+- ✓ n8n workflow audit trail with queryable admin dashboard view — v3.5.0
+- ✓ Admin dashboard code splitting (React lazy loading) — v3.5.0
+- ✓ Kiosk menu caching (5-min TTL localStorage) — v3.5.0
 
 ### Active
 
-- [ ] CMS routes persisted in source (not runtime-injected via docker cp)
-- [ ] Automated daily PostgreSQL backup with S3 offload
-- [ ] Structured logging with correlation IDs across all services
-- [ ] Smoke test suite for all 8 nginx routing zones + CORS validation
-- [ ] Strapi permission matrix integration tests
-- [ ] n8n workflow audit trail (compliance + debugging)
-- [ ] Node.js 18 → 20 upgrade in all Dockerfiles (EOL security fix)
-- [ ] Redis eviction policy + memory alerting
-- [ ] PostgreSQL indexes on orders (status, created_at) for query performance
-- [ ] Observability: metrics export (error rate, queue depth, latency P95)
+- [ ] CMS routes persisted in source (not runtime-injected via docker cp) — Phase 1 gap closure pending
+- [ ] Automated daily PostgreSQL backup with S3 offload — deferred to v2
+- [ ] Smoke test suite for all 8 nginx routing zones + CORS validation — Phase 4
+- [ ] Strapi permission matrix integration tests — Phase 4
+- [ ] Queue depth alerting threshold (>50 pending for >5 min) — METR-04
+- [ ] Disk usage alerting (>80% of 119GB) — METR-05
+- [ ] Bundle size measurement (30% reduction target) — PERF-08
+- [ ] EXPLAIN ANALYZE verification on VPS — PERF-03
 
 ### Out of Scope
 
@@ -54,7 +60,7 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 ## Context
 
 - **Domain**: Restaurant / food delivery automation, North Africa market (FR/AR, Edahabia)
-- **Version**: v3.4.0, actively deployed at `srv1258231.hstgr.cloud`
+- **Version**: v3.5.0, actively deployed at `srv1258231.hstgr.cloud`
 - **Known P0 tech debt**: CMS route files for ingredient, system-config, restaurant-brand etc. were manually injected via `docker cp` — lost on any CMS rebuild
 - **Disk risk**: 119GB VPS drive; ENOSPC corrupts files; npm cache can eat 5GB
 - **n8n quirks**: 2.9.4 task-runner spawns despite `N8N_RUNNERS_ENABLED=false`; CPU load normalized to ~9.6%
@@ -80,4 +86,4 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 | Brownfield: fix-first milestone | Platform is live; stabilize before adding features | — Pending |
 
 ---
-*Last updated: 2026-03-29 — Phase 07 complete (fix-critical-defects): METR-05 and AUDIT-03 verified — disk alert restored in W_QUEUE_METRICS, VITE_N8N_URL baked into Dockerfile, AuditLogView fetch path and response shape fixed*
+*Last updated: 2026-04-04 — Phase 2 (logging) complete, Phase 3 (audit/metrics) mostly complete, Phase 6 (performance) mostly complete; 21/34 v1 requirements closed*

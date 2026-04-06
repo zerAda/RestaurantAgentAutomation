@@ -2,60 +2,48 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-03-30T10:22:56.313Z"
+status: active
+stopped_at: CI/CD pipeline recovery — 6 blocking failures fixed, main pushed (f344190)
+last_updated: "2026-04-06T05:40:00.000Z"
 progress:
-  total_phases: 10
-  completed_phases: 9
-  total_plans: 29
-  completed_plans: 27
+  total_phases: 7
+  completed_phases: 3
+  total_plans: 22
+  completed_plans: 18
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-18)
+See: .planning/PROJECT.md (updated 2026-04-06)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phase 10 — verification-and-nyquist-compliance
+**Current focus:** CI/CD recovery complete (6 fixes on main) — VPS awaiting first successful deploy; next: Phase 4 (Test Coverage — Routing & Permissions)
 
 ## Current Position
 
-Phase: 10 (verification-and-nyquist-compliance) — COMPLETE
-Plan: 2 of 2 (COMPLETE)
+Phase: 06 (performance-tuning) — MOSTLY COMPLETE (7/9 requirements)
+Next up: Phase 04 (test-coverage-routing-permissions) or Phase 03 gap closure (METR-04/05)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 2
-- Average duration: 5 min
-- Total execution time: 0.2 hours
+- Total plans completed: 18
+- Phases with delivered work: 4 (Phase 1, 2, 3, 6)
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-cms-stability-and-base-upgrade | 1 | 3 min | 3 min |
-| 07-nemoclaw-telegram-bot-nvidia-nim-integration-and-reliability-improvements | 1 | 7 min | 7 min |
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 01-cms-stability-and-base-upgrade | 3/4 | Gap closure pending |
+| 02-structured-logging-and-correlation | 5/5 | Complete (2026-03-23) |
+| 03-metrics-alerting-audit-trail | 4/5 | Mostly complete (METR-04/05 pending) |
+| 06-performance-tuning | 4/5 | Mostly complete (PERF-03/08 pending) |
+| 07-nemoclaw-telegram-bot | 1/4 | In progress |
 
-**Recent Trend:**
-
-- Last 5 plans: 01-01 (3 min), 07-02 (7 min)
-- Trend: -
-
-*Updated after each plan completion*
-| Phase 02 P05 | 3 | 2 tasks | 2 files |
-| Phase 06-performance-tuning P01 | 6 | 4 tasks | 3 files |
-| Phase 06-performance-tuning P02 | 1min | 2 tasks | 0 files |
-| Phase 08-n8n-e2e-test-implementation P01 | 6min | 1 tasks | 1 files |
-| Phase 08-n8n-e2e-test-implementation P02 | 3min | 1 tasks | 1 files |
-| Phase 09-integration-wiring-and-ci-fixes P02 | 2 | 2 tasks | 1 files |
-| Phase 10-verification-and-nyquist-compliance P01 | 4min | 3 tasks | 3 files |
-| Phase 10-verification-and-nyquist-compliance P02 | 3min | 3 tasks | 3 files |
-| Phase 10-verification-and-nyquist-compliance P01 | 4 | 3 tasks | 3 files |
+*Updated: 2026-04-04*
 
 ## Accumulated Context
 
@@ -77,23 +65,6 @@ Plan: 2 of 2 (COMPLETE)
 - [02-05] OBS-02 confirmed complete: Strapi CMS emits 50+ structured JSON lines with service='strapi-cms' field
 - [Phase 02-05]: OBS-01 not marked complete: VPS n8n is 1.80.0 (not 2.9.4) and does not honor N8N_LOG_FORMAT=json — requires n8n upgrade to resolve
 - [Phase 02-05]: OBS-02 confirmed complete: Strapi CMS emits structured JSON logs with service='strapi-cms' field (50+ lines confirmed by smoke test)
-- [Phase 06-01]: PERF-08 structural proxy: check chunkCount >= 5 and entryKB <= 30 vs smallest index-*.js — monolithic baseline no longer in git
-- [Phase 06-01]: npm install --legacy-peer-deps: lucide-react peer dep conflict blocks npm ci — use legacy mode for test execution
-- [Phase 06-01]: vi.mock hoisting: declare vi.mock at module top before dynamic import for menuService cache test
-- [Phase 06-02]: PERF-05 accepted as deployment-ready: W_REDIS_MONITOR.json structurally correct; live execution requires VPS import
-- [Phase 06-02]: PERF-08 verified via structural proxy: 35 chunks (>= 5) and entry 0.06 KB (<= 30 KB) — monolithic baseline not needed
-- [Phase 08-01]: META_APP_SECRET defaults to ci-test (matches docker-compose.test.yml) — any mismatch causes sig_mismatch in W1_IN_WA and no inbound_messages row is written
-- [Phase 08-01]: Outbox seed entry requires retryable=true: W15 only re-queues if retryable=true AND attempts < maxAttempts(7); missing field routes entry to DLQ instead of pending
-- [Phase 09-02]: smoke-nginx-routing.sh manages its own Docker container — services: nginx block removed to prevent port conflict
-- [Phase 09-02]: PR trigger for smoke-nginx-routing uses github.event_name == 'pull_request' (job-level paths: filter not supported in GitHub Actions)
-- [Phase 09-02]: ops schema verification resets MISSING=0 before ops loop for explicit correctness
-- [Phase 08-02]: CI job inlines full compose stack lifecycle because test_harness.sh tears down at step 8 (docker compose down -v) — cannot be reused as setup-only script
-- [Phase 08-02]: n8n-workflow-e2e depends on [integrity-gate, test-harness] so it only runs on isolated runner after basic stack health is confirmed
-- [Phase 08-02]: Workflow activation via DB UPDATE workflow_entity SET active = true — n8n 2.x PATCH returns active=unknown and is unreliable
-- [Phase 10-02]: Phase 02 VALIDATION.md created retroactively as status=compliant (not draft) — phase is already 6/6 verified, no pending work remains
-- [Phase 10-02]: Phase 04 VALIDATION.md had placeholder script names from pre-execution planning; corrected to actual built names: smoke-nginx-routing.sh and smoke-strapi-permissions.sh
-- [Phase 10-01]: Phase 01 VERIFICATION.md: score 5/6 accepted — INFRA-03 partial is pre-existing Phase 4 scope
-- [Phase 10-01]: Phase 03/04 VERIFICATION.md: written to post-fix state (Phase 7 disk alert fix, Phase 9 workflow activation and CI smoke script fix)
 
 ### Roadmap Evolution
 
@@ -112,6 +83,18 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T10:17:54.050Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-04-06
+Stopped at: CI/CD pipeline recovery — 6 blocking failures identified and fixed across 5 commits (358ea78..f344190), all merged to main, awaiting CD pipeline to complete and VPS to recover to HTTP 200.
 Resume file: None
+
+### Recent fixes (2026-04-06, commits 358ea78..f344190)
+- Duplicate CD auto-trigger removed from ralphe-cd-deploy.yml
+- nginx CI health check port corrected (8080:8080 → 8080:80)
+- backup.sh: postgres container selected by compose project label (not just image)
+- deploy_to_node.sh: secret files + Docker volumes created on EVERY deploy (not just first)
+- deploy_to_node.sh: LOG_DIR fallback when /var/log not writable + ERR trap for diagnostics
+- cd-deploy.yml: deploy proceeds on backup failure (warning only); packages:read permission added
+
+### Pending security actions
+- Rotate Telegram Bot Token `8740905714:AAEtLrx-...` exposed in commit cd133f19
+- Rotate n8n encryption key and API keys exposed in historical commits

@@ -1,0 +1,13 @@
+📍 Pour la livraison, j’ai besoin de quelques précisions :
+
+Merci d’envoyer *dans ce format* :
+Wilaya: <...>
+Commune: <...>
+Adresse: <rue + repère>
+Tel: <...>
+
+Exemple :
+Wilaya: Alger
+Commune: Hydra
+Adresse: 12 rue ..., près de ...
+Tel: 05xx xx xx xx

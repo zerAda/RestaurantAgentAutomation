@@ -1,0 +1,829 @@
+﻿diff --cc .github/workflows/ci.yml
+index bd335bb,c77ac5a..0000000
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@@ -732,12 -697,20 +732,26 @@@ jobs
+      name: Nginx Routing Smoke
+      runs-on: ubuntu-latest
+      needs: [integrity-gate, lint-validate]
+ -    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+ +    if: >-
+ +      github.ref == 'refs/heads/main' ||
+ +      startsWith(github.ref, 'refs/heads/release/') ||
+ +      github.event_name == 'pull_request'
+      timeout-minutes: 10
+  
+++<<<<<<< HEAD
+++=======
++     services:
++       nginx:
++         image: nginx:1.27-alpine
++         ports:
++           - 8080:80
++         options: >-
++           --health-cmd "curl -sf http://localhost/ || exit 1"
++           --health-interval 10s
++           --health-timeout 5s
++           --health-retries 5
++ 
+++>>>>>>> origin/main
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+diff --cc .gitignore
+index 54c7f3c,5a22e53..0000000
+--- a/.gitignore
++++ b/.gitignore
+@@@ -1,4 -1,4 +1,9 @@@
+  vps_configs.txt
+  CREDENTIALS_CHECKLIST.md
+++<<<<<<< HEAD
+ +.ralph/logs/
+ +_bmad-output/
+++=======
++ .env
++ vps.env
+++>>>>>>> origin/main
+diff --cc .planning/PROJECT.md
+index 5b83f64,01369ad..0000000
+--- a/.planning/PROJECT.md
++++ b/.planning/PROJECT.md
+@@@ -80,4 -86,4 +86,8 @@@ Orders placed on any channel (messagin
+  | Brownfield: fix-first milestone | Platform is live; stabilize before adding features | ÔÇö Pending |
+  
+  ---
+++<<<<<<< HEAD
+ +*Last updated: 2026-03-29 ÔÇö Phase 07 complete (fix-critical-defects): METR-05 and AUDIT-03 verified ÔÇö disk alert restored in W_QUEUE_METRICS, VITE_N8N_URL baked into Dockerfile, AuditLogView fetch path and response shape fixed*
+++=======
++ *Last updated: 2026-04-04 ÔÇö Phase 2 (logging) complete, Phase 3 (audit/metrics) mostly complete, Phase 6 (performance) mostly complete; 21/34 v1 requirements closed*
+++>>>>>>> origin/main
+diff --cc .planning/REQUIREMENTS.md
+index 62495c7,28e0e60..0000000
+--- a/.planning/REQUIREMENTS.md
++++ b/.planning/REQUIREMENTS.md
+@@@ -26,19 -26,18 +26,32 @@@
+  
+  ### Observability ÔÇö Metrics & Alerting
+  
+++<<<<<<< HEAD
+ +- [ ] **METR-01**: n8n queue depth (pending executions) is exported as a metric (Prometheus or structured log)
+ +- [ ] **METR-02**: Workflow error rate is tracked and loggable (failures per hour per workflow)
+ +- [x] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) ÔÇö currently blind
+++=======
++ - [x] **METR-01**: n8n queue depth (pending executions) is exported as a metric (Prometheus or structured log) ÔÇö delivered via `W_QUEUE_METRICS` workflow (2026-03-26)
++ - [x] **METR-02**: Workflow error rate is tracked and loggable (failures per hour per workflow) ÔÇö delivered via `W_QUEUE_METRICS` workflow (2026-03-26)
++ - [x] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) ÔÇö nginx.conf updated with `limit_req_log_level` (2026-03-26)
+++>>>>>>> origin/main
+  - [ ] **METR-04**: Alert fires when queue depth > 50 pending executions for > 5 minutes
+  - [ ] **METR-05**: Alert fires when disk usage > 80% of 119GB (< 24GB free)
+  
+  ### Observability ÔÇö Audit Trail
+  
+++<<<<<<< HEAD
+ +- [x] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at)
+ +- [ ] **AUDIT-02**: All inbound adapter workflows (W_IN_WHATSAPP, W_IN_INSTAGRAM, W_IN_MESSENGER) write an audit entry on execution start and end
+ +- [ ] **AUDIT-03**: Audit log is queryable from the admin dashboard (basic search by date range + workflow name)
+ +- [ ] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted)
+++=======
++ - [x] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at) ÔÇö migration `2026-03-23_p3_workflow_audit.sql` (2026-03-26)
++ - [x] **AUDIT-02**: All inbound adapter workflows (W_IN_WHATSAPP, W_IN_INSTAGRAM, W_IN_MESSENGER) write an audit entry on execution start and end ÔÇö audit hooks added to W1/W2/W3 + `W_AUDIT_WRITE` workflow (2026-03-26)
++ - [x] **AUDIT-03**: Audit log is queryable from the admin dashboard (basic search by date range + workflow name) ÔÇö `AuditLogView` page + `W_AUDIT_QUERY` workflow (2026-03-26)
++ - [x] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted) ÔÇö `W_AUDIT_ARCHIVE` workflow (2026-03-26)
+++>>>>>>> origin/main
+ +
+  
+  ### Test Coverage ÔÇö Nginx Routing
+  
+@@@ -62,21 -61,21 +75,39 @@@
+  
+  ### Performance ÔÇö Database
+  
+++<<<<<<< HEAD
+ +- [x] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists
+ +- [x] **PERF-02**: Migration adds `CREATE INDEX idx_orders_user_status ON orders(user_id, status)` if not exists (NOTE: orders table has no customer_id column; the actual column is user_id ÔÇö canonical index name is idx_orders_user_status)
+ +- [x] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage
+ +
+ +### Performance ÔÇö Redis
+ +
+ +- [x] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill)
+ +- [x] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used
+ +- [x] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md`
+ +
+ +### Performance ÔÇö Frontend
+ +
+ +- [x] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting)
+ +- [x] **PERF-08**: Code splitting is structurally active: `dist/assets/` contains 5 or more JS chunks AND the entry bundle (`index-*.js`) is 30KB or less (monolithic baseline no longer exists in git; entry-bundle size is the measurable proxy for the 30% reduction intent)
+ +- [x] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render
+++=======
++ - [x] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists ÔÇö migration `2026-03-26_p6_orders_indexes.sql` (2026-03-26)
++ - [x] **PERF-02**: Migration adds `CREATE INDEX idx_orders_customer_status ON orders(customer_id, status)` if not exists ÔÇö migration `2026-03-26_p6_orders_indexes.sql` (2026-03-26)
++ - [ ] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage ÔÇö tooling ready (`scripts/verify-orders-indexes.sh`), needs VPS execution
++ 
++ ### Performance ÔÇö Redis
++ 
++ - [x] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill) ÔÇö confirmed in `infra/redis/entrypoint.sh`
++ - [x] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used ÔÇö `W_REDIS_MONITOR` workflow (2026-03-26)
++ - [x] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md` ÔÇö updated 2026-03-26
++ 
++ ### Performance ÔÇö Frontend
++ 
++ - [x] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting) ÔÇö `admin-dashboard/src/App.tsx` refactored (2026-03-26)
++ - [ ] **PERF-08**: Initial JS bundle size is reduced by at least 30% compared to current monolithic build ÔÇö lazy loading applied, needs build measurement
++ - [x] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render ÔÇö `menuService.ts` 5-min localStorage cache + VerticalVideoFeed integration (2026-03-26)
+++>>>>>>> origin/main
+  
+  ## v2 Requirements
+  
+@@@ -123,44 -122,43 +154,82 @@@
+  | OBS-02 | Phase 2 | Complete |
+  | OBS-03 | Phase 2 | Complete |
+  | OBS-04 | Phase 2 | Complete |
+++<<<<<<< HEAD
+ +| METR-01 | Phase 12 (gap closure from Phase 3) | Pending |
+ +| METR-02 | Phase 12 (gap closure from Phase 3) | Pending |
+ +| METR-03 | Phase 3 | Complete |
+ +| METR-04 | Phase 12 (gap closure from Phase 3) | Pending |
+ +| METR-05 | Phase 12 (gap closure from Phase 7) | Pending |
+ +| AUDIT-01 | Phase 9 (gap closure from Phase 3) | Complete |
+ +| AUDIT-02 | Phase 11 (gap closure from Phase 9) | Pending |
+ +| AUDIT-03 | Phase 13 (gap closure from Phase 7) | Pending |
+ +| AUDIT-04 | Phase 11 (gap closure from Phase 9) | Pending |
+ +| TEST-01 | Phase 4 | Complete |
+ +| TEST-02 | Phase 4 | Complete |
+ +| TEST-03 | Phase 9 (gap closure from Phase 4) | Complete |
+ +| TEST-04 | Phase 9 (gap closure from Phase 4) | Complete |
+ +| TEST-05 | Phase 4 | Complete |
+ +| TEST-06 | Phase 4 | Complete |
+ +| TEST-07 | Phase 4 | Complete |
+ +| TEST-08 | Phase 4 | Complete |
+ +| TEST-09 | Phase 8 (gap closure from Phase 5) | Complete |
+ +| TEST-10 | Phase 8 (gap closure from Phase 5) | Complete |
+ +| TEST-11 | Phase 8 (gap closure from Phase 5) | Complete |
+ +| PERF-01 | Phase 6 | Complete |
+ +| PERF-02 | Phase 6 | Complete |
+ +| PERF-03 | Phase 6 | Complete |
+ +| PERF-04 | Phase 6 | Complete |
+ +| PERF-05 | Phase 6 | Complete |
+ +| PERF-06 | Phase 6 | Complete |
+ +| PERF-07 | Phase 6 | Complete |
+ +| PERF-08 | Phase 6 | Complete |
+ +| PERF-09 | Phase 6 | Complete |
+++=======
++ | METR-01 | Phase 3 | Complete (W_QUEUE_METRICS, 2026-03-26) |
++ | METR-02 | Phase 3 | Complete (W_QUEUE_METRICS, 2026-03-26) |
++ | METR-03 | Phase 3 | Complete (nginx.conf rate-limit logging, 2026-03-26) |
++ | METR-04 | Phase 3 | Pending |
++ | METR-05 | Phase 3 | Pending |
++ | AUDIT-01 | Phase 3 | Complete (workflow_audit migration, 2026-03-26) |
++ | AUDIT-02 | Phase 3 | Complete (W1/W2/W3 audit hooks, 2026-03-26) |
++ | AUDIT-03 | Phase 3 | Complete (AuditLogView + W_AUDIT_QUERY, 2026-03-26) |
++ | AUDIT-04 | Phase 3 | Complete (W_AUDIT_ARCHIVE, 2026-03-26) |
++ | TEST-01 | Phase 4 | Pending |
++ | TEST-02 | Phase 4 | Pending |
++ | TEST-03 | Phase 4 | Pending |
++ | TEST-04 | Phase 4 | Pending |
++ | TEST-05 | Phase 4 | Pending |
++ | TEST-06 | Phase 4 | Pending |
++ | TEST-07 | Phase 4 | Pending |
++ | TEST-08 | Phase 4 | Pending |
++ | TEST-09 | Phase 5 | Pending |
++ | TEST-10 | Phase 5 | Pending |
++ | TEST-11 | Phase 5 | Pending |
++ | PERF-01 | Phase 6 | Complete (migration, 2026-03-26) |
++ | PERF-02 | Phase 6 | Complete (migration, 2026-03-26) |
++ | PERF-03 | Phase 6 | Tooling ready, needs VPS execution |
++ | PERF-04 | Phase 6 | Complete (entrypoint.sh) |
++ | PERF-05 | Phase 6 | Complete (W_REDIS_MONITOR, 2026-03-26) |
++ | PERF-06 | Phase 6 | Complete (ENV_REFERENCE.md, 2026-03-26) |
++ | PERF-07 | Phase 6 | Complete (React lazy, 2026-03-26) |
++ | PERF-08 | Phase 6 | Pending (needs build measurement) |
++ | PERF-09 | Phase 6 | Complete (menuService cache, 2026-03-26) |
+++>>>>>>> origin/main
+  
+  **Coverage:**
+  - v1 requirements: 34 total
++ - Complete: 21
++ - In progress / pending: 13
+  - Mapped to phases: 34
+  - Unmapped: 0
+ +- Satisfied: 27 | Unsatisfied (runtime): 7 (METR-01, METR-02, METR-04, METR-05, AUDIT-02, AUDIT-03, AUDIT-04)
+ +- Gap closure phases: METR-01/02/04/05 ÔåÆ Phase 12, AUDIT-02/04 ÔåÆ Phase 11, AUDIT-03 ÔåÆ Phase 13, METR-05/AUDIT-03 ÔåÆ previously Phase 7 (re-assigned), AUDIT-01/TEST-03/04 ÔåÆ Phase 9, TEST-09/10/11 ÔåÆ Phase 8
+  
+  ---
+  *Requirements defined: 2026-03-18*
+++<<<<<<< HEAD
+ +*Last updated: 2026-03-28 ÔÇö PERF-02 index name corrected to idx_orders_user_status (orders table has user_id, not customer_id); PERF-08 acceptance criteria updated to entry-bundle proxy measurement (monolithic baseline no longer in git history)*
+ +*2026-03-28 ÔÇö Gap closure phases 7-10 added from v1.0 milestone audit; METR-05/AUDIT-03/TEST-09/TEST-10/TEST-11 reassigned to gap closure phases; AUDIT-01/AUDIT-02/AUDIT-04/TEST-03/TEST-04 also reassigned to Phase 9*
+++=======
++ *Last updated: 2026-04-04 ÔÇö Phase 6 performance tuning delivered (PERF-01/02/04-07/09 complete); Phase 3 audit trail delivered (AUDIT-01-04 complete, METR-01-03 complete); 7 PERF + 4 AUDIT + 3 METR requirements closed*
+++>>>>>>> origin/main
+diff --cc .planning/ROADMAP.md
+index 1ced841,5a7ce1a..0000000
+--- a/.planning/ROADMAP.md
++++ b/.planning/ROADMAP.md
+@@@ -13,19 -13,12 +13,28 @@@ capability ÔÇö no horizontal layers, n
+  ## Phases
+  
+  - [ ] **Phase 1: CMS Stability & Base Upgrade** - Eliminate the docker-cp runtime hack; bake all 15 Strapi API routes into source; upgrade Node.js 18 -> 20 across all services
+++<<<<<<< HEAD
+ +- [x] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end (completed 2007-03-23)
+ +- [ ] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table
+ +- [ ] **Phase 4: Test Coverage ÔÇö Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix with automated integration tests
+ +- [ ] **Phase 5: Test Coverage ÔÇö n8n Workflow E2E** - End-to-end tests for inbound adapters, outbox retry, and CI integration for workflow smoke tests
+ +- [x] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle (completed 2007-03-28)
+ +- [ ] **Phase 7: Fix Critical Defects** - Fix METR-05 (disk alert dead code) and AUDIT-03 (VITE_N8N_URL missing from Dockerfile + AuditLogView URL path mismatch) ÔÇö both are fail gates for milestone completion
+ +- [x] **Phase 8: n8n E2E Test Implementation** - Execute the Phase 5 plans (blocked since 2026-03-24): implement test-n8n-e2e.sh with DB assertion, outbound retry + Redis queue check, and wire CI job to actually run workflows (completed 2026-03-29)
+ +- [ ] **Phase 9: Integration Wiring & CI Fixes** - Activate Phase 3 workflows on VPS (all active=false), fix CI to run burst-test smoke variant for TEST-03, add ops.workflow_audit to CI EXPECTED_TABLES
+ +- [x] **Phase 10: Verification & Nyquist Compliance** - Create missing VERIFICATION.md for Phases 01/03/04, create VALIDATION.md for Phase 02, update draft VALIDATION.md for Phases 04/06 (completed 2026-03-30)
+ +- [ ] **Phase 11: VPS Ops ÔÇö Apply DB Migration & Activate Audit Chain** - Apply ops.workflow_audit migration to VPS, re-import and activate W_AUDIT_ARCHIVE (n8n 2.x fix), recreate gateway container (AUDIT-02, AUDIT-04)
+ +- [ ] **Phase 12: W_QUEUE_METRICS Runtime Fix** - Hardcode credential IDs in W_QUEUE_METRICS.json (replace empty env var expressions), fix Alpine-incompatible stat disk check (METR-01, METR-02, METR-04, METR-05)
+ +- [ ] **Phase 13: Admin Dashboard Audit Log Repair** - Add VITE_API_URL to compose build args, fix W_AUDIT_QUERY countQuery/filters, fix Dockerfile RUN keyword, rebuild and deploy (AUDIT-03)
+ +- [ ] **Phase 14: Nyquist Compliance & Documentation Cleanup** - Create Phase 09 VERIFICATION.md, create Phase 03 VALIDATION.md, promote draft VALIDATION.md files, fix stale ROADMAP/REQUIREMENTS checkboxes
+++=======
++ - [x] **Phase 2: Structured Logging & Correlation** - Add JSON structured logs with correlation IDs across n8n, Strapi, and Nginx so every request is traceable end-to-end (completed 2026-03-23)
++ - [ ] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table (7/9 requirements complete ÔÇö METR-04, METR-05 remaining)
++ - [ ] **Phase 4: Test Coverage ÔÇö Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix with automated integration tests
++ - [ ] **Phase 5: Test Coverage ÔÇö n8n Workflow E2E** - End-to-end tests for inbound adapters, outbox retry, and CI integration for workflow smoke tests
++ - [x] **Phase 6: Performance Tuning** - Add DB indexes for orders queries, enforce Redis eviction policy, and split the admin dashboard JS bundle (7/9 requirements complete ÔÇö PERF-03, PERF-08 remaining; completed 2026-03-26)
++ - [ ] **Phase 7: NemoClaw Telegram Bot** - Fix NVIDIA NIM config, async bridge with typing keepalive, error handling with retries, systemd auto-restart
+++>>>>>>> origin/main
+  
+  ## Phase Details
+  
+@@@ -66,10 -53,9 +75,10 @@@ Plans
+  - [x] 02-02-PLAN.md ÔÇö n8n: configure N8N_LOG_FORMAT=json for structured NDJSON output on main and worker (OBS-01)
+  - [x] 02-03-PLAN.md ÔÇö Strapi: Pino JSON logger config + request-id Koa middleware for correlation ID capture (OBS-02, OBS-04)
+  - [x] 02-04-PLAN.md ÔÇö End-to-end correlation smoke test verifying all four OBS requirements on live VPS (OBS-01, OBS-02, OBS-03, OBS-04)
+- - [ ] 02-05-PLAN.md ÔÇö Gap closure: document OBS-01 known limitation and mark OBS-02 complete in REQUIREMENTS.md (OBS-01, OBS-02)
++ - [x] 02-05-PLAN.md ÔÇö Gap closure: document OBS-01 known limitation and mark OBS-02 complete in REQUIREMENTS.md (OBS-01, OBS-02)
+  
+  ### Phase 3: Metrics, Alerting & Audit Trail
+ +
+  **Goal**: Operators can observe queue health and disk pressure in near-real-time; all inbound workflow executions are recorded in a queryable audit table with 90-day retention
+  **Depends on**: Phase 2
+  **Requirements**: METR-01, METR-02, METR-03, METR-04, METR-05, AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04
+@@@ -81,17 -66,15 +90,25 @@@
+    4. A `workflow_audit` table exists in PostgreSQL; W_IN_WHATSAPP, W_IN_INSTAGRAM, and W_IN_MESSENGER write audit entries on execution start and completion
+    5. The admin dashboard has a basic audit log view where operators can search by date range and workflow name
+    6. Audit entries older than 90 days are archived (not deleted) by an automated process
+- **Plans:** 5 plans
++ **Plans:** 5 plans (4 delivered via Phase 6 commit, 1 partially delivered)
+  Plans:
+++<<<<<<< HEAD
+ +
+ +- [ ] 03-01-PLAN.md ÔÇö DB migration (ops.workflow_audit tables) + nginx rate-limit logging + /v1/internal/ proxy (METR-03, AUDIT-01)
+ +- [ ] 03-02-PLAN.md ÔÇö W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-02, METR-04, METR-05)
+ +- [ ] 03-03-PLAN.md ÔÇö W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE workflows (AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04)
+ +- [ ] 03-04-PLAN.md ÔÇö Patch W1_IN_WA, W2_IN_IG, W3_IN_MSG with fire-and-forget audit hooks (AUDIT-02)
+ +- [ ] 03-05-PLAN.md ÔÇö Admin dashboard AuditLogView page with date range filter and pagination (AUDIT-03)
+++=======
++ - [x] 03-01-PLAN.md ÔÇö DB migration (ops.workflow_audit tables) + nginx rate-limit logging + /v1/internal/ proxy (METR-03, AUDIT-01) ÔÇö delivered 2026-03-26
++ - [ ] 03-02-PLAN.md ÔÇö W_QUEUE_METRICS workflow: queue depth + error rate + disk CRITICAL alerts (METR-01, METR-02, METR-04, METR-05) ÔÇö METR-01/02 delivered, METR-04/05 pending
++ - [x] 03-03-PLAN.md ÔÇö W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE workflows (AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04) ÔÇö delivered 2026-03-26
++ - [x] 03-04-PLAN.md ÔÇö Patch W1_IN_WA, W2_IN_IG, W3_IN_MSG with fire-and-forget audit hooks (AUDIT-02) ÔÇö delivered 2026-03-26
++ - [x] 03-05-PLAN.md ÔÇö Admin dashboard AuditLogView page with date range filter and pagination (AUDIT-03) ÔÇö delivered 2026-03-26
+++>>>>>>> origin/main
+  
+  ### Phase 4: Test Coverage ÔÇö Routing & Permissions
+ +
+  **Goal**: Automated tests guard the two most fragile, zero-coverage surfaces: nginx routing and Strapi permission matrix; both run in CI on relevant PRs
+  **Depends on**: Phase 1
+  **Requirements**: TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, TEST-06, TEST-07, TEST-08
+@@@ -131,153 -108,45 +148,189 @@@ Plans
+  **Depends on**: Phase 3
+  **Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05, PERF-06, PERF-07, PERF-08, PERF-09
+  **Success Criteria** (what must be TRUE):
+ -  1. A new migration adds `idx_orders_status_created` and `idx_orders_customer_status` indexes if they do not exist; EXPLAIN ANALYZE on the 3 most common order queries confirms index usage
+ +
+ +  1. A new migration adds `idx_orders_status_created` and `idx_orders_user_status` indexes if they do not exist; EXPLAIN ANALYZE on the 3 most common order queries confirms index usage (NOTE: orders table uses user_id not customer_id ÔÇö index is idx_orders_user_status)
+    2. Redis `maxmemory-policy` is set to `allkeys-lru`; Redis memory usage is logged every 15 minutes and fires an alert if usage exceeds 200MB; configuration is documented in `ENV_REFERENCE.md`
+ -  3. Admin dashboard uses React Router `lazy()` for all view components; initial JS bundle size is at least 30% smaller than the pre-split baseline
+ +  3. Admin dashboard uses React Router `lazy()` for all view components; code splitting is structurally active ÔÇö `dist/assets/` contains 5 or more JS chunks and the entry bundle (`index-*.js`) is 30KB or less
+    4. Kiosk menu data uses ETag or 5-minute TTL caching; repeated renders do not trigger redundant Strapi API calls
+++<<<<<<< HEAD
+ +**Plans:** 2/2 plans complete
+++=======
++ **Plans**: Delivered in single commit (2026-03-26)
++ Plans:
++ - [x] DB indexes migration (`2026-03-26_p6_orders_indexes.sql`) + verification script (PERF-01, PERF-02)
++ - [x] Redis monitor workflow (`W_REDIS_MONITOR`) + ENV_REFERENCE.md update (PERF-04, PERF-05, PERF-06)
++ - [x] Admin dashboard React lazy loading (`App.tsx` refactored) (PERF-07)
++ - [x] Kiosk menu caching (`VerticalVideoFeed` + `menuService.ts` integration) (PERF-09)
++ - [ ] Bundle size measurement (PERF-03 VPS EXPLAIN ANALYZE, PERF-08 build comparison) ÔÇö pending VPS deployment
++ 
++ ### Phase 7: NemoClaw Telegram Bot NVIDIA NIM integration and reliability improvements
++ **Goal**: The NemoClaw Telegram bot (@AdelClaw_Nemobot) responds to messages using NVIDIA NIM LLM inference, with async non-blocking processing, typing indicators, retry logic for transient errors, and auto-restart via systemd
++ **Depends on**: Nothing (independent of main platform phases)
++ **Requirements**: NIM-01, NIM-02, BOT-01, BOT-02, BOT-03, SVC-01, SVC-02
++ **Success Criteria** (what must be TRUE):
++   1. NVIDIA NIM API returns HTTP 200 for model `meta/llama-3.3-70b-instruct` with the configured API key
++   2. `openclaw agent` responds to a test message end-to-end without 404 or auth errors
++   3. Telegram bot responds to messages within 30 seconds with AI-generated text
++   4. Typing indicator appears during processing and clears after response
++   5. Rate-limited (429) and server errors produce user-friendly messages, not raw errors
++   6. systemd service restarts automatically after process kill (Restart=always)
++   7. Service survives SSH disconnect and VPS reboot (loginctl linger enabled)
++ **Plans:** 1/4 plans executed
+++>>>>>>> origin/main
+ +Plans:
+ +
+ +- [ ] 06-01-PLAN.md ÔÇö Wave 0 verification infrastructure: App.lazy.test.tsx, check-bundle-size.cjs, menuService.cache.test.ts (PERF-01 through PERF-07, PERF-09)
+ +- [ ] 06-02-PLAN.md ÔÇö Bundle size measurement + user sign-off on PERF-05 and PERF-08
+ +
+++<<<<<<< HEAD
+ +### Phase 7: Fix Critical Defects
+ +
+ +**Goal**: The two milestone fail-gate defects are resolved: W_QUEUE_METRICS disk alert fires correctly, and AuditLogView can reach W_AUDIT_QUERY via the correct URL
+ +**Depends on**: Phase 3 (fixes artifacts produced by Phase 3)
+ +**Requirements**: METR-05, AUDIT-03
+ +**Gap Closure:** Closes gaps from v1.0 audit ÔÇö METR-05 (diskUsedPct hardcoded -1) and AUDIT-03 (VITE_N8N_URL missing + path mismatch)
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. W_QUEUE_METRICS.json disk check reads actual filesystem usage; alert condition `diskUsedPct > diskAlertPct` fires correctly when disk is above threshold
+ +  2. `admin-dashboard/Dockerfile` declares `ARG VITE_N8N_URL` and `ENV VITE_N8N_URL`; docker-compose build args pass the correct n8n URL at image build time
+ +  3. `AuditLogView.tsx` fetch path matches the W_AUDIT_QUERY webhook path; a real AuditLogView request reaches the workflow and returns audit entries
+ +**Plans:** 2 plans
+ +Plans:
+ +
+ +- [ ] 07-01-PLAN.md ÔÇö Fix W_QUEUE_METRICS disk check (replace hardcoded -1 with real df/stat call) (METR-05)
+ +- [ ] 07-02-PLAN.md ÔÇö Fix admin-dashboard Dockerfile VITE_N8N_URL ARG/ENV + AuditLogView.tsx fetch path correction (AUDIT-03)
+ +
+ +### Phase 8: n8n E2E Test Implementation
+ +
+ +**Goal**: scripts/test-n8n-e2e.sh exists and verifies that the WA inbound adapter creates an inbound_messages DB row (direct Postgres write, not Strapi) and that outbound failures produce a Redis retry entry; CI executes these tests via a full compose stack lifecycle
+ +**Depends on**: Phase 5 (plans exist; this phase closes execution blockers and runs them)
+ +**Requirements**: TEST-09, TEST-10, TEST-11
+ +**Gap Closure:** Closes gaps from v1.0 audit ÔÇö Phase 5 was entirely unexecuted; this phase resolves the 4 blockers identified in 2026-03-24 session and executes the plans
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. `scripts/test-n8n-e2e.sh` exists; a POST to `/v1/inbound/whatsapp` with valid Meta-signed payload triggers W_IN_WHATSAPP_ADAPTER and an `inbound_messages` record is verified in the n8n Postgres DB
+ +  2. A simulated outbound failure results in a Redis queue entry confirming exponential backoff wiring
+ +  3. `docker/docker-compose.test.yml` includes META_APP_SECRET, META_SIGNATURE_REQUIRED, REDIS_CREDENTIAL_ID env vars; CI `n8n-workflow-e2e` job executes workflows (not HTTP-only check)
+ +**Plans:** 2/2 plans complete
+ +Plans:
+ +
+ +- [x] 08-01-PLAN.md ÔÇö Create test-n8n-e2e.sh with TEST-09 (Meta-signed WA inbound + Postgres DB assertion) and TEST-10 (outbox retry + Redis re-queue) (TEST-09, TEST-10)
+ +- [x] 08-02-PLAN.md ÔÇö Wire CI n8n-workflow-e2e job with full inline compose stack lifecycle (TEST-11)
+ +
+ +### Phase 9: Integration Wiring & CI Fixes
+ +
+ +**Goal**: Phase 3 audit chain is live (all workflows active on VPS); CI rate-limit burst test runs against the correct smoke script; ops schema migration is verified in CI
+ +**Depends on**: Phase 7 (AUDIT-03 Dockerfile fix needed before AuditLogView is useful)
+ +**Requirements**: AUDIT-01, AUDIT-02, AUDIT-04, METR-01, METR-02, METR-04, TEST-03, TEST-04
+ +**Gap Closure:** Closes integration gaps from v1.0 audit ÔÇö workflow activation, CI smoke script mismatch, ops schema CI verification
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. W_AUDIT_WRITE, W_AUDIT_QUERY, W_AUDIT_ARCHIVE, W_QUEUE_METRICS, W_REDIS_MONITOR all have `active=true` on VPS; audit chain produces entries for inbound workflow executions
+ +  2. CI `smoke-nginx-routing` job runs `smoke-nginx-routing.sh` (burst test variant) ÔÇö TEST-03 rate-limit assertion executes on every PR touching nginx.conf
+ +  3. `ci.yml` integration-tests `EXPECTED_TABLES` includes `ops.workflow_audit`; a P3 migration failure is caught by CI
+ +**Plans:** 1/2 plans executed
+ +Plans:
+ +
+ +- [ ] 09-01-PLAN.md ÔÇö Activate Phase 3 workflows on VPS via n8n API (AUDIT-02, AUDIT-04, METR-01, METR-02, METR-04)
+ +- [ ] 09-02-PLAN.md ÔÇö Fix CI: switch smoke-nginx-routing-v2.sh ÔåÆ smoke-nginx-routing.sh for TEST-03 burst test; add ops.workflow_audit to EXPECTED_TABLES (TEST-03, TEST-04, AUDIT-01)
+ +
+ +### Phase 10: Verification & Nyquist Compliance
+ +
+ +**Goal**: Every executed phase has a passing VERIFICATION.md and a non-draft VALIDATION.md; the milestone audit can complete with full coverage
+ +**Depends on**: Phase 7, Phase 8, Phase 9 (all fixes must be in place before verification)
+ +**Requirements**: (no new requirements ÔÇö closes Nyquist compliance gaps for existing phases)
+ +**Gap Closure:** Closes Nyquist compliance tech debt from v1.0 audit ÔÇö missing VERIFICATION.md for Phases 01/03/04, missing VALIDATION.md for Phase 02, draft VALIDATION.md for Phases 04/06
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. Phase 01 VERIFICATION.md is re-run and reflects 01-04 gap closure results (not stale pre-01-04 state)
+ +  2. Phase 03 VERIFICATION.md exists and verifies observable truths against the 6 Phase 3 success criteria
+ +  3. Phase 04 VERIFICATION.md exists and verifies observable truths against the 5 Phase 4 success criteria
+ +  4. Phase 02 VALIDATION.md exists with nyquist_compliant result
+ +  5. Phase 04 and Phase 06 VALIDATION.md files are updated from draft state to reflect actual execution
+ +**Plans:** 2/2 plans complete
+ +Plans:
+ +
+ +- [ ] 10-01-PLAN.md ÔÇö Re-verify Phase 01 and create VERIFICATION.md for Phases 03 and 04
+ +- [x] 10-02-PLAN.md ÔÇö Create Phase 02 VALIDATION.md; update Phase 04 and Phase 06 VALIDATION.md from draft state (completed 2026-03-30)
+ +
+ +### Phase 11: VPS Ops ÔÇö Apply DB Migration & Activate Audit Chain
+ +
+ +**Goal**: The `ops.workflow_audit` table exists on VPS Postgres; W_AUDIT_ARCHIVE is active on VPS; the gateway container serves `/v1/internal/` routes ÔÇö unblocking all audit chain requirements at runtime
+ +**Depends on**: Phase 10 (verifies prior state before VPS ops)
+ +**Requirements**: AUDIT-02, AUDIT-04
+ +**Gap Closure:** Closes runtime gaps from v1.0 audit ÔÇö INT-01 (Phase 3 DB migration never applied to VPS) and INT-05 (W_AUDIT_ARCHIVE not activated, n8n 2.x cron fix already committed 8bd4c33)
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. `SELECT COUNT(*) FROM ops.workflow_audit` executes without error on VPS Postgres; table exists with correct schema
+ +  2. W_AUDIT_ARCHIVE workflow has `active=true` on VPS n8n; the n8n 2.x-compatible cron version (commit 8bd4c33) is the live version
+ +  3. Gateway container is recreated from current compose; `GET https://api.srv1258231.hstgr.cloud/v1/internal/audit-log` is routable (returns non-502)
+ +**Plans:** 0 plans
+  Plans:
+ -- [ ] 07-01-PLAN.md ÔÇö Fix NVIDIA NIM model config and API key auth
+ -- [ ] 07-02-PLAN.md ÔÇö Patch Telegram bridge for async spawn, typing keepalive, retries, and error handling
+ -- [ ] 07-03-PLAN.md ÔÇö Fix systemd service and E2E Telegram verification
+ -- [ ] 07-04-PLAN.md ÔÇö Create dedicated GitHub repo for NemoClaw (separate project from RESTO BOT)
+  
+ -## Progress
+ +- [ ] 11-01-PLAN.md ÔÇö Run Phase 3 DB migration on VPS, re-import and activate W_AUDIT_ARCHIVE, recreate gateway container (AUDIT-02, AUDIT-04)
+ +
+ +### Phase 12: W_QUEUE_METRICS Runtime Fix
+ +
+ +**Goal**: W_QUEUE_METRICS.json uses hardcoded credential IDs (not empty env var expressions) and a correct Alpine-compatible disk check; queue depth, error rate, and disk alerts all fire at runtime on VPS
+ +**Depends on**: Phase 11 (VPS environment stabilised)
+ +**Requirements**: METR-01, METR-02, METR-04, METR-05
+ +**Gap Closure:** Closes runtime gaps from v1.0 audit ÔÇö INT-02 (empty env var credential IDs in W_QUEUE_METRICS) and WARN-04 (stat Alpine incompatibility regression from Phase 09 patching)
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. W_QUEUE_METRICS.json PG node `credentials.id` is hardcoded `"1mZZJEscADgQ8InR"` (not `={{$env.N8N_DB_CREDENTIAL_ID || ''}}`); Redis node credential ID is hardcoded `"43SDqJYMGa6RvFqW"`
+ +  2. W_QUEUE_METRICS.json disk check uses `df -k /` (not `stat -f -c`); `diskUsedPct` is computed from df output and is a real percentage (not -1)
+ +  3. W_QUEUE_METRICS is imported on VPS and active; a manual trigger produces queue depth and disk usage values in n8n execution log
+ +**Plans:** 0 plans
+ +Plans:
+ +
+ +- [ ] 12-01-PLAN.md ÔÇö Fix W_QUEUE_METRICS.json credential IDs (hardcode PG+Redis) and disk check (statÔåÆdf), import on VPS and activate (METR-01, METR-02, METR-04, METR-05)
+ +
+ +### Phase 13: Admin Dashboard Audit Log Repair
+ +
+ +**Goal**: AuditLogView can reach W_AUDIT_QUERY via the correct built URL; W_AUDIT_QUERY returns correct pagination totals and honours status/channel filters; the admin-dashboard image is rebuilt and deployed
+ +**Depends on**: Phase 11 (ops.workflow_audit table must exist before queries can succeed)
+ +**Requirements**: AUDIT-03
+ +**Gap Closure:** Closes runtime gaps from v1.0 audit ÔÇö INT-03 (VITE_API_URL not in compose build args), WARN-01 (countQuery never executes), WARN-02 (limit vs page_size mismatch), WARN-03 (status/channel filters ignored), WARN-06 (Dockerfile missing RUN keyword)
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. `docker-compose.hostinger.prod.yml` admin-dashboard build args include `VITE_API_URL: https://api.${DOMAIN_NAME}`; a freshly built image has the correct URL baked in
+ +  2. W_AUDIT_QUERY executes a separate countQuery PG node and returns `total` as the global row count (not current-page item count); `page_size` param is read (not `limit`)
+ +  3. W_AUDIT_QUERY SQL includes WHERE clauses for `status` and `channel` when those params are provided; filters are applied at DB level
+ +  4. `admin-dashboard/Dockerfile` line 28 has `RUN` before the touch/chown command; image builds cleanly on non-cached rebuild
+ +  5. Rebuilt admin-dashboard image is deployed on VPS; `AuditLogView` fetch reaches W_AUDIT_QUERY and returns audit entries
+ +**Plans:** 0 plans
+ +Plans:
+ +
+ +- [ ] 13-01-PLAN.md ÔÇö Fix compose build args (VITE_API_URL) + Dockerfile RUN keyword + W_AUDIT_QUERY countQuery/filter fixes (AUDIT-03)
+ +- [ ] 13-02-PLAN.md ÔÇö Rebuild and deploy admin-dashboard on VPS; smoke-verify AuditLogView end-to-end (AUDIT-03)
+ +
+ +### Phase 14: Nyquist Compliance & Documentation Cleanup
+ +
+ +**Goal**: All 10 executed phases have non-draft VALIDATION.md files and Phase 09 has a VERIFICATION.md; ROADMAP.md and REQUIREMENTS.md reflect actual completion state; milestone is ready to archive
+ +**Depends on**: Phase 11, Phase 12, Phase 13 (all runtime fixes must be in place so verification reflects true state)
+ +**Requirements**: (no new requirements ÔÇö closes INT-04 and Nyquist tech debt)
+ +**Gap Closure:** Closes documentation gaps from v1.0 audit ÔÇö INT-04 (Phase 09 VERIFICATION.md missing), missing Phase 03 VALIDATION.md, draft VALIDATION.md for Phases 01/07/09/10, stale checkboxes in ROADMAP.md and REQUIREMENTS.md
+ +**Success Criteria** (what must be TRUE):
+ +
+ +  1. Phase 09 VERIFICATION.md exists and documents CI achievements vs VPS partial state accurately
+ +  2. Phase 03 VALIDATION.md exists with `nyquist_compliant` result
+ +  3. Phases 01, 07, 09, 10 VALIDATION.md are promoted from draft to `nyquist_compliant: true`
+ +  4. ROADMAP.md phase completion markers (`[ ]`/`[x]`) match actual SUMMARY.md/VERIFICATION.md existence for all 14 phases
+ +  5. REQUIREMENTS.md checkboxes match audit final status table; coverage count is updated
+ +**Plans:** 0 plans
+ +Plans:
+  
+ +- [ ] 14-01-PLAN.md ÔÇö Create Phase 09 VERIFICATION.md + Phase 03 VALIDATION.md + promote Phases 01/07/09/10 VALIDATION.md from draft
+ +- [ ] 14-02-PLAN.md ÔÇö Fix stale ROADMAP.md phase markers and REQUIREMENTS.md checkboxes to match actual completion state
+++=======
++ | Phase | Plans Complete | Status | Completed |
++ |-------|----------------|--------|-----------|
++ | 1. CMS Stability & Base Upgrade | 3/4 | In progress (gap closure) | - |
++ | 2. Structured Logging & Correlation | 5/5 | Complete | 2026-03-23 |
++ | 3. Metrics, Alerting & Audit Trail | 4/5 | Mostly complete (METR-04/05 pending) | - |
++ | 4. Test Coverage ÔÇö Routing & Permissions | 0/3 | Not started | - |
++ | 5. Test Coverage ÔÇö n8n Workflow E2E | 0/2 | Not started | - |
++ | 6. Performance Tuning | 4/5 | Mostly complete (PERF-03/08 pending) | 2026-03-26 |
++ | 7. NemoClaw Telegram Bot | 1/4 | In progress | - |
+++>>>>>>> origin/main
+diff --cc .planning/STATE.md
+index 1f56f98,e121963..0000000
+--- a/.planning/STATE.md
++++ b/.planning/STATE.md
+@@@ -2,29 -2,29 +2,49 @@@
+  gsd_state_version: 1.0
+  milestone: v1.0
+  milestone_name: milestone
+++<<<<<<< HEAD
+ +status: unknown
+ +stopped_at: Completed 10-01-PLAN.md
+ +last_updated: "2026-03-30T10:22:56.313Z"
+ +progress:
+ +  total_phases: 10
+ +  completed_phases: 9
+ +  total_plans: 29
+ +  completed_plans: 27
+++=======
++ status: active
++ stopped_at: CI/CD pipeline recovery ÔÇö 6 blocking failures fixed, main pushed (f344190)
++ last_updated: "2026-04-06T05:40:00.000Z"
++ progress:
++   total_phases: 7
++   completed_phases: 3
++   total_plans: 22
++   completed_plans: 18
+++>>>>>>> origin/main
+  ---
+  
+  # Project State
+  
+  ## Project Reference
+  
+- See: .planning/PROJECT.md (updated 2026-03-18)
++ See: .planning/PROJECT.md (updated 2026-04-06)
+  
+  **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered ÔÇö reliably and without manual intervention.
+++<<<<<<< HEAD
+ +**Current focus:** Phase 10 ÔÇö verification-and-nyquist-compliance
+ +
+ +## Current Position
+ +
+ +Phase: 10 (verification-and-nyquist-compliance) ÔÇö COMPLETE
+ +Plan: 2 of 2 (COMPLETE)
+++=======
++ **Current focus:** CI/CD recovery complete (6 fixes on main) ÔÇö VPS awaiting first successful deploy; next: Phase 4 (Test Coverage ÔÇö Routing & Permissions)
++ 
++ ## Current Position
++ 
++ Phase: 06 (performance-tuning) ÔÇö MOSTLY COMPLETE (7/9 requirements)
++ Next up: Phase 04 (test-coverage-routing-permissions) or Phase 03 gap closure (METR-04/05)
+++>>>>>>> origin/main
+  
+  ## Performance Metrics
+  
+@@@ -36,26 -35,15 +55,33 @@@
+  
+  **By Phase:**
+  
+- | Phase | Plans | Total | Avg/Plan |
+- |-------|-------|-------|----------|
+- | 01-cms-stability-and-base-upgrade | 1 | 3 min | 3 min |
+- | 07-nemoclaw-telegram-bot-nvidia-nim-integration-and-reliability-improvements | 1 | 7 min | 7 min |
++ | Phase | Plans | Status |
++ |-------|-------|--------|
++ | 01-cms-stability-and-base-upgrade | 3/4 | Gap closure pending |
++ | 02-structured-logging-and-correlation | 5/5 | Complete (2026-03-23) |
++ | 03-metrics-alerting-audit-trail | 4/5 | Mostly complete (METR-04/05 pending) |
++ | 06-performance-tuning | 4/5 | Mostly complete (PERF-03/08 pending) |
++ | 07-nemoclaw-telegram-bot | 1/4 | In progress |
+  
+++<<<<<<< HEAD
+ +**Recent Trend:**
+ +
+ +- Last 5 plans: 01-01 (3 min), 07-02 (7 min)
+ +- Trend: -
+ +
+ +*Updated after each plan completion*
+ +| Phase 02 P05 | 3 | 2 tasks | 2 files |
+ +| Phase 06-performance-tuning P01 | 6 | 4 tasks | 3 files |
+ +| Phase 06-performance-tuning P02 | 1min | 2 tasks | 0 files |
+ +| Phase 08-n8n-e2e-test-implementation P01 | 6min | 1 tasks | 1 files |
+ +| Phase 08-n8n-e2e-test-implementation P02 | 3min | 1 tasks | 1 files |
+ +| Phase 09-integration-wiring-and-ci-fixes P02 | 2 | 2 tasks | 1 files |
+ +| Phase 10-verification-and-nyquist-compliance P01 | 4min | 3 tasks | 3 files |
+ +| Phase 10-verification-and-nyquist-compliance P02 | 3min | 3 tasks | 3 files |
+ +| Phase 10-verification-and-nyquist-compliance P01 | 4 | 3 tasks | 3 files |
+++=======
++ *Updated: 2026-04-04*
+++>>>>>>> origin/main
+  
+  ## Accumulated Context
+  
+@@@ -112,6 -83,18 +138,23 @@@ None yet
+  
+  ## Session Continuity
+  
+++<<<<<<< HEAD
+ +Last session: 2026-03-30T10:17:54.050Z
+ +Stopped at: Completed 10-01-PLAN.md
+++=======
++ Last session: 2026-04-06
++ Stopped at: CI/CD pipeline recovery ÔÇö 6 blocking failures identified and fixed across 5 commits (358ea78..f344190), all merged to main, awaiting CD pipeline to complete and VPS to recover to HTTP 200.
+++>>>>>>> origin/main
+  Resume file: None
++ 
++ ### Recent fixes (2026-04-06, commits 358ea78..f344190)
++ - Duplicate CD auto-trigger removed from ralphe-cd-deploy.yml
++ - nginx CI health check port corrected (8080:8080 ÔåÆ 8080:80)
++ - backup.sh: postgres container selected by compose project label (not just image)
++ - deploy_to_node.sh: secret files + Docker volumes created on EVERY deploy (not just first)
++ - deploy_to_node.sh: LOG_DIR fallback when /var/log not writable + ERR trap for diagnostics
++ - cd-deploy.yml: deploy proceeds on backup failure (warning only); packages:read permission added
++ 
++ ### Pending security actions
++ - Rotate Telegram Bot Token `8740905714:AAEtLrx-...` exposed in commit cd133f19
++ - Rotate n8n encryption key and API keys exposed in historical commits
+diff --cc AGENTS.md
+index d53536b,d710515..0000000
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@@ -1,96 -1,119 +1,218 @@@
+++<<<<<<< HEAD
+ +# Ralph├® ÔÇö Agent Instructions
+ +
+ +## Project Overview
+ +Restaurant automation platform: WhatsApp/IG/TikTok ordering bot, admin dashboard, kiosk app.
+ +Deployed on Hostinger VPS (72.60.190.192) via Docker Compose.
+ +
+ +## Tech Stack
+ +- **Orchestration**: n8n 2.9.4 (queue mode + worker, 97 workflows)
+ +- **CMS**: Strapi 4 on PostgreSQL (via PgBouncer)
+ +- **Frontend**: React + Vite (admin-dashboard, kiosk-app)
+ +- **Cache/Queue**: Redis 7-alpine (256MB, allkeys-lru)
+ +- **Database**: PostgreSQL 15-alpine
+ +- **Gateway**: Nginx 1.27-alpine
+ +- **AI**: Ollama (llama3.1), Whisper STT
+ +- **CI/CD**: GitHub Actions ÔåÆ self-hosted runner on VPS
+ +
+ +## Key Conventions
+ +1. **Structured logging**: All n8n Code nodes must use `console.log(JSON.stringify({level, event, ...}))`.
+ +2. **Credential references**: Use `$env.REDIS_CREDENTIAL_ID`, never hardcode credential IDs.
+ +3. **Health checks**: Every Docker service MUST have a healthcheck defined.
+ +4. **Security**: `security_opt: - no-new-privileges:true` and `cap_drop: - ALL` on every container.
+ +5. **Workflow naming**: `W<number>_<NAME>.json` (e.g., `W4_CORE.json`, `W15_OUTBOX_WORKER.json`).
+ +6. **Scripts**: Bash scripts in `scripts/`, must pass `bash -n` syntax check.
+ +7. **Migrations**: SQL files in `db/migrations/`, tracked via `schema_migrations` table.
+ +
+ +## File Structure Reminders
+ +- `docker-compose.hostinger.prod.yml` ÔÇö Production compose (THE source of truth)
+ +- `docker-compose.base.yml` ÔÇö Shared service definitions
+ +- `Makefile` ÔÇö All developer and ops commands
+ +- `scripts/git-deploy.sh` ÔÇö Git-based CD pipeline on VPS
+ +- `scripts/vps-sync.sh` ÔÇö rsync-based file sync to VPS
+ +- `workflows/` ÔÇö n8n workflow JSON files (DO NOT edit manually unless patching)
+ +- `infra/redis/entrypoint.sh` ÔÇö Redis startup with optional auth
+ +- `vps.env` ÔÇö VPS-specific environment (DO NOT commit secrets here)
+ +
+ +## Security Rules
+ +- NEVER commit `.env` or `secrets/` directory.
+ +- Redis password via `REDIS_PASSWORD` env var (optional but recommended).
+ +- Meta webhook signatures: `META_SIGNATURE_REQUIRED=enforce` in production.
+ +| Commande | Agent | Description |
+ +| :--- | :--- | :--- |
+ +| `/bmad-init` | **Planner (R1)** | Initialise un dossier de feature avec PRD et Architecture. |
+ +| `/gsd-run` | **Coder (Kimi)** | Ex├®cute le code en mode autonome sans interruption. |
+ +| `/qa-audit` | **Auditor (R1)** | Analyse le code produit pour valider la qualit├® Diamond-Grade. |
+ +| `/vps-health` | **Auditor (R1)** | Diagnostic complet de l'infrastructure VPS. |
+ +| `/ralphe-loop`| **Tous** | Cycle complet : Attribution -> Audit -> Optimisation. |
+ +- All sensitive values use Docker secrets mounted at `/run/secrets/`.
+ +
+ +## God Mode Architecture
+ +- **Planner (DeepReasoning)**: `DeepSeek R1`. Primary for architecture and complex analytical planning.
+ +- **Coder (Execution)**: `Kimi K2.5`. Primary for high-performance code generation.
+ +- **Auditor (QA/Validation)**: `DeepSeek R1`. Mandatory pass for security and integrity audits.
+ +- **Autonomy**: Full `allow` on `bash`, `edit`, `write`. The agent operates in a closed-loop (Ralph├® Loop) for autonomous development.
+ +
+ +## Diamond-Grade Execution Standards (Triple-Check)
+ +1. **PLAN (R1)**: Every feature begins with a Reasoning-dense PRD and ARCH.
+ +2. **EXEC (Kimi)**: Code is generated autonomously with Z├®ro Placeholder.
+ +3. **AUDIT (R1)**: Mandatory QA pass to verify security, performance, and n8n dependencies.
+ +4. **Structured logging**: All n8n Code nodes must use `console.log(JSON.stringify({level, event, ...}))`.
+ +
+ +## Deployment & Sync
+ +```bash
+ +# From local: sync + rebuild service
+ +bash scripts/vps-sync.sh --sync cms
+ +
+ +# On VPS: full git-based deploy
+ +bash /opt/resto/repo/scripts/git-deploy.sh
+ +
+ +# Quick restart (no rebuild)
+ +bash scripts/vps-sync.sh --sync --restart cms
+ +
+ +# Ralph├® Loop (Autonomous)
+ +/ralphe-loop
+ +```
+ +
+ +## BMAD-METHOD Integration
+ +
+ +BMAD commands are available as native OpenCode skills in `.opencode/skills/`.
+ +Load the matching skill name (for example `bmad-analyst` or `bmad-create-prd`)
+ +when the user asks for a BMAD workflow or agent. Use the OpenCode question tool (`question`)
+ +when a BMAD workflow needs interactive answers. See `_bmad/COMMANDS.md` for a full reference.
+ +
+ +### Phases
+ +
+ +| Phase | Focus | Key Agents |
+ +|-------|-------|-----------|
+ +| 1. Analysis | Understand the problem | Analyst agent |
+ +| 2. Planning | Define the solution | Product Manager agent |
+ +| 3. Solutioning | Design the architecture | Architect agent |
+ +| 4. Implementation | Build it | Developer agent, then Ralph autonomous loop |
+ +
+ +### Workflow
+ +
+ +1. Work through Phases 1-3 using BMAD agents and workflows
+ +2. For PRD creation, use `_bmad/lite/create-prd.md` for single-turn generation
+ +3. Use the bmalph-implement transition to prepare Ralph format, then start Ralph
+++=======
++ # AGENTS
++ 
++ ## Core Operating Rules
++ 
++ - Default workflow:
++   1. `/project:start`
++   2. `/project:gsd-triage` to structure any raw request
++   3. `/project:mapcodebase` if repo context is incomplete
++   4. `/project:bmad-spec` for new scope
++   5. `/project:arch-adr` for architectural decisions
++   6. `/project:impl`
++   7. `/project:test-full`
++   8. `/project:session-close`
++ 
++ - Every meaningful task gets a NID:
++   - Format: `YYYYMMDD-HHMM-short-slug`
++   - Example: `20260404-1645-workflow-audit`
++ 
++ - Every completed task must update:
++   1. Code or docs
++   2. Obsidian task state (`vault/`)
++   3. Decisions if architecture changed
++   4. Next-step note
++ 
++ ## Source of Truth Split
++ 
++ | Layer | Source | What |
++ |-------|--------|------|
++ | **Repo** | Git | Code, infra, schema, configs, scripts, migrations, workflows |
++ | **Obsidian** | `vault/` | Task state, decisions, progress, working context, handoff state |
++ | **Planning** | `.planning/` | GSD roadmap, requirements, phase plans (formal project management) |
++ 
++ ## Agent Roles
++ 
++ | Agent | Model | Purpose |
++ |-------|-------|---------|
++ | **coder** | DeepSeek V3 | Implementation, refactoring, tests, repo operations, doc updates |
++ | **task** | DeepSeek R1 | Sub-agent: architecture, audit, reasoning, deep analysis |
++ | **summarizer** | DeepSeek V3 | Auto-compact conversation context |
++ | **title** | DeepSeek V3 | Generate session titles |
++ 
++ ### Conceptual Roles (invoked via commands, not separate agents)
++ 
++ | Role | Triggered by | Model |
++ |------|-------------|-------|
++ | **plan** | `/project:gsd-triage`, `/project:bmad-spec`, `/project:arch-adr` | R1 (via task agent) |
++ | **repo-cartographer** | `/project:mapcodebase` | R1 (via task agent) |
++ | **workflow-architect** | `/project:workflow-audit` | R1 (via task agent) |
++ | **platform-sre** | `/project:docker-doctor`, `/project:release-cut` | R1 (via task agent) |
++ | **vault-curator** | `/project:session-close`, all state updates | V3 (via coder agent) |
++ | **security-auditor** | `/project:secrets-scan` | R1 (via task agent) |
++ 
++ ## Quality Gate (10-loop)
++ 
++ Before finalizing any plan or patch:
++ 1. **Correctness**: works end-to-end?
++ 2. **Contract safety**: keeps `/v1` stable?
++ 3. **Security**: reduces attack surface? New leak paths?
++ 4. **Reliability**: survives retries, timeouts, partial failures?
++ 5. **Ops**: deployable/rollable back quickly?
++ 6. **Observability**: detectable and debuggable?
++ 7. **Data safety**: backups/restore/migrations safe?
++ 8. **Performance**: risk of queue backlog, DB lock, memory blowup?
++ 9. **DX**: new engineer can run it locally?
++ 10. **Audit readiness**: can we explain & prove controls?
++ 
++ ## Definition of Done
++ 
++ A task is done only if:
++ - Change is implemented or explicitly scoped out
++ - Tests ran or a test gap is documented
++ - Docs updated when behavior changed
++ - Obsidian state updated (`vault/`)
++ - Next step is captured
++ - No unresolved secret/security leak introduced
++ 
++ ## Obsidian Note Convention
++ 
++ Every work note in `vault/` must include frontmatter:
++ 
++ ```yaml
++ ---
++ nid: 20260404-1645-workflow-audit
++ status: queued | in_progress | blocked | done | cancelled
++ area:
++   - repo
++   - workflow
++ repo_paths: []
++ decisions: []
++ related_commands: []
++ services: []
++ updated_at: 2026-04-04T16:45:00+02:00
++ owner: opencode
++ ---
++ ```
++ 
++ ## Retrieval Convention
++ 
++ Always search Obsidian notes by:
++ 1. `nid` (unique task ID)
++ 2. `repo_paths` (affected files/dirs)
++ 3. `area` (functional domain)
++ 4. `decisions` (ADR IDs)
++ 5. `services` (docker service names)
++ 
++ ## Naming Conventions
++ 
++ - **NIDs**: `YYYYMMDD-HHMM-short-slug`
++ - **ADRs**: `ADR-YYYYMMDD-NN` (e.g., `ADR-20260404-01`)
++ - **Commands**: `/project:<name>` (project-level OpenCode commands)
++ - **Vault paths**: `vault/<NN>-<Category>/<NID or topic>.md`
++ 
++ ## Key Security Rules
++ 
++ 1. Never commit secrets ÔÇö check with `/project:secrets-scan` before release
++ 2. Never modify `.env` files through automation
++ 3. Never `docker compose down -v` without explicit confirmation
++ 4. Never force-push to `main` or `release/*`
++ 5. Always verify branch before destructive operations
+++>>>>>>> origin/main
+* Unmerged path .env

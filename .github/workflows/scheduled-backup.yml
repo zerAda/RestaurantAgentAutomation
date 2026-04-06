@@ -10,6 +10,7 @@
 # - Supports non-root VPS user (must be in docker group)
 # - Backup rotation (daily: 7 days, weekly: 4 weeks)
 # - Integrity verification (gunzip -t)
+# - Off-site S3 upload with GPG encryption (upload-offsite job)
 # =============================================================================
 
 name: Scheduled Backup
@@ -498,12 +499,101 @@ jobs:
           ENDSSH
 
   # =========================================================================
-  # Job 4: Summary
+  # Job 4: Upload Backup Off-site (S3 + GPG encryption)
+  # =========================================================================
+  upload-offsite:
+    name: Upload Off-site (S3)
+    runs-on: ubuntu-latest
+    needs: [backup]
+    if: needs.backup.outputs.backup_success == 'true'
+    timeout-minutes: 10
+    env:
+      BACKUP_NAME: ${{ needs.backup.outputs.backup_name }}
+      BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ env.VPS_HOST }}
+
+      - name: Verify S3 secrets are configured
+        run: |
+          MISSING=""
+          if [ -z "${{ secrets.S3_ACCESS_KEY_ID }}" ]; then
+            MISSING="$MISSING S3_ACCESS_KEY_ID"
+          fi
+          if [ -z "${{ secrets.S3_SECRET_ACCESS_KEY }}" ]; then
+            MISSING="$MISSING S3_SECRET_ACCESS_KEY"
+          fi
+          if [ -z "${{ secrets.BACKUP_GPG_PASSPHRASE }}" ]; then
+            MISSING="$MISSING BACKUP_GPG_PASSPHRASE"
+          fi
+          if [ -n "$MISSING" ]; then
+            echo "::error::S3_ACCESS_KEY_ID secret not configured — off-site upload required. Missing:$MISSING"
+            echo "::error::Add the missing secrets at: Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+          echo "All required secrets are configured."
+
+      - name: Ensure awscli is available
+        run: |
+          if ! command -v aws &>/dev/null; then
+            pip install awscli --quiet
+          fi
+          aws --version
+
+      - name: Download backup from VPS
+        run: |
+          echo "Downloading ${BACKUP_NAME}-db.dump.gz from VPS..."
+          scp -o StrictHostKeyChecking=no \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.BACKUP_DIR }}/${BACKUP_NAME}-db.dump.gz \
+            /tmp/${BACKUP_NAME}-db.dump.gz
+          echo "Download complete."
+
+      - name: Verify gzip integrity on runner
+        run: |
+          gunzip -t /tmp/${BACKUP_NAME}-db.dump.gz
+          echo "Gzip integrity check passed."
+
+      - name: GPG-encrypt backup
+        run: |
+          echo "$BACKUP_GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 \
+            -o /tmp/${BACKUP_NAME}-db.dump.gz.gpg \
+            /tmp/${BACKUP_NAME}-db.dump.gz
+          echo "GPG encryption complete."
+
+      - name: Upload to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+        run: |
+          REGION="${{ vars.S3_BACKUP_REGION }}"
+          REGION="${REGION:-auto}"
+          aws s3 cp /tmp/${BACKUP_NAME}-db.dump.gz.gpg \
+            s3://${{ vars.S3_BACKUP_BUCKET }}/postgres/${BACKUP_NAME}-db.dump.gz.gpg \
+            --endpoint-url ${{ vars.S3_BACKUP_ENDPOINT }} \
+            --region "${REGION}"
+          echo "::notice::Off-site upload complete: s3://${{ vars.S3_BACKUP_BUCKET }}/postgres/${BACKUP_NAME}-db.dump.gz.gpg"
+
+      - name: Cleanup temp files
+        if: always()
+        run: |
+          rm -f /tmp/${BACKUP_NAME}-db.dump.gz /tmp/${BACKUP_NAME}-db.dump.gz.gpg
+          echo "Temp files removed."
+
+  # =========================================================================
+  # Job 5: Summary
   # =========================================================================
   summary:
     name: Generate Summary
     runs-on: ubuntu-latest
-    needs: [check-prerequisites, pre-checks, backup]
+    needs: [check-prerequisites, pre-checks, backup, upload-offsite]
     if: always()
     timeout-minutes: 2
 
@@ -523,6 +613,7 @@ jobs:
           | **Backup Name** | ${{ needs.backup.outputs.backup_name || 'N/A' }} |
           | **Backup Size** | ${{ needs.backup.outputs.backup_size || 'N/A' }} |
           | **Backup Success** | ${{ needs.backup.outputs.backup_success || 'N/A' }} |
+          | **Off-site Upload** | ${{ needs.upload-offsite.result || 'skipped' }} |
           | **Timestamp** | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
 
           EOF

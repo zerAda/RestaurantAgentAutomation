@@ -1,0 +1,117 @@
+{
+    "name": "W4_CORE",
+    "meta": {
+        "instanceId": "core_conversational_bot"
+    },
+    "settings": {
+        "algerianLocalization": {
+            "enabled": true,
+            "languageDetection": "auto",
+            "supportedLanguages": [
+                "fr",
+                "ar",
+                "dz"
+            ],
+            "codesSwitchingEnabled": true
+        }
+    },
+    "nodes": [
+        {
+            "parameters": {},
+            "name": "Message Input",
+            "type": "n8n-nodes-base.start",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "collection": "restaurant-brand",
+                "id": "singleton"
+            },
+            "name": "Get Brand Config",
+            "type": "n8n-nodes-base.strapi",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Détection de langue Algérienne\nconst text = $input.first().json.text || '';\nconst brand = $node['Get Brand Config'].json;\n\n// Patterns Darija\nconst darijaPatterns = /\\b(sahit|bsaha|chhal|wesh|khouya|rabi|inchallah|baraka|rabbi yahafdek)\\b/i;\n\n// Patterns Arabe\nconst arabicPattern = /[\\u0600-\\u06FF]/;\n\n// Patterns Français\nconst frenchPattern = /\\b(bonjour|merci|salut|commander|livraison)\\b/i;\n\nlet detectedLang = 'fr';\nlet mixedMode = false;\n\nif (arabicPattern.test(text)) {\n  detectedLang = 'ar';\n}\n\nif (darijaPatterns.test(text)) {\n  detectedLang = 'dz';\n  if (frenchPattern.test(text)) {\n    mixedMode = true; // Code-switching FR/Darija\n  }\n}\n\nreturn {\n  json: {\n    ...($input.first().json),\n    detected_language: detectedLang,\n    mixed_mode: mixedMode,\n    brand: brand\n  }\n};"
+            },
+            "name": "Language Detection (DZ Market)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.openai.com/v1/chat/completions",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "gpt-4"
+                        },
+                        {
+                            "name": "messages",
+                            "value": "={{ [\n  {\n    \"role\": \"system\",\n    \"content\": `Tu es l'assistant conversationnel de '${$json.brand.restaurant_name}'.\n\nIDENTITÉ & MARCHÉ:\n- Marché: ALGÉRIE (Français, Darija, Arabe)\n- Ton: ${$json.brand.voice_tone}\n- Histoire: ${$json.brand.brand_story}\n\nRÈGLES LINGUISTIQUES ALGÉRIENNES:\n1. LANGUE DÉTECTÉE: ${$json.detected_language}\n2. CODE-SWITCHING: ${$json.mixed_mode ? 'OUI - Mélange naturel FR/Darija autorisé' : 'NON'}\n3. EXPRESSIONS DARIJA AUTORISÉES: ${JSON.stringify($json.brand.localization?.darija_expressions || [])}\n4. Si client parle en Darija → Réponds en Darija/FR naturel\n5. Si client parle en Arabe → Réponds en Arabe formel\n6. Si client parle en Français → Réponds en Français (avec touches Darija si approprié)\n\nEXEMPLES DE RÉPONSES:\n- \"Sahit chef ! Chhal bghiti ? 🍔\" (Darija)\n- \"Bsaha ! Ta commande arrive dans 20min\" (Mix)\n- \"مرحبا! ماذا تريد أن تطلب؟\" (Arabe)\n\nCULTURE ALGÉRIENNE:\n- Utilise \"chef\", \"khouya\" si familier\n- Pendant Ramadan: propose ftour/shour\n- Horaires prière: sois flexible\n\nNE JAMAIS:\n- Forcer une langue si le client en préfère une autre\n- Utiliser des expressions françaises formelles si le client est Darija\n- Ignorer le code-switching naturel\n\nTÂCHE: Aide le client à commander en respectant SA langue et SA culture.`\n  },\n  {\n    \"role\": \"user\",\n    \"content\": $json.text\n  }\n] }}"
+                        }
+                    ]
+                }
+            },
+            "name": "AI Response (Algerian Tuned)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                600,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Message Input": {
+            "main": [
+                [
+                    {
+                        "node": "Get Brand Config",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Brand Config": {
+            "main": [
+                [
+                    {
+                        "node": "Language Detection (DZ Market)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Language Detection (DZ Market)": {
+            "main": [
+                [
+                    {
+                        "node": "AI Response (Algerian Tuned)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

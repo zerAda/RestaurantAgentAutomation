@@ -2,3 +2,5 @@ vps_configs.txt
 CREDENTIALS_CHECKLIST.md
 .ralph/logs/
 _bmad-output/
+.env
+vps.env

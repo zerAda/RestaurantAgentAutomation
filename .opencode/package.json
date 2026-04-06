@@ -1,0 +1,12 @@
+{
+  "name": "resto-bot-opencode-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenCode plugins for RESTO BOT (omni bus + branch guard)",
+  "devDependencies": {
+    "@opencode-ai/plugin": "latest",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

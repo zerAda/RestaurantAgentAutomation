@@ -1,0 +1,221 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Default model: DeepSeek V3 (code/execution) via OpenRouter
+  "model": "openrouter/deepseek/deepseek-chat-v3-0324",
+  "small_model": "openrouter/deepseek/deepseek-chat-v3-0324",
+  "default_agent": "build",
+  "autocompact": true,
+
+  // ── Providers ──
+  "provider": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "npm": "@openrouter/ai-sdk-provider",
+      "options": { "baseURL": "https://openrouter.ai/api/v1" },
+      "models": {
+        "deepseek/deepseek-r1-0528": {
+          "name": "DeepSeek R1 (Thinking)",
+          "reasoning": true,
+          "tool_call": true,
+          "temperature": 0.2,
+          "limit": { "context": 128000, "output": 16000 }
+        },
+        "deepseek/deepseek-chat-v3-0324": {
+          "name": "DeepSeek V3 (Code)",
+          "reasoning": false,
+          "tool_call": true,
+          "temperature": 0.1,
+          "limit": { "context": 128000, "output": 8000 }
+        }
+      }
+    }
+  },
+
+  // ── Global tool gating: disable noisy MCPs by default, re-enable per-agent ──
+  "tools": {
+    "github_*": false,
+    "postgres_*": false,
+    "n8n_*": false,
+    "docker_*": false,
+    "playwright_*": false,
+    "sentry_*": false,
+    "context7_*": true,
+    "obsidian_*": false
+  },
+
+  // ── Agents ──
+  "agent": {
+    "build": {
+      "description": "Implementation agent: edits code, runs commands, makes atomic commits",
+      "mode": "primary",
+      "model": "openrouter/deepseek/deepseek-chat-v3-0324",
+      "temperature": 0.1,
+      "prompt": "You are the BUILD agent. Execute plans, edit code, run commands, make atomic commits. Follow AGENTS.md + opencode.md. Respect the 10-loop quality gate. Always read repo + vault before acting — never invent state.",
+      "tools": {
+        "write": true, "edit": true, "bash": true, "read": true,
+        "glob": true, "grep": true,
+        "docker_*": true, "postgres_*": true, "context7_*": true
+      }
+    },
+
+    "plan": {
+      "description": "Deep reasoning (R1): triage, BMAD specs, ADRs, DB analysis",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-r1-0528",
+      "temperature": 0.2,
+      "prompt": "You are the PLAN agent (DeepSeek R1). Analyze, don't modify code. Produce BMAD specs, ADRs, triage. Write to vault/ at correct paths. Return concise summaries.",
+      "tools": {
+        "read": true, "glob": true, "grep": true, "bash": true, "write": true,
+        "edit": false,
+        "context7_*": true, "postgres_*": true
+      }
+    },
+
+    "repo-cartographer": {
+      "description": "Maps repo surfaces, dependencies, risk zones",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-r1-0528",
+      "temperature": 0.2,
+      "prompt": "You are REPO-CARTOGRAPHER. Map functional surfaces: workflows, services, DB, infra. Produce tables with entrypoints, owners, risk levels. Write to vault/30-Architecture/ and vault/90-Index/Repo Map.md. Don't modify source.",
+      "tools": {
+        "read": true, "glob": true, "grep": true, "bash": true,
+        "write": true, "edit": true
+      }
+    },
+
+    "workflow-architect": {
+      "description": "Audits n8n workflow topology, triggers, coupling, failure modes",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-r1-0528",
+      "temperature": 0.2,
+      "prompt": "You are WORKFLOW-ARCHITECT. Analyze n8n workflows in workflows/*.json. Identify triggers, coupling, fragile edges, missing observability. Write to vault/30-Architecture/Workflow Topology.md. Don't modify JSON.",
+      "tools": {
+        "read": true, "glob": true, "grep": true, "bash": true,
+        "write": true, "edit": true,
+        "n8n_*": true
+      }
+    },
+
+    "platform-sre": {
+      "description": "Docker health, release readiness, SRE diagnostics",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-r1-0528",
+      "temperature": 0.2,
+      "prompt": "You are PLATFORM-SRE. Diagnose Docker, compose, observability. Assess release readiness with GO/NO-GO/CONDITIONAL verdicts. Write runbooks to vault/40-Runbooks/. Never auto-deploy.",
+      "tools": {
+        "read": true, "glob": true, "grep": true, "bash": true,
+        "write": true, "edit": true,
+        "docker_*": true, "sentry_*": true, "postgres_*": true
+      }
+    },
+
+    "vault-curator": {
+      "description": "Maintains Obsidian vault: indexes, session logs, cleanup",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-chat-v3-0324",
+      "temperature": 0.1,
+      "prompt": "You are VAULT-CURATOR. Maintain vault/ structure. Update frontmatter, refresh indexes in vault/90-Index/, write logs to vault/60-Observability/. Enforce NID convention + status lists.",
+      "tools": {
+        "read": true, "glob": true, "grep": true, "bash": true,
+        "write": true, "edit": true,
+        "obsidian_*": true
+      }
+    },
+
+    "security-auditor": {
+      "description": "Scans for secrets, dangerous patterns, permission issues",
+      "mode": "subagent",
+      "model": "openrouter/deepseek/deepseek-r1-0528",
+      "temperature": 0.2,
+      "prompt": "You are SECURITY-AUDITOR. Scan for secrets, unsafe configs, .gitignore gaps. Report with severity. Never auto-fix — only recommend. Respect deny-read rules.",
+      "tools": {
+        "read": true, "glob": true, "grep": true, "bash": true,
+        "write": false, "edit": false
+      }
+    }
+  },
+
+  // ── Permissions ──
+  "permission": {
+    "read": {
+      "deny": [
+        "**/.env", "**/.env.*", "!**/.env.example",
+        "**/*.pem", "**/*.key", "**/*.p12",
+        "**/secrets/**", "**/node_modules/**"
+      ]
+    },
+    "write": {
+      "deny": [
+        "**/.env", "**/.env.*",
+        "**/*.pem", "**/*.key",
+        "**/node_modules/**", "**/.git/objects/**"
+      ]
+    },
+    "bash": {
+      "deny": [
+        "rm -rf /*", "rm -rf ~*",
+        "git push --force origin main", "git push --force origin master",
+        "git reset --hard origin/main", "git reset --hard origin/master",
+        "docker system prune -a -f --volumes",
+        "curl * | sh", "curl * | bash", "wget * | sh"
+      ]
+    }
+  },
+
+  // ── Plugins (order matters: branch-guard first, omni second) ──
+  "plugin": [
+    "./.opencode/plugins/branch-guard.ts",
+    "./.opencode/plugins/omni.ts"
+  ],
+
+  // ── MCP servers — enable per-need via env flags or manually ──
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    },
+    "postgres": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-postgres", "{env:DATABASE_URL}"],
+      "enabled": false,
+      "environment": { "DATABASE_URL": "{env:DATABASE_URL}" }
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "-y", "@playwright/mcp@latest"],
+      "enabled": false
+    },
+    "n8n": {
+      "type": "local",
+      "command": ["npx", "-y", "n8n-mcp"],
+      "enabled": false,
+      "environment": {
+        "N8N_API_URL": "{env:N8N_API_URL}",
+        "N8N_API_KEY": "{env:N8N_API_KEY}"
+      }
+    },
+    "docker": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-docker"],
+      "enabled": false
+    },
+    "sentry": {
+      "type": "remote",
+      "url": "https://mcp.sentry.dev/mcp",
+      "enabled": false
+    },
+    "obsidian": {
+      "type": "local",
+      "command": ["npx", "-y", "mcp-obsidian", "./vault"],
+      "enabled": false
+    },
+    "github": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+      "enabled": false,
+      "environment": { "GITHUB_TOKEN": "{env:GITHUB_TOKEN}" }
+    }
+  }
+}
