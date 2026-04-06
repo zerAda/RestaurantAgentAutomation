@@ -68,6 +68,10 @@ paths = [
   '''TEST_REPORT\.md$''',
   '''agents/.*''',
   '''\.claude/.*''',
+  '''\.agent/.*''',
+  '''\.opencode/.*''',
+  '''\.ralph/.*''',
+  '''tools/.*''',
   '''README\.md$''',
   '''patches/.*'''
 ]

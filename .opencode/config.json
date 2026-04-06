@@ -75,7 +75,7 @@
       "url": "https://api.stitch-mcp.com/v1",
       "enabled": true,
       "headers": {
-        "Authorization": "Bearer sk-stitch-75b2230198004fdb8d94c965e6d63e76"
+        "Authorization": "Bearer {env:STITCH_API_KEY}"
       }
     }
   },
