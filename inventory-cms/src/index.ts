@@ -1,5 +1,6 @@
 import type { Core } from '@strapi/strapi';
 import { seedRestaurantMenu } from './bootstrap-seeds/restaurant-menu.js';
+import { seedSaaSEntitlements } from './bootstrap-seeds/saas-entitlements.js';
 
 const MAX_PUBLIC_PERMISSIONS = 0;
 
@@ -112,6 +113,17 @@ export default {
       }
     } catch (err: any) {
       strapi.log.error(`Seeding: Failed to seed menu: ${err.message}`);
+    }
+
+    // ── SaaS Activation & Entitlements ─────────────────────────────
+    try {
+      const moduleCount = await strapi.query('api::product-module.product-module').count({});
+      if (moduleCount === 0) {
+        strapi.log.info('Seeding: Initializing SaaS modules and default entitlements...');
+        await seedSaaSEntitlements(strapi);
+      }
+    } catch (err: any) {
+      strapi.log.error(`Seeding: Failed to seed SaaS entitlements: ${err.message}`);
     }
 
     // ── Security Audits ───────────────────────────────────────────

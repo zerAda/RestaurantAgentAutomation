@@ -38,6 +38,7 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 - ✓ n8n workflow audit trail with queryable admin dashboard view — v3.5.0
 - ✓ Admin dashboard code splitting (React lazy loading) — v3.5.0
 - ✓ Kiosk menu caching (5-min TTL localStorage) — v3.5.0
+- ✓ Multi-tenant (multiple restaurants) / product-segmented execution plane — v3.5.0
 
 ### Active
 
@@ -55,7 +56,7 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 - Real-time WebSocket dashboard — current polling model is sufficient for v3 ops
 - n8n 2.x → 3.x upgrade — high blast radius, separate milestone after test coverage exists
 - Mobile app — web kiosk covers current use case
-- Multi-tenant (multiple restaurants) — single-restaurant deployment for now
+- Multi-tenant (multiple restaurants) — Delivered in v3.5.0 via Module Guard and Strapi Entitlements.
 
 ## Context
 
@@ -86,4 +87,4 @@ Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, a
 | Brownfield: fix-first milestone | Platform is live; stabilize before adding features | — Pending |
 
 ---
-*Last updated: 2026-04-04 — Phase 2 (logging) complete, Phase 3 (audit/metrics) mostly complete, Phase 6 (performance) mostly complete; 21/34 v1 requirements closed*
+*Last updated: 2026-04-06 — Phase 2 (logging) complete, Phase 3 (audit/metrics) complete, Phase 6 (performance) complete; SaaS/Multi-tenant hardening DONE; 23/34 v1 requirements closed*
