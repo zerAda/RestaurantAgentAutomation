@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 2026-04-06 — v3.5.1 (CI/CD Pipeline Recovery)
+
+### Fixed — 6 blocking CI/CD failures
+
+- **Duplicate CD trigger removed** (`ralphe-cd-deploy.yml`): both workflow files shared the same name and `workflow_run:` auto-trigger, creating a concurrency deadlock on `deploy-production`. Renamed to "CD - Deploy to VPS (manual)" and removed `workflow_run:` trigger entirely.
+- **nginx CI health check**: CI service was mapped `8080:8080` but nginx listens on port 80; health probe was always failing. Changed to `8080:80` + `curl -sf http://localhost/`.
+- **backup.sh postgres container selection**: When staging and production run concurrently, `docker ps -qf "ancestor=postgres"` returned staging container first → empty pg_dump → backup failure. Now prefers container matching production compose project label.
+- **Secret bind-mounts idempotent**: `secrets/traefik_usersfile`, `secrets/postgres_password`, `secrets/n8n_encryption_key` are now created on every deploy with `if [ ! -f ]` guards (was: first deploy only).
+- **Docker external volumes idempotent**: All 6 named volumes (`traefik_data`, `n8n_data`, `postgres_data`, `redis_data`, `cms_uploads`, `ollama_data`) are now created on every deploy with `2>/dev/null || true` (was: first deploy only).
+- **`/var/log/resto-bot` fallback**: deploy user lacks write access to `/var/log/` on hardened VPS; hard `mkdir` was killing deploy in ~21 s. Added fallback to `$PROJECT_DIR/logs` + ERR trap for line-level diagnostics.
+
+### Changed
+
+- `cd-deploy.yml`: `deploy-production` now proceeds when backup result is `failure` (was: only on `success`/`skipped`). Emits `::warning::` instead of blocking.
+- `cd-deploy.yml`: `packages: read` permission added (required for GHCR pull).
+
+### Files Changed
+```
+.github/workflows/ralphe-cd-deploy.yml  (auto-trigger removed)
+.github/workflows/ci.yml                (nginx port fix)
+.github/workflows/cd-deploy.yml         (permissions + backup gate)
+scripts/ops/backup.sh                   (postgres container selection)
+scripts/ops/deploy_to_node.sh           (secrets, volumes, LOG_DIR, ERR trap)
+```
+
+---
+
 ## 2026-03-26 — v3.5.0 (Phase 2 Logging + Phase 3 Audit + Phase 6 Performance)
 
 ### Phase 2: Structured Logging & Correlation (Complete)

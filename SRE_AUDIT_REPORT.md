@@ -383,3 +383,14 @@ These require human action and cannot be automated without credentials/access no
 - **Redis safety**: `allkeys-lru` policy confirmed, 15-min memory monitoring, >200MB alert
 - **Admin visibility**: AuditLogView page in admin dashboard for workflow audit queries
 - **Smoke test scripts**: `smoke-correlation.sh`, `smoke-nginx-routing-v2.sh`, `smoke-strapi-permissions.sh`, `smoke-n8n-e2e.sh`
+
+### CI/CD Pipeline Recovery (2026-04-06):
+
+| Issue | Root Cause | Fix | Status |
+|-------|-----------|-----|--------|
+| Production never deployed | `ralphe-cd-deploy.yml` duplicate `workflow_run:` trigger created concurrency deadlock | Removed auto-trigger; keep `workflow_dispatch:` only | FIXED |
+| CI smoke-routing never healthy | nginx CI service mapped `8080:8080` but listens on port 80 inside container | Changed to `8080:80` + `curl localhost/` | FIXED |
+| Backup failing (staging DB) | `docker ps -qf ancestor=postgres` returned staging container first when both ran concurrently | Filter by compose project label to prefer production container | FIXED |
+| Deploy fails in 21s (bind-mounts) | Secret files only created on first deploy; missing on re-deploy → Docker abort | Create all 5 secret files on every deploy with `if [ ! -f ]` guards | FIXED |
+| Deploy fails in 21s (volumes) | `external: true` volumes only created on first deploy; missing → `docker compose up` abort | Create all 6 volumes on every deploy with `2>/dev/null \|\| true` | FIXED |
+| Deploy fails in 21s (LOG_DIR) | `mkdir -p /var/log/resto-bot` fails for `deploy` user → `set -euo pipefail` kills script | Fallback to `$PROJECT_DIR/logs` + ERR trap reports exact failure line | FIXED |

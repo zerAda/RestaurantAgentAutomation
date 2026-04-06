@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Phase 6 Performance Tuning delivered
-last_updated: "2026-04-04T00:00:00.000Z"
+stopped_at: CI/CD pipeline recovery — 6 blocking failures fixed, main pushed (f344190)
+last_updated: "2026-04-06T05:40:00.000Z"
 progress:
   total_phases: 7
   completed_phases: 3
@@ -16,10 +16,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-04)
+See: .planning/PROJECT.md (updated 2026-04-06)
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** Phases 3/6 mostly complete — next: Phase 4 (Test Coverage — Routing & Permissions)
+**Current focus:** CI/CD recovery complete (6 fixes on main) — VPS awaiting first successful deploy; next: Phase 4 (Test Coverage — Routing & Permissions)
 
 ## Current Position
 
@@ -83,6 +83,18 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04
-Stopped at: Documentation update — all .md files synced to current project state
+Last session: 2026-04-06
+Stopped at: CI/CD pipeline recovery — 6 blocking failures identified and fixed across 5 commits (358ea78..f344190), all merged to main, awaiting CD pipeline to complete and VPS to recover to HTTP 200.
 Resume file: None
+
+### Recent fixes (2026-04-06, commits 358ea78..f344190)
+- Duplicate CD auto-trigger removed from ralphe-cd-deploy.yml
+- nginx CI health check port corrected (8080:8080 → 8080:80)
+- backup.sh: postgres container selected by compose project label (not just image)
+- deploy_to_node.sh: secret files + Docker volumes created on EVERY deploy (not just first)
+- deploy_to_node.sh: LOG_DIR fallback when /var/log not writable + ERR trap for diagnostics
+- cd-deploy.yml: deploy proceeds on backup failure (warning only); packages:read permission added
+
+### Pending security actions
+- Rotate Telegram Bot Token `8740905714:AAEtLrx-...` exposed in commit cd133f19
+- Rotate n8n encryption key and API keys exposed in historical commits

@@ -1,15 +1,49 @@
 # CI/CD Runbook - Resto Bot
 
-> Last updated: 2024-01-XX
+> Last updated: 2026-04-06
 
 ## Overview
 
 This document describes the GitHub Actions workflows for Resto Bot production operations.
 
-| Workflow | Purpose | Schedule | Required Secrets |
-|----------|---------|----------|------------------|
-| **Health Monitor** | Check n8n availability | Every 6 hours | `VPS_SSH_KEY` (optional) |
-| **Scheduled Backup** | PostgreSQL backup | Daily 3AM, Weekly 4AM | `VPS_SSH_KEY` (required) |
+| Workflow | Purpose | Trigger | Runner |
+|----------|---------|---------|--------|
+| **Build and Push Artifacts** (`build-push-artifacts.yml`) | Build Docker images → GHCR | Push to `main` | `ubuntu-latest` |
+| **CD - Deploy to VPS** (`cd-deploy.yml`) | Full CD diamond: validate→preflight→security-gate→staging→smoke→approve→backup→deploy→dora→cleanup | `workflow_run` (Build success on main) or `workflow_dispatch` | `[self-hosted, vps-primary]` |
+| **CI** (`ci.yml`) | Lint, test, smoke-routing | Push/PR | `ubuntu-latest` |
+| **Health Monitor** (`health-monitor.yml`) | Check n8n availability | Every 6 hours | `ubuntu-latest` |
+| **Scheduled Backup** (`scheduled-backup.yml`) | PostgreSQL backup | Daily 3AM, Weekly 4AM | `[self-hosted, vps-primary]` |
+| **Security Scan** (`security-scan.yml`) | Gitleaks + Trivy + SBOM | Push/PR | `ubuntu-latest` |
+| **CD - Deploy to VPS (manual)** (`ralphe-cd-deploy.yml`) | Manual deploy only | `workflow_dispatch` only | `[self-hosted, vps-primary]` |
+
+### CD Diamond Pipeline
+
+```
+Build (ubuntu-latest)
+  └─► CD triggered via workflow_run
+        ├─ validate-inputs
+        ├─ preflight (self-hosted)
+        ├─ security-gate (ubuntu-latest)
+        ├─ deploy-staging (self-hosted) ──── staging smoke tests
+        ├─ smoke-battery-staging (self-hosted)
+        ├─ approve-production (environment: production)
+        ├─ backup (self-hosted, skipped on is_first_deploy)
+        ├─ deploy-production (self-hosted) ─── deploy_to_node.sh
+        ├─ dora (self-hosted)
+        └─ cleanup
+```
+
+### Known Fixes Applied (2026-04-06)
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Duplicate auto-trigger in `ralphe-cd-deploy.yml` blocked `deploy-production` concurrency slot | Removed `workflow_run:` trigger; keep `workflow_dispatch:` only | 358ea78 |
+| nginx CI service health check always failed (`8080:8080` vs port 80 inside container) | Changed to `8080:80` + `curl localhost/` | 358ea78 |
+| Backup selected staging postgres container when both ran concurrently | Filter by compose project label to prefer production container | 10c2205 |
+| `cd-deploy.yml` packages permission missing for GHCR pull | Added `packages: read` | 10c2205 |
+| Secret bind-mounts missing on re-deploys (created on first deploy only) | Create all 5 files on every deploy with `if [ ! -f ]` guards | 658dc2a |
+| External Docker volumes missing on re-deploys (created on first deploy only) | Create all 6 volumes on every deploy with `2>/dev/null \|\| true` | 81ddd7a |
+| `mkdir -p /var/log/resto-bot` fails for deploy user → kills script in 21s | Fallback to `$PROJECT_DIR/logs` + ERR trap for line-level diagnostics | f344190 |
 
 ---
 
@@ -17,20 +51,26 @@ This document describes the GitHub Actions workflows for Resto Bot production op
 
 ### Repository Variables (Settings > Variables)
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `HEALTH_URL` | Public health endpoint URL | `https://api.srv1258231.hstgr.cloud/healthz` | Must point to API gateway |
-| `VPS_HOST` | VPS IP address | `72.60.190.192` | - |
-| `VPS_USER` | SSH username | `deploy` | Non-root user in docker group |
-| `PROJECT_DIR` | Docker compose directory | `/docker/n8n` | - |
-| `BACKUP_DIR` | Backup storage directory | `/local-files/backups/resto-bot` | - |
+| Variable | Description | Default used by CD | Notes |
+|----------|-------------|-------------------|-------|
+| `VPS_HOST` | VPS IP address | Required | SSH target for all self-hosted jobs |
+| `VPS_USER` | SSH username | `deploy` | Must be in docker group |
+| `PROJECT_DIR` | Deployment root on VPS | `/opt/resto` | Releases stored at `$PROJECT_DIR/releases/` |
+| `BACKUP_DIR` | Backup storage directory | `$PROJECT_DIR/backups` | Postgres dumps stored here |
+| `LOG_DIR` | Log directory | `/var/log/resto-bot` | Falls back to `$PROJECT_DIR/logs` if not writable |
+| `DOMAIN` | Production domain | — | Used for Traefik routing rules |
+| `HEALTH_URL` | Public health endpoint URL | `https://api.<DOMAIN>/healthz` | Must be the public nginx gateway, not Traefik console |
+| `ADMIN_ALLOWED_IPS` | Traefik/Adminer/n8n console IP allowlist | — | CIDR ranges |
 
 ### Repository Secrets (Settings > Secrets)
 
 | Secret | Required For | Description |
 |--------|--------------|-------------|
-| `VPS_SSH_KEY` | Backup, SSH diagnostics | SSH private key (ed25519 recommended) |
-| `ALERT_WEBHOOK_URL` | Health alerts | Slack/Discord webhook URL (optional) |
+| `VPS_SSH_KEY` | All self-hosted CD jobs | SSH private key (ed25519 recommended) for `VPS_USER@VPS_HOST` |
+| `ALERT_WEBHOOK_URL` | Health alerts, DORA | Slack/Discord webhook URL (optional) |
+| `S3_ACCESS_KEY_ID` | Off-site backup | S3-compatible storage key ID |
+| `S3_SECRET_ACCESS_KEY` | Off-site backup | S3-compatible storage secret |
+| `BACKUP_GPG_PASSPHRASE` | Off-site backup | GPG AES-256 encryption passphrase for backup archives |
 
 ---
 
