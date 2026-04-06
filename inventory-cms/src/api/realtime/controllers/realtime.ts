@@ -1,58 +1,83 @@
 import { Core } from '@strapi/strapi';
 import { Context } from 'koa';
 
+/**
+ * Realtime SSE Controller
+ * 
+ * P0 SECURITY FIX:
+ * - Added cookie-based auth as primary method (SSE EventSource can't send Auth headers)
+ * - Token-in-query-string kept for backward compat but logs deprecation warning
+ * - Removed Access-Control-Allow-Origin: * — uses configured CORS origin only
+ */
+
+const ALLOWED_ORIGINS = (process.env.ADMIN_DASHBOARD_ORIGINS || 'http://localhost:5173')
+    .split(',')
+    .map((o: string) => o.trim());
+
+async function verifySSEAuth(ctx: Context, strapi: Core.Strapi): Promise<boolean> {
+    // Method 1: Cookie-based auth (preferred)
+    const cookieToken = ctx.cookies.get('admin_jwt');
+    if (cookieToken) {
+        try {
+            const decoded = await strapi.admin.services.token.decodeJwtToken(cookieToken);
+            if (decoded && decoded.isValid) return true;
+        } catch { /* fall through to query param */ }
+    }
+
+    // Method 2: Query param (deprecated, logs warning)
+    const queryToken = ctx.query.token as string;
+    if (queryToken) {
+        strapi.log.warn(
+            `[SSE] DEPRECATED: Token-in-query-string auth used from ${ctx.request.ip}. ` +
+            'Migrate to cookie-based auth. This method will be removed in v2.'
+        );
+        try {
+            const decoded = await strapi.admin.services.token.decodeJwtToken(queryToken);
+            if (decoded && decoded.isValid) return true;
+        } catch { /* fall through */ }
+    }
+
+    return false;
+}
+
+function getSSEHeaders(ctx: Context): Record<string, string> {
+    const origin = ctx.get('Origin') || '';
+    const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
+    return {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Credentials': 'true',
+    };
+}
+
 export default ({ strapi }: { strapi: Core.Strapi }) => ({
     async streamOrders(ctx: Context) {
-        // Secure the SSE endpoint via token query param since EventSource cannot send Authorization header
-        const token = ctx.query.token as string;
-        if (!token) {
-            return ctx.unauthorized('Missing token for event stream');
+        const isAuthed = await verifySSEAuth(ctx, strapi);
+        if (!isAuthed) {
+            return ctx.unauthorized('Authentication required for event stream');
         }
 
-        try {
-            // Verify admin JWT
-            const decoded = await strapi.admin.services.token.decodeJwtToken(token);
-            if (!decoded || !decoded.isValid) {
-                return ctx.unauthorized('Invalid token for event stream');
-            }
-        } catch (e) {
-            return ctx.unauthorized('Token verification failed');
-        }
-
-        // Set Koa to handle Server-Sent Events
         ctx.request.socket.setTimeout(0);
         ctx.request.socket.setNoDelay(true);
         ctx.request.socket.setKeepAlive(true);
-
-        ctx.set({
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no', // Disable buffering on Nginx/Traefik
-            'Access-Control-Allow-Origin': '*' // Handled by Strapi CORS mostly, but good to be explicit for SSE
-        });
-
+        ctx.set(getSSEHeaders(ctx));
         ctx.status = 200;
-        ctx.flushHeaders(); // Instruct Koa/Node to send headers immediately
+        ctx.flushHeaders();
 
         const sendEvent = (type: string, data: any) => {
             ctx.res.write(`event: ${type}\n`);
             ctx.res.write(`data: ${JSON.stringify(data)}\n\n`);
         };
 
-        // Send initial connection payload
         sendEvent('connected', { timestamp: Date.now(), message: 'Listening for order updates' });
 
-        // Ping every 30 seconds to keep connection alive through proxies
         const pingInterval = setInterval(() => {
             sendEvent('ping', { timestamp: Date.now() });
         }, 30000);
-
-        const sub = strapi.service('api::realtime.realtime').getRedisSubscriber();
-
-        // We create a duplicate subscriber connection just for this client to avoid complex muxing, 
-        // OR we can multiplex. Multiplexing is better for memory. 
-        // Let's use Node's EventEmitter for multiplexing from a single Redis sub.
 
         const onOrderMessage = async (data: any) => {
             sendEvent('order_update', data);
@@ -60,34 +85,21 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
 
         strapi.eventHub.on('redis.order_updates', onOrderMessage);
 
-        // Cleanup on disconnect
         ctx.req.on('close', () => {
             clearInterval(pingInterval);
             strapi.eventHub.off('redis.order_updates', onOrderMessage);
             ctx.res.end();
         });
 
-        // Hold the connection open
         return new Promise((resolve) => {
             ctx.req.on('close', resolve);
         });
     },
 
     async cortex(ctx: Context) {
-        // Secure the Cortex bridge via token query param
-        const token = ctx.query.token as string;
-        if (!token) {
-            return ctx.unauthorized('Missing token for cortex bridge');
-        }
-
-        try {
-            // Verify admin JWT
-            const decoded = await strapi.admin.services.token.decodeJwtToken(token);
-            if (!decoded || !decoded.isValid) {
-                return ctx.unauthorized('Invalid token for cortex bridge');
-            }
-        } catch (e) {
-            return ctx.unauthorized('Token verification failed');
+        const isAuthed = await verifySSEAuth(ctx, strapi);
+        if (!isAuthed) {
+            return ctx.unauthorized('Authentication required for cortex bridge');
         }
 
         const queryKeys = ctx.query.keys as string;

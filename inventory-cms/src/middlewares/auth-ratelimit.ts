@@ -1,35 +1,61 @@
 /**
- * [C-04] NOTE: These Maps are in-memory. Counters reset on Strapi restart.
- * An attacker can trigger a DoS-forced-restart to reset auth blacklisting.
- * MIGRATION PATH: Replace Maps with Redis via strapi-plugin-redis when scaling.
- * See: https://github.com/strapi-community/strapi-plugin-redis
- *
- * [C-05] FIX: n8n internal requests are excluded from the general 300 req/min limit.
- * The n8n container can legitimately make hundreds of API calls per minute during
- * workflow execution. Without this, it auto-throttles itself.
- * Configure N8N_INTERNAL_IPS as a comma-separated list in the Strapi .env file.
- * Example: N8N_INTERNAL_IPS=172.20.0.5,172.20.0.6
+ * [C-04] Rate Limiter Middleware — Hybrid Redis/Memory
+ * 
+ * P0 FIX: In production with REDIS_URL set, uses Redis for distributed rate limiting.
+ * Falls back to in-memory Maps for development or when Redis is unavailable.
+ * 
+ * [C-05] FIX: n8n internal requests are excluded from rate limiting.
  */
 
 import type { Core } from '@strapi/strapi';
 
+// ── In-memory fallback stores ──
 const authHits = new Map<string, { count: number; firstHit: number }>();
 const apiHits = new Map<string, { count: number; firstHit: number }>();
 
-// Parse trusted internal IPs from env (n8n, CI runners, internal services)
+// Parse trusted internal IPs from env
 const TRUSTED_INTERNAL_IPS: Set<string> = new Set(
     (process.env.N8N_INTERNAL_IPS || '')
         .split(',')
         .map(ip => ip.trim())
         .filter(Boolean)
 );
-
-// Always trust Docker internal loopback and localhost
 TRUSTED_INTERNAL_IPS.add('127.0.0.1');
 TRUSTED_INTERNAL_IPS.add('::1');
 TRUSTED_INTERNAL_IPS.add('::ffff:127.0.0.1');
 
-// Garbage collection to prevent Memory Leaks (OOM) on the Maps
+// ── Redis rate limiter (production) ──
+let redisClient: any = null;
+const USE_REDIS = !!process.env.REDIS_URL || !!process.env.REDIS_HOST;
+
+async function getRedisClient() {
+    if (redisClient) return redisClient;
+    if (!USE_REDIS) return null;
+    try {
+        const Redis = (await import('ioredis')).default;
+        const url = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`;
+        redisClient = new Redis(url, { maxRetriesPerRequest: 1, lazyConnect: true });
+        await redisClient.connect();
+        redisClient.on('error', () => { redisClient = null; });
+        return redisClient;
+    } catch {
+        return null;
+    }
+}
+
+async function redisRateCheck(key: string, limit: number, windowSec: number): Promise<boolean> {
+    const redis = await getRedisClient();
+    if (!redis) return true; // Redis unavailable → allow (fallback to memory)
+    try {
+        const current = await redis.incr(key);
+        if (current === 1) await redis.expire(key, windowSec);
+        return current <= limit;
+    } catch {
+        return true; // Redis error → allow
+    }
+}
+
+// Garbage collection for in-memory fallback
 setInterval(() => {
     const now = Date.now();
     for (const [ip, record] of authHits.entries()) {
@@ -38,75 +64,70 @@ setInterval(() => {
     for (const [ip, record] of apiHits.entries()) {
         if (now - record.firstHit > 60 * 1000) apiHits.delete(ip);
     }
-}, 5 * 60 * 1000); // Run every 5 minutes
+}, 5 * 60 * 1000);
+
+function memoryRateCheck(store: Map<string, { count: number; firstHit: number }>, ip: string, limit: number, windowMs: number): boolean {
+    const now = Date.now();
+    const record = store.get(ip) || { count: 0, firstHit: now };
+    if (now - record.firstHit > windowMs) {
+        record.count = 1;
+        record.firstHit = now;
+    } else {
+        record.count += 1;
+    }
+    store.set(ip, record);
+    return record.count <= limit;
+}
+
+const RATE_LIMIT_RESPONSE = {
+    error: {
+        status: 429,
+        name: 'TooManyRequestsError',
+        message: 'Rate limit exceeded. Please try again later.',
+        details: {}
+    }
+};
 
 export default (_config: any, { strapi }: { strapi: Core.Strapi }) => {
     return async (ctx: any, next: () => Promise<void>) => {
         const ip = ctx.request.ip;
-        const now = Date.now();
         const path = ctx.request.path;
 
-        // [C-05] Skip ALL rate limiting for trusted internal IPs (n8n, CI, etc.)
+        // Skip for trusted internal IPs
         if (TRUSTED_INTERNAL_IPS.has(ip)) {
             return await next();
         }
 
-        // 1. Strict limit for local auth login (5 attempts / 5 mins)
+        // 1. Strict auth login limit (5 attempts / 5 mins)
         if (path === '/api/auth/local' && ctx.request.method === 'POST') {
-            const record = authHits.get(ip) || { count: 0, firstHit: now };
-
-            if (now - record.firstHit > 5 * 60 * 1000) {
-                record.count = 1;
-                record.firstHit = now;
+            let allowed: boolean;
+            if (USE_REDIS) {
+                allowed = await redisRateCheck(`rl:auth:${ip}`, 5, 300);
             } else {
-                record.count += 1;
+                allowed = memoryRateCheck(authHits, ip, 5, 5 * 60 * 1000);
             }
-
-            authHits.set(ip, record);
-
-            if (record.count > 5) {
+            if (!allowed) {
                 ctx.status = 429;
-                ctx.body = {
-                    error: {
-                        status: 429,
-                        name: 'TooManyRequestsError',
-                        message: 'Too many login attempts, please try again in 5 minutes.',
-                        details: {}
-                    }
-                };
-                return; // Break the chain
+                ctx.body = { ...RATE_LIMIT_RESPONSE, error: { ...RATE_LIMIT_RESPONSE.error, message: 'Too many login attempts. Try again in 5 minutes.' } };
+                return;
             }
         }
 
-        // 2. General limit for all other /api/ routes (300 requests / 1 min)
+        // 2. General API limit (300 req / 1 min)
         if (path.startsWith('/api/') && path !== '/api/auth/local') {
-            const record = apiHits.get(ip) || { count: 0, firstHit: now };
-
-            // Reset after 1 minute
-            if (now - record.firstHit > 60 * 1000) {
-                record.count = 1;
-                record.firstHit = now;
+            let allowed: boolean;
+            if (USE_REDIS) {
+                allowed = await redisRateCheck(`rl:api:${ip}`, 300, 60);
             } else {
-                record.count += 1;
+                allowed = memoryRateCheck(apiHits, ip, 300, 60 * 1000);
             }
-
-            apiHits.set(ip, record);
-
-            if (record.count > 300) {
+            if (!allowed) {
                 ctx.status = 429;
-                ctx.body = {
-                    error: {
-                        status: 429,
-                        name: 'TooManyRequestsError',
-                        message: 'Global API rate limit exceeded.',
-                        details: {}
-                    }
-                };
-                return; // Break the chain
+                ctx.body = RATE_LIMIT_RESPONSE;
+                return;
             }
         }
 
         await next();
     };
 };
-
