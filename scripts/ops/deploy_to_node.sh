@@ -174,13 +174,13 @@ for net in proxy internal; do
   docker network create "$net" 2>/dev/null || true
 done
 
-# Create Docker volumes on first deploy
-if [ "$IS_FIRST" = "true" ]; then
-  echo "First deploy — creating Docker volumes..."
-  for vol in traefik_data n8n_data postgres_data redis_data cms_uploads ollama_data; do
-    docker volume create "$vol" 2>/dev/null || true
-  done
-fi
+# Ensure Docker volumes exist (always — external:true volumes must pre-exist for
+# docker compose up to succeed; volumes survive container/deploy lifecycle but
+# can be absent after a VPS wipe or on a fresh runner)
+echo "Ensuring Docker volumes exist..."
+for vol in traefik_data n8n_data postgres_data redis_data cms_uploads ollama_data; do
+  docker volume create "$vol" 2>/dev/null || true
+done
 
 # ---------------------------------------------------------------------------
 # Step 3.5: Pre-pull cleanup (free disk space for images)
