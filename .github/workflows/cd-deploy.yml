@@ -123,7 +123,7 @@ jobs:
   # ============================================================================
   preflight:
     name: Pre-flight Checks
-    runs-on: [self-hosted, vps-primary]
+    runs-on: ubuntu-latest
     needs: validate-inputs
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 5
@@ -264,6 +264,12 @@ jobs:
           echo "id=$DEPLOY_ID" >> $GITHUB_OUTPUT
           echo "release_dir=${{ steps.config.outputs.project_dir }}/releases/$DEPLOY_ID" >> $GITHUB_OUTPUT
 
+      - name: Setup SSH
+        uses: ./.github/actions/setup-ssh
+        with:
+          ssh-key: ${{ secrets.VPS_SSH_KEY }}
+          vps-host: ${{ steps.config.outputs.vps_host }}
+
       - name: Detect deployment type
         id: detect
         run: |
@@ -387,7 +393,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
     name: Deploy to Staging (${{ matrix.name }})
-    runs-on: [self-hosted, vps-primary]
+    runs-on: ubuntu-latest
     needs: [preflight, security-gate]
     timeout-minutes: 40
 
@@ -514,7 +520,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
     name: Smoke Battery (${{ matrix.name }})
-    runs-on: [self-hosted, vps-primary]
+    runs-on: ubuntu-latest
     needs: [preflight, deploy-staging]
     timeout-minutes: 10
 
@@ -565,7 +571,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.preflight.outputs.nodes_matrix) }}
     name: Pre-deploy Backup (${{ matrix.name }})
-    runs-on: [self-hosted, vps-primary]
+    runs-on: ubuntu-latest
     needs: [preflight, approve-production]
     if: |
       needs.preflight.outputs.is_first_deploy != 'true' &&
@@ -631,7 +637,7 @@ jobs:
   # ============================================================================
   deploy-production:
     name: Deploy (${{ matrix.name }})
-    runs-on: [self-hosted, vps-primary]
+    runs-on: ubuntu-latest
     needs: [preflight, approve-production, backup]
     if: |
       always() &&
@@ -787,7 +793,7 @@ jobs:
   # ============================================================================
   smoke-battery-prod:
     name: Smoke (${{ matrix.node.name }} - ${{ matrix.check }})
-    runs-on: [self-hosted, vps-primary]
+    runs-on: ubuntu-latest
     needs: [preflight, deploy-production]
     if: always() && needs.deploy-production.result == 'success'
     timeout-minutes: 10
