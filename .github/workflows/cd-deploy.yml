@@ -1046,7 +1046,7 @@ jobs:
     name: Cleanup Staging (rejected)
     runs-on: ubuntu-latest
     needs: [preflight, approve-production]
-    if: always() && needs.approve-production.result != 'success'
+    if: always() && needs.approve-production.result != 'success' && needs.preflight.result == 'success'
     timeout-minutes: 5
     steps:
       - name: Checkout code
