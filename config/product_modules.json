@@ -1,0 +1,198 @@
+{
+  "$schema": "./product_modules.schema.json",
+  "_version": "1.0.0",
+  "_generated": "2026-04-06",
+  "_description": "Product module definitions for Ralphé SaaS platform segmentation",
+  "modules": [
+    {
+      "key": "platform_runtime",
+      "display_name": "Platform Runtime",
+      "tier": "shared_core",
+      "description": "Always-on platform primitives: config, Redis, meta verification, outbox, DLQ, health, monitoring, error handling, audit",
+      "rollout_default": "always_on",
+      "required_env_vars": ["REDIS_URL", "DATABASE_URL"],
+      "workflows": [
+        "W0_CONFIG_READER", "W0_REDIS_HELPER", "W0_META_VERIFY_UNIFIED",
+        "W15_OUTBOX_WORKER", "W18_MEDIA_FETCH_WORKER",
+        "W8_DLQ_HANDLER", "W8_DLQ_REPLAY", "W8_OPS",
+        "W16_HEALTHZ", "W17_HEALTH_MONITOR",
+        "W_QUEUE_METRICS", "W_REDIS_MONITOR", "W_ERROR_HANDLER",
+        "W_AUDIT_WRITE", "W_AUDIT_QUERY", "W_AUDIT_ARCHIVE",
+        "W_L10N_DETECT", "W_LLM_INTENT"
+      ]
+    },
+    {
+      "key": "order_bot_core",
+      "display_name": "Order Bot Core",
+      "tier": "product_core",
+      "description": "Base conversational commerce engine: router, cart, FAQ, delivery quote, admin orders, admin ping",
+      "rollout_default": "always_on",
+      "depends_on": ["platform_runtime"],
+      "required_env_vars": ["LLM_API_URL"],
+      "workflows": [
+        "W4_CORE", "W4.1_ROUTER", "W4.2_CART_MANAGER", "W4.3_FAQ_AGENT",
+        "W10_CUSTOMER_DELIVERY_QUOTE", "W12_ADMIN_ORDERS", "W9_ADMIN_PING",
+        "W5_OUT_WA"
+      ]
+    },
+    {
+      "key": "channel_whatsapp",
+      "display_name": "WhatsApp Channel",
+      "tier": "channel_pack",
+      "description": "WhatsApp Business inbound/outbound messaging and admin support console",
+      "rollout_default": "tenant_flagged",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["WA_API_TOKEN", "WA_PHONE_NUMBER_ID", "META_APP_SECRET"],
+      "workflows": [
+        "W1_IN_WA", "W5_OUT_WA", "W0_META_VERIFY_UNIFIED",
+        "W14_ADMIN_WA_SUPPORT_CONSOLE"
+      ]
+    },
+    {
+      "key": "channel_instagram",
+      "display_name": "Instagram Channel",
+      "tier": "channel_pack",
+      "description": "Instagram DM inbound/outbound messaging",
+      "rollout_default": "tenant_flagged",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["IG_API_TOKEN", "IG_PAGE_ID"],
+      "workflows": ["W2_IN_IG", "W6_OUT_IG"]
+    },
+    {
+      "key": "channel_messenger",
+      "display_name": "Messenger Channel",
+      "tier": "channel_pack",
+      "description": "Facebook Messenger inbound/outbound messaging",
+      "rollout_default": "tenant_flagged",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["MSG_API_TOKEN", "MSG_PAGE_ID"],
+      "workflows": ["W3_IN_MSG", "W7_OUT_MSG"]
+    },
+    {
+      "key": "channel_tiktok",
+      "display_name": "TikTok Channel",
+      "tier": "channel_pack",
+      "description": "TikTok DM inbound and content publishing",
+      "rollout_default": "disabled_by_default",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["TIKTOK_API_TOKEN", "TIKTOK_CLIENT_KEY"],
+      "workflows": ["W1_IN_TIKTOK", "W5_OUT_TIKTOK", "W_TIKTOK_PUBLISHER"]
+    },
+    {
+      "key": "payment",
+      "display_name": "Payment Processing",
+      "tier": "addon",
+      "description": "Chargily payment initiation, callback handling, and order finalization",
+      "rollout_default": "env_flagged",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["PAYMENT_COD_ENABLED"],
+      "workflows": ["W_PAYMENT_CHARGILY", "W_PAYMENT_CALLBACK", "W_ORDER_FINALIZER"]
+    },
+    {
+      "key": "delivery_dispatch",
+      "display_name": "Delivery & Dispatch",
+      "tier": "addon",
+      "description": "Driver management, dispatch, logistics, surge pricing, weather triggers",
+      "rollout_default": "env_flagged",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["DELIVERY_ENABLED"],
+      "workflows": [
+        "W11_ADMIN_DELIVERY_ZONES", "W_LOGISTICS_PRO",
+        "W_DRIVER_DISPATCH", "W_DRIVER_ROUTER", "W_DRIVER_ACTIONS",
+        "W_DRIVER_BOT", "W_DRIVER_ONBOARDING", "W_DRIVER_GAMIFICATION",
+        "W_DRIVER_AVAILABLE_LIST", "W_DRIVER_HISTORY", "W_DRIVER_OTP_VERIFY",
+        "W53_DYNAMIC_KITCHEN_LOAD", "W58_DYNAMIC_SURGE", "W_WEATHER_TRIGGER",
+        "W_HIVE_MIND_DISPATCH"
+      ]
+    },
+    {
+      "key": "inventory",
+      "display_name": "Inventory Management",
+      "tier": "addon",
+      "description": "Inventory orchestration, sync, stock alerts, predictive 86ing, menu validation, dialect sync",
+      "rollout_default": "env_flagged",
+      "depends_on": ["platform_runtime"],
+      "workflows": [
+        "W_INVENTORY_ORCHESTRATOR", "W_INVENTORY_SYNC",
+        "W_LOW_STOCK_ALERT", "W55_PREDICTIVE_86ING",
+        "W_MENU_VALIDATOR", "W56_STRAPI_DIALECT_SYNC"
+      ]
+    },
+    {
+      "key": "kiosk_instore",
+      "display_name": "Kiosk & In-Store",
+      "tier": "addon",
+      "description": "In-store kiosk ordering, QR table detection, gamification wheel, kitchen printing, the usual",
+      "rollout_default": "env_flagged",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": [],
+      "workflows": [
+        "W_KIOSK_ORDER", "W_QR_TABLE_DETECTOR",
+        "W25_GAMIFICATION_WHEEL", "W60_KITCHEN_CLOUD_PRINT", "W_THE_USUAL"
+      ]
+    },
+    {
+      "key": "voice",
+      "display_name": "Voice Ordering",
+      "tier": "addon",
+      "description": "Speech-to-text, text-to-speech, voice call initiation and confirmation",
+      "rollout_default": "disabled_by_default",
+      "depends_on": ["order_bot_core"],
+      "required_env_vars": ["STT_API_URL", "TTS_API_URL"],
+      "workflows": [
+        "W_STT_PIPELINE", "W_TTS_PIPELINE",
+        "W30_VOICE_CALL_INIT", "W31_VOICE_ORDER_CONFIRM"
+      ]
+    },
+    {
+      "key": "loyalty_crm",
+      "display_name": "Loyalty & CRM",
+      "tier": "addon",
+      "description": "Loyalty engine, cart abandonment, VIP win-back, upsell engine, review catcher",
+      "rollout_default": "tenant_flagged",
+      "depends_on": ["order_bot_core"],
+      "workflows": [
+        "W_LOYALTY_ENGINE", "W50_CART_ABANDONMENT", "W51_VIP_WIN_BACK",
+        "W_UPSELL_ENGINE", "W61_REVIEW_CATCHER"
+      ]
+    },
+    {
+      "key": "growth_marketing",
+      "display_name": "Growth & Marketing",
+      "tier": "addon",
+      "description": "Funnel tracking, analysis, AI learning, growth agent, revenue intelligence, marketing autopilot, content generation, scheduling, auditing, ad management, campaign blasting, AI strategy advisor, inception protocol",
+      "rollout_default": "disabled_by_default",
+      "depends_on": ["order_bot_core"],
+      "workflows": [
+        "W_TRACKING_FUNNEL", "W_BOT_FUNNEL_HOOK", "W_FUNNEL_ANALYZER",
+        "W_AI_FUNNEL_LEARNER", "W_GROWTH_AGENT", "W_REVENUE_INTELLIGENCE",
+        "W_MARKETING_AUTOPILOT", "W_OMNICHANNEL_CONTENT_GEN",
+        "W_CONTENT_SCHEDULER", "W_CONTENT_AUDITOR", "W_AD_MANAGER",
+        "W21_CAMPAIGN_BLASTER", "W_AI_STRATEGY_ADVISOR", "W_INCEPTION_PROTOCOL"
+      ]
+    },
+    {
+      "key": "admin_ai_intelligence",
+      "display_name": "Admin AI & Intelligence",
+      "tier": "addon",
+      "description": "Operator-facing AI agent, live monitoring, proactive alerts, cortex registry, omniscient brain",
+      "rollout_default": "tenant_flagged",
+      "depends_on": ["platform_runtime"],
+      "workflows": [
+        "W_ADMIN_AGENT", "W_ADMIN_AI_AGENT", "W_ADMIN_LIVE_MONITOR",
+        "W_ADMIN_PROACTIVE_AGENT", "W_CORTEX_REGISTRY", "W_RALPHE_OMNISCIENT"
+      ]
+    },
+    {
+      "key": "experimental",
+      "display_name": "Experimental / Review",
+      "tier": "experimental",
+      "description": "Unclear ownership, stale, duplicated, or partially integrated workflows",
+      "rollout_default": "disabled_by_default",
+      "workflows": [
+        "W4_CORE_ALGERIAN_STUB", "W4_CORE_MENU_GROUNDED",
+        "W20_ASSET_ENHANCER", "W_CMS_SYNC"
+      ]
+    }
+  ]
+}

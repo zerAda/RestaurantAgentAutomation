@@ -66,6 +66,24 @@ async function checkN8n(): Promise<{
 }
 
 export default {
+    /**
+     * GET /control-plane/health — PUBLIC, minimal
+     * Returns only ok/error + timestamp. No system info leaked.
+     */
+    health: async (ctx: any) => {
+        try {
+            // @ts-ignore
+            await strapi.db.connection.raw('SELECT 1');
+            ctx.send({ status: 'ok', timestamp: new Date().toISOString() });
+        } catch {
+            ctx.send({ status: 'degraded', timestamp: new Date().toISOString() }, 503);
+        }
+    },
+
+    /**
+     * GET /control-plane/status — ADMIN-ONLY, full diagnostics
+     * P0 SECURITY: This endpoint was previously public. Now requires admin JWT.
+     */
     status: async (ctx: any) => {
         try {
             const totalMem = os.totalmem();

@@ -1,6 +1,24 @@
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+!.env.*.example
+vps.env
 vps_configs.txt
 CREDENTIALS_CHECKLIST.md
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Project internals
 .ralph/logs/
 _bmad-output/
-.env
-vps.env
+.planning/
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

@@ -2,13 +2,16 @@ import type { Core } from '@strapi/strapi';
 import { seedRestaurantMenu } from './bootstrap-seeds/restaurant-menu.js';
 
 const MAX_PUBLIC_PERMISSIONS = 0;
-const ADMIN_EMAIL = process.env.STRAPI_SUPER_ADMIN_EMAIL || 'admin@ralphe.com';
-const ADMIN_PASS = process.env.STRAPI_SUPER_ADMIN_PASSWORD || 'ChangeMeNow!';
+
+// P0 SECURITY: No fallback credentials. In production, if env vars are missing, refuse to auto-create.
+const ADMIN_EMAIL = process.env.STRAPI_SUPER_ADMIN_EMAIL;
+const ADMIN_PASS = process.env.STRAPI_SUPER_ADMIN_PASSWORD;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 export default {
   register(_ctx: { strapi: Core.Strapi }) {
-    // STBL-01: Routes auto-discovered by Strapi 5 from src/api/system-config/routes/agent-chat.ts
-    // POST /api/agent/chat and GET /api/agent/tools are registered there — no manual registration needed.
+    // Routes auto-discovered by Strapi 5 from src/extensions/agent-chat/routes/agent-chat.ts
+    // POST /api/agent/chat and GET /api/agent/tools are registered there.
   },
 
 
@@ -38,55 +41,66 @@ export default {
     }
 
     // ── Unified Authentication: Sync Admin & API User ──────────────
-    try {
-      // 1. Ensure Super Admin exists in Admin Panel
-      const adminRepo = strapi.query('admin::user');
-      let superAdmin = await adminRepo.findOne({ where: { email: ADMIN_EMAIL } });
-
-      if (!superAdmin) {
-        const adminRole = await strapi.query('admin::role').findOne({ where: { code: 'strapi-super-admin' } });
-        superAdmin = await adminRepo.create({
-          data: {
-            email: ADMIN_EMAIL,
-            password: ADMIN_PASS,
-            firstname: 'Super',
-            lastname: 'Admin',
-            roles: [adminRole.id],
-            isActive: true,
-            registrationToken: null,
-          }
-        });
-        strapi.log.info('Security: Created Super Admin user.');
-      }
-
-      // 2. Ensure same user exists in Users-Permissions (API) for the Dashboard
-      const upRepo = strapi.query('plugin::users-permissions.user');
-      const apiUser = await upRepo.findOne({ where: { email: ADMIN_EMAIL } });
-
-      if (!apiUser) {
-        const authenticatedRole = await strapi.query('plugin::users-permissions.role').findOne({
-          where: { type: 'authenticated' }
-        });
-
-        await upRepo.create({
-          data: {
-            username: ADMIN_EMAIL,
-            email: ADMIN_EMAIL,
-            password: ADMIN_PASS,
-            confirmed: true,
-            role: authenticatedRole.id,
-          }
-        });
-        strapi.log.info('Security: Created API user matching Admin credentials.');
+    // P0 SECURITY: Only auto-create users in non-production OR when env vars are explicitly set
+    if (!ADMIN_EMAIL || !ADMIN_PASS) {
+      if (IS_PRODUCTION) {
+        strapi.log.error(
+          'FATAL: STRAPI_SUPER_ADMIN_EMAIL and STRAPI_SUPER_ADMIN_PASSWORD must be set in production. ' +
+          'Refusing to auto-create admin with fallback credentials.'
+        );
       } else {
-        // Update password to match if it has drifted
-        await upRepo.update({
-          where: { id: apiUser.id },
-          data: { password: ADMIN_PASS }
-        });
+        strapi.log.warn(
+          'DEV: STRAPI_SUPER_ADMIN_EMAIL / PASSWORD not set. Skipping admin auto-creation. ' +
+          'Set them in .env for local development.'
+        );
       }
-    } catch (err: any) {
-      strapi.log.error(`Security: Failed to sync credentials: ${err.message}`);
+    } else {
+      try {
+        // 1. Ensure Super Admin exists in Admin Panel
+        const adminRepo = strapi.query('admin::user');
+        let superAdmin = await adminRepo.findOne({ where: { email: ADMIN_EMAIL } });
+
+        if (!superAdmin) {
+          const adminRole = await strapi.query('admin::role').findOne({ where: { code: 'strapi-super-admin' } });
+          superAdmin = await adminRepo.create({
+            data: {
+              email: ADMIN_EMAIL,
+              password: ADMIN_PASS,
+              firstname: 'Super',
+              lastname: 'Admin',
+              roles: [adminRole.id],
+              isActive: true,
+              registrationToken: null,
+            }
+          });
+          strapi.log.info('Security: Created Super Admin user.');
+        }
+        // P0 FIX: Removed unconditional password sync (was overwriting manual password changes on every restart)
+
+        // 2. Ensure same user exists in Users-Permissions (API) for the Dashboard
+        const upRepo = strapi.query('plugin::users-permissions.user');
+        const apiUser = await upRepo.findOne({ where: { email: ADMIN_EMAIL } });
+
+        if (!apiUser) {
+          const authenticatedRole = await strapi.query('plugin::users-permissions.role').findOne({
+            where: { type: 'authenticated' }
+          });
+
+          await upRepo.create({
+            data: {
+              username: ADMIN_EMAIL,
+              email: ADMIN_EMAIL,
+              password: ADMIN_PASS,
+              confirmed: true,
+              role: authenticatedRole.id,
+            }
+          });
+          strapi.log.info('Security: Created API user matching Admin credentials.');
+        }
+        // P0 FIX: Removed unconditional password force-sync — password-drift must be handled manually
+      } catch (err: any) {
+        strapi.log.error(`Security: Failed to sync credentials: ${err.message}`);
+      }
     }
 
     // ── Professional Seeding ────────────────────────────────────────

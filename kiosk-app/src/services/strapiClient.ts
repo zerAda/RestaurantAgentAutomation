@@ -66,6 +66,8 @@ export const strapi = {
     }),
 
   // Dedicated n8n caller for secure transactions
+  // P0 FIX: Removed x-kiosk-secret — was fake security baked into JS bundle.
+  // Auth is now handled server-side via origin validation + signed session tokens.
   n8n: <T>(path: string, data: unknown, headers: Record<string, string> = {}) => {
     const N8N_BASE = import.meta.env.VITE_N8N_URL || '';
     return request<T>(path, {
@@ -73,7 +75,6 @@ export const strapi = {
       body: JSON.stringify(data),
       headers: {
         ...headers,
-        'x-kiosk-secret': import.meta.env.VITE_KIOSK_SECRET || '',
       },
     }, N8N_BASE);
   }

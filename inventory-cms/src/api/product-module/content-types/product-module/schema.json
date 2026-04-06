@@ -1,0 +1,61 @@
+{
+  "kind": "collectionType",
+  "collectionName": "product_modules",
+  "info": {
+    "singularName": "product-module",
+    "pluralName": "product-modules",
+    "displayName": "Product Module",
+    "description": "SaaS product modules that can be enabled/disabled per tenant. Defines what features are available."
+  },
+  "options": { "draftAndPublish": false },
+  "pluginOptions": {},
+  "attributes": {
+    "key": {
+      "type": "string",
+      "unique": true,
+      "required": true,
+      "description": "Machine key matching config/product_modules.json (e.g. channel_whatsapp, delivery_dispatch)"
+    },
+    "display_name": {
+      "type": "string",
+      "required": true,
+      "description": "Human-readable module name"
+    },
+    "tier": {
+      "type": "enumeration",
+      "enum": ["shared_core", "product_core", "channel_pack", "addon", "experimental"],
+      "required": true,
+      "default": "addon"
+    },
+    "description": {
+      "type": "text"
+    },
+    "enabled_globally": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, module is active for all tenants regardless of entitlements"
+    },
+    "rollout_policy": {
+      "type": "enumeration",
+      "enum": ["always_on", "tenant_flagged", "env_flagged", "disabled_by_default"],
+      "default": "disabled_by_default"
+    },
+    "required_env_vars": {
+      "type": "json",
+      "description": "Array of env var keys that must be set for this module to function"
+    },
+    "required_workflows": {
+      "type": "json",
+      "description": "Array of workflow keys from workflow_registry.json"
+    },
+    "depends_on": {
+      "type": "json",
+      "description": "Array of module keys this module depends on"
+    },
+    "sort_order": {
+      "type": "integer",
+      "default": 100,
+      "description": "Display order in admin UI"
+    }
+  }
+}

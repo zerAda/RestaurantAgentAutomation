@@ -1,0 +1,49 @@
+{
+  "kind": "collectionType",
+  "collectionName": "tenant_entitlements",
+  "info": {
+    "singularName": "tenant-entitlement",
+    "pluralName": "tenant-entitlements",
+    "displayName": "Tenant Entitlement",
+    "description": "Per-tenant module activation. Maps tenants to the product modules they are entitled to use."
+  },
+  "options": { "draftAndPublish": false },
+  "pluginOptions": {},
+  "attributes": {
+    "tenant_id": {
+      "type": "string",
+      "required": true,
+      "description": "Tenant identifier — matches default_tenant_id in system-config or deployment context"
+    },
+    "module_key": {
+      "type": "string",
+      "required": true,
+      "description": "References product-module.key"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this module is currently active for this tenant"
+    },
+    "activated_at": {
+      "type": "datetime",
+      "description": "When this entitlement was activated"
+    },
+    "expires_at": {
+      "type": "datetime",
+      "description": "Optional expiry — null means perpetual"
+    },
+    "config_overrides": {
+      "type": "json",
+      "description": "Tenant-specific config overrides for this module (e.g. custom LLM model, delivery radius)"
+    },
+    "activated_by": {
+      "type": "string",
+      "description": "Admin email or system that activated this entitlement"
+    },
+    "notes": {
+      "type": "text",
+      "description": "Internal notes about this entitlement"
+    }
+  }
+}

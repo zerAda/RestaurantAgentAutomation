@@ -40,7 +40,7 @@
         "SECURITY"
       ],
       "required": true,
-      "default": "ops"
+      "default": "CORE"
     },
     "is_secret": {
       "type": "boolean",
