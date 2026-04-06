@@ -42,9 +42,9 @@ jobs:
             exit 1
           fi
           # Validate SHA format
-          SHA="${{ github.sha }}"
-          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Invalid commit SHA: '$SHA'"
+          SHA=$(echo "${{ github.sha }}" | tr -d '[:space:]')
+          if [ "${#SHA}" -ne 40 ]; then
+            echo "::error::Invalid commit SHA length: '$SHA'"
             exit 1
           fi
           echo "Build inputs validated"

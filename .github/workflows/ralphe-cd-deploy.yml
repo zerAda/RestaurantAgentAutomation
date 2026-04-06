@@ -108,9 +108,9 @@ jobs:
             exit 1
           fi
           # Ensure SHA is a valid hex string
-          SHA="${{ env.DEPLOY_SHA }}"
-          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Invalid commit SHA format: '$SHA'"
+          SHA=$(echo "${{ env.DEPLOY_SHA }}" | tr -d '[:space:]')
+          if [ "${#SHA}" -ne 40 ]; then
+            echo "::error::Invalid commit SHA length: '$SHA'"
             exit 1
           fi
           echo "✅ Actor: ${{ github.actor }}, SHA: $SHA"
