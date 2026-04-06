@@ -99,7 +99,7 @@ export default (_config: any, { strapi }: { strapi: Core.Strapi }) => {
         }
 
         // 1. Strict auth login limit (5 attempts / 5 mins)
-        if (path === '/api/auth/local' && ctx.request.method === 'POST') {
+        if ((path === '/api/auth/local' || path === '/admin/login') && ctx.request.method === 'POST') {
             let allowed: boolean;
             if (USE_REDIS) {
                 allowed = await redisRateCheck(`rl:auth:${ip}`, 5, 300);
@@ -114,7 +114,7 @@ export default (_config: any, { strapi }: { strapi: Core.Strapi }) => {
         }
 
         // 2. General API limit (300 req / 1 min)
-        if (path.startsWith('/api/') && path !== '/api/auth/local') {
+        if ((path.startsWith('/api/') || path.startsWith('/admin/')) && path !== '/api/auth/local' && path !== '/admin/login') {
             let allowed: boolean;
             if (USE_REDIS) {
                 allowed = await redisRateCheck(`rl:api:${ip}`, 300, 60);

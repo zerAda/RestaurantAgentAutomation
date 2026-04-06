@@ -15,25 +15,43 @@ const ALLOWED_ORIGINS = (process.env.ADMIN_DASHBOARD_ORIGINS || 'http://localhos
     .map((o: string) => o.trim());
 
 async function verifySSEAuth(ctx: Context, strapi: Core.Strapi): Promise<boolean> {
-    // Method 1: Cookie-based auth (preferred)
-    const cookieToken = ctx.cookies.get('admin_jwt');
+    // Check if Strapi core already authenticated the request (via Authorization header)
+    if (ctx.state && ctx.state.user) {
+        return true;
+    }
+
+    // Since EventSource can't send Auth headers, check for cookie or query param
+    // We must use the users-permissions JWT service because admin-dashboard uses /api/auth/local
+    const jwtService = strapi.plugin('users-permissions').service('jwt');
+
+    // Method 1: Cookie-based auth (set by admin-cookie-auth.ts)
+    const cookieToken = ctx.cookies.get('adminJwt');
     if (cookieToken) {
         try {
-            const decoded = await strapi.admin.services.token.decodeJwtToken(cookieToken);
-            if (decoded && decoded.isValid) return true;
+            const decoded = await jwtService.verify(cookieToken);
+            if (decoded && decoded.id) return true;
         } catch { /* fall through to query param */ }
     }
 
-    // Method 2: Query param (deprecated, logs warning)
+    // Method 2: Query param (legacy, logs warning)
     const queryToken = ctx.query.token as string;
     if (queryToken) {
         strapi.log.warn(
             `[SSE] DEPRECATED: Token-in-query-string auth used from ${ctx.request.ip}. ` +
-            'Migrate to cookie-based auth. This method will be removed in v2.'
+            'Migrate to cookie-based auth or Authorization headers. This will be removed in v2.'
         );
         try {
-            const decoded = await strapi.admin.services.token.decodeJwtToken(queryToken);
-            if (decoded && decoded.isValid) return true;
+            const decoded = await jwtService.verify(queryToken);
+            if (decoded && decoded.id) return true;
+        } catch { /* fall through */ }
+    }
+
+    // Method 3: Authorization header (fallback if ctx.state.user is missing but header is present)
+    const headerToken = ctx.request.header.authorization;
+    if (headerToken && headerToken.startsWith('Bearer ')) {
+        try {
+            const decoded = await jwtService.verify(headerToken.substring(7));
+            if (decoded && decoded.id) return true;
         } catch { /* fall through */ }
     }
 
