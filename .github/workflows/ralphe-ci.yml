@@ -19,16 +19,16 @@
 # Actions pinned to SHA for supply-chain security.
 # =============================================================================
 
-name: CI Pipeline
+# NOTE: Auto-triggers removed (2026-04-06) — this file was sharing name "CI Pipeline"
+# and concurrency group ci-${{ github.ref }} with ci.yml, causing one to cancel
+# the other on every push. Use workflow_dispatch only for manual/debug runs.
+name: CI Pipeline (manual)
 
 on:
-  push:
-    branches: [main, develop, "release/*"]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ralphe-ci-manual-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
