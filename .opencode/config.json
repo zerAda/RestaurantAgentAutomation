@@ -2,18 +2,18 @@
   "$schema": "https://opencode.ai/config.json",
   "agent": {
     "planner": {
-      "description": "Architect (R1)",
-      "model": "openrouter/deepseek/deepseek-reasoner",
+      "description": "Architect (Kimi K2.5)",
+      "model": "openrouter/moonshotai/kimi-k2.5",
       "prompt": "{file:.opencode/agents/planner.jsonc}"
     },
     "coder": {
-      "description": "Executioner (V3.2)",
-      "model": "openrouter/deepseek/deepseek-v3.2",
+      "description": "Executioner (Kimi K2.5)",
+      "model": "openrouter/moonshotai/kimi-k2.5",
       "prompt": "{file:.opencode/agents/coder.jsonc}"
     },
     "auditor": {
-      "description": "Quality Guard (R1)",
-      "model": "openrouter/deepseek/deepseek-reasoner",
+      "description": "Quality Guard (Kimi K2.5)",
+      "model": "openrouter/moonshotai/kimi-k2.5",
       "prompt": "{file:.opencode/agents/auditor.jsonc}"
     }
   },
@@ -89,8 +89,8 @@
     "webfetch": "allow",
     "question": "allow"
   },
-  "model": "openrouter/deepseek/deepseek-chat",
-  "small_model": "openrouter/deepseek/deepseek-chat",
+  "model": "openrouter/moonshotai/kimi-k2.5",
+  "small_model": "openrouter/moonshotai/kimi-k2.5",
   "plugin": [
     "bmad",
     "bmalph",
