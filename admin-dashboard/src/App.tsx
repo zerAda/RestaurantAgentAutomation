@@ -26,6 +26,7 @@ import { PageTransition } from './components/PageTransition';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ApiErrorListener } from './components/ApiErrorListener';
 import { authService } from './services/authService';
+import { useEntitlements } from './hooks/useEntitlements';
 import { getTranslation, setPageDirection, type Language } from './utils/i18n';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -60,6 +61,7 @@ function App() {
 
   const [lang, setLang] = useState<Language>('fr');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { hasModule } = useEntitlements();
 
   // Robust RBAC Check: Rely on actual role structure instead of generic string matching
   const user = authService.getUser();
@@ -157,15 +159,21 @@ function App() {
               <div className="space-y-1">
                 <NavItem active={activeTab === 'dashboard'} onClick={() => { navigate('/dashboard'); setIsMobileMenuOpen(false); }} label="Dashboard" icon={LayoutDashboard} lang={lang} />
                 <NavItem active={activeTab === 'stock'} onClick={() => { navigate('/stock'); setIsMobileMenuOpen(false); }} label={t('stock_inventory')} icon={Package} lang={lang} />
-                <NavItem active={activeTab === 'kitchen'} onClick={() => { navigate('/kitchen'); setIsMobileMenuOpen(false); }} label={t('kitchen_display')} icon={UtensilsCrossed} lang={lang} />
+                {hasModule('addon_kitchen_display') && (
+                  <NavItem active={activeTab === 'kitchen'} onClick={() => { navigate('/kitchen'); setIsMobileMenuOpen(false); }} label={t('kitchen_display')} icon={UtensilsCrossed} lang={lang} />
+                )}
               </div>
 
               <p className="px-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-6 mb-4 italic">Strategy</p>
               <div className="space-y-1">
                 {isFullAdmin && (
                   <>
-                    <NavItem active={activeTab === 'analytics'} onClick={() => { navigate('/analytics'); setIsMobileMenuOpen(false); }} label="Intelligence" icon={BarChart3} lang={lang} />
-                    <NavItem active={activeTab === 'growth'} onClick={() => { navigate('/growth'); setIsMobileMenuOpen(false); }} label="Growth AI" icon={TrendingUp} lang={lang} />
+                    {hasModule('addon_analytics') && (
+                      <NavItem active={activeTab === 'analytics'} onClick={() => { navigate('/analytics'); setIsMobileMenuOpen(false); }} label="Intelligence" icon={BarChart3} lang={lang} />
+                    )}
+                    {hasModule('experimental_growth_agent') && (
+                      <NavItem active={activeTab === 'growth'} onClick={() => { navigate('/growth'); setIsMobileMenuOpen(false); }} label="Growth AI" icon={TrendingUp} lang={lang} />
+                    )}
                     <NavItem active={activeTab === 'marketing'} onClick={() => { navigate('/marketing'); setIsMobileMenuOpen(false); }} label="Creative Hub" icon={Palette} lang={lang} />
                     <NavItem active={activeTab === 'automation'} onClick={() => { navigate('/automation'); setIsMobileMenuOpen(false); }} label="n8n Engine" icon={Bot} lang={lang} />
                   </>
