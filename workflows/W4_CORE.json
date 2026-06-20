@@ -392,7 +392,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH ord AS ( SELECT * FROM create_order($1) ), upd AS ( UPDATE orders SET attributed_campaign = (SELECT state_json->>'attributed_campaign' FROM conversation_state WHERE conversation_key = $1) WHERE id = (SELECT COALESCE(order_id, id) FROM ord LIMIT 1) RETURNING 1 ) SELECT * FROM ord;",
+        "query": "WITH ord AS ( SELECT * FROM create_order($1) ), upd AS ( UPDATE orders SET attributed_campaign = (SELECT state_json->>'attributed_campaign' FROM conversation_state WHERE conversation_key = $1) WHERE id = (SELECT COALESCE(order_id, id) FROM ord LIMIT 1) AND tenant_id = (SELECT tenant_id FROM ord) RETURNING 1 ) SELECT * FROM ord;",
         "additionalFields": {
           "queryParams": "={{[$json.conversationKey]}}"
         }

@@ -29,7 +29,10 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "WITH sales AS (\n  SELECT SUM(total_amount) as revenue, COUNT(*) as volume \n  FROM orders \n  WHERE created_at > now() - interval '4 hours'\n),\nabandoned AS (\n  SELECT COUNT(*) as abandoned_carts \n  FROM carts \n  WHERE updated_at > now() - interval '4 hours'\n)\nSELECT \n  (SELECT revenue FROM sales) as revenue_4h,\n  (SELECT volume FROM sales) as orders_4h,\n  (SELECT abandoned_carts FROM abandoned) as abandoned_4h;"
+                "query": "WITH sales AS (\n  SELECT SUM(total_amount) as revenue, COUNT(*) as volume \n  FROM orders \n  WHERE created_at > now() - interval '4 hours'\n    AND tenant_id = $1\n),\nabandoned AS (\n  SELECT COUNT(*) as abandoned_carts \n  FROM carts c\n  JOIN conversation_state cs ON cs.conversation_key = c.conversation_key\n  WHERE c.updated_at > now() - interval '4 hours'\n    AND cs.tenant_id = $1\n)\nSELECT \n  (SELECT revenue FROM sales) as revenue_4h,\n  (SELECT volume FROM sales) as orders_4h,\n  (SELECT abandoned_carts FROM abandoned) as abandoned_4h;",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.tenant_id] }}"
+                }
             },
             "id": "db-analytics",
             "name": "Fetch 4H KPIs",

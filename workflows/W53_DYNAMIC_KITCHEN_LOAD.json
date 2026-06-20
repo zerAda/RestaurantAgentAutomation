@@ -29,7 +29,10 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT COUNT(*) as current_workload FROM orders WHERE status IN ('confirmed', 'preparing');"
+                "query": "SELECT COUNT(*) as current_workload FROM orders WHERE status IN ('confirmed', 'preparing') AND tenant_id = $1;",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.tenant_id] }}"
+                }
             },
             "id": "get-kds-load",
             "name": "Check DB Active Tickets (Load)",
