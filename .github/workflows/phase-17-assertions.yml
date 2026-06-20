@@ -1,0 +1,197 @@
+name: Phase 17 Inbound Tenant Derivation (Fail-Closed) Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'workflows/W1_IN_WA.json'
+      - 'workflows/W2_IN_IG.json'
+      - 'workflows/W3_IN_MSG.json'
+      - 'workflows/W0_MODULE_GUARD.json'
+      - 'workflows/W_DRIVER_ONBOARDING.json'
+      - 'db/ci-assertions/17-tenant-resolution.sql'
+      - 'db/migrations/2026-06-20_channel_identities.sql'
+      - '.github/workflows/phase-17-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  tenant-resolution-sql:
+    name: Phase 17 Tenant Resolution SQL (n8n DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        options: >-
+          --health-cmd "pg_isready -U n8n -d n8n"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Seed FK parents — tenants + restaurants (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Seed canonical CI tenant + restaurant rows (FK parents for channel_identities)"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+            CREATE TABLE IF NOT EXISTS tenants (
+              tenant_id uuid PRIMARY KEY,
+              name text,
+              slug text,
+              plan text,
+              status text
+            );
+            CREATE TABLE IF NOT EXISTS restaurants (
+              restaurant_id uuid PRIMARY KEY,
+              tenant_id uuid REFERENCES tenants(tenant_id),
+              name text,
+              phone text,
+              default_language text,
+              is_active boolean
+            );
+            INSERT INTO tenants(tenant_id, name, slug, plan, status)
+            VALUES (
+              '00000000-0000-0000-0000-000000000001',
+              'Default Chain',
+              'default-chain',
+              'professional',
+              'active'
+            ) ON CONFLICT (tenant_id) DO NOTHING;
+            INSERT INTO restaurants(restaurant_id, tenant_id, name, phone, default_language, is_active)
+            VALUES (
+              '00000000-0000-0000-0000-000000000000',
+              '00000000-0000-0000-0000-000000000001',
+              'Branch 1',
+              '+213000000000',
+              'fr',
+              true
+            ) ON CONFLICT (restaurant_id) DO NOTHING;
+          "
+          echo "::endgroup::"
+
+      - name: Apply channel_identities migration (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply channel_identities routing table migration"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/migrations/2026-06-20_channel_identities.sql
+          echo "::endgroup::"
+
+      - name: Tenant-resolution assertions
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Assert: known WA/IG identity resolves to correct tenant; unknown -> 0 rows; inactive -> 0 rows"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-assertions/17-tenant-resolution.sql
+          echo "::endgroup::"
+
+  workflow-structural:
+    name: Phase 17 Workflow Structural Assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Resolver node present in W1/W2/W3
+        run: |
+          echo "::group::Assert: B0 - Resolve Channel Identity (DB) exists in all three inbound adapters"
+          for f in W1_IN_WA W2_IN_IG W3_IN_MSG; do
+            jq -e '.nodes[] | select(.name == "B0 - Resolve Channel Identity (DB)")' workflows/$f.json >/dev/null \
+              || { echo "FAIL: resolver node missing in $f"; exit 1; }
+            echo "PASS: resolver present in $f"
+          done
+          echo "::endgroup::"
+
+      - name: Middle connection hop present in W1/W2/W3
+        run: |
+          echo "::group::Assert: B0 - Resolve Channel Identity (DB) wired to B0 - Map Channel Identity Result"
+          for f in W1_IN_WA W2_IN_IG W3_IN_MSG; do
+            jq -e '.connections["B0 - Resolve Channel Identity (DB)"].main[0][0].node == "B0 - Map Channel Identity Result"' \
+              workflows/$f.json >/dev/null \
+              || { echo "FAIL: middle connection hop missing in $f"; exit 1; }
+            echo "PASS: middle hop present in $f"
+          done
+          echo "::endgroup::"
+
+      - name: UNKNOWN_CHANNEL_IDENTITY fail-closed present in W1/W2/W3
+        run: |
+          echo "::group::Assert: UNKNOWN_CHANNEL_IDENTITY denyReason present in Apply Auth Context"
+          for f in W1_IN_WA W2_IN_IG W3_IN_MSG; do
+            jq -e '.. | strings | select(test("UNKNOWN_CHANNEL_IDENTITY"))' workflows/$f.json >/dev/null \
+              || { echo "FAIL: UNKNOWN_CHANNEL_IDENTITY missing in $f"; exit 1; }
+            echo "PASS: UNKNOWN_CHANNEL_IDENTITY present in $f"
+          done
+          echo "::endgroup::"
+
+      - name: No tenant fallback on tenant path in W0/W1/W_DRIVER
+        run: |
+          echo "::group::Assert: no DEFAULT_TENANT_ID / || default / hardcoded UUID in W0/W1/W_DRIVER"
+          for f in W0_MODULE_GUARD W1_IN_WA W_DRIVER_ONBOARDING; do
+            if grep -Eq "DEFAULT_TENANT_ID|\|\| *'default'|00000000-0000-0000-0000-000000000001" workflows/$f.json; then
+              echo "FAIL: fallback remains in $f"; exit 1
+            fi
+            echo "PASS: no fallback in $f"
+          done
+          echo "::endgroup::"
+
+      - name: No tenant fallback in W2/W3 Apply Auth Context jsCode
+        run: |
+          echo "::group::Assert: B0 - Apply Auth Context jsCode in W2/W3 has no hardcoded UUID"
+          for f in W2_IN_IG W3_IN_MSG; do
+            jq -r '.nodes[] | select(.name=="B0 - Apply Auth Context") | .parameters.jsCode' \
+              workflows/$f.json > /tmp/aac_$f.js
+            if grep -Eq "00000000-0000-0000-0000-000000000001|DEFAULT_TENANT_ID|\|\| *'default'" /tmp/aac_$f.js; then
+              echo "FAIL: hardcoded UUID or fallback remains in $f Apply Auth Context jsCode"; exit 1
+            fi
+            echo "PASS: no UUID fallback in $f Apply Auth Context"
+          done
+          echo "::endgroup::"
+
+      - name: No INVENTORY-17 markers remain
+        run: |
+          echo "::group::Assert: no INVENTORY-17 or __inventory_15 markers on fixed nodes"
+          if grep -rl "INVENTORY-17" workflows/; then
+            echo "FAIL: INVENTORY-17 markers present in workflows/"; exit 1
+          fi
+          if grep -rl "__inventory_15" workflows/W0_MODULE_GUARD.json workflows/W1_IN_WA.json workflows/W_DRIVER_ONBOARDING.json; then
+            echo "FAIL: __inventory_15 markers present on fixed nodes"; exit 1
+          fi
+          echo "PASS: no INVENTORY-17 or __inventory_15 markers on fixed nodes"
+          echo "::endgroup::"
+
+      - name: W2/W3 duplicate const metaSigValid fixed
+        run: |
+          echo "::group::Assert: exactly one const metaSigValid in W2/W3 Apply Auth Context"
+          for f in W2_IN_IG W3_IN_MSG; do
+            n=$(jq -r '.nodes[] | select(.name=="B0 - Apply Auth Context") | .parameters.jsCode' \
+              workflows/$f.json | grep -c "const metaSigValid")
+            [ "$n" = "1" ] || { echo "FAIL: $f has $n const metaSigValid (expected 1)"; exit 1; }
+            echo "PASS: $f has exactly 1 const metaSigValid"
+          done
+          echo "::endgroup::"
+
+      - name: All five workflow JSONs are valid JSON
+        run: |
+          echo "::group::Assert: all five workflow JSONs parse cleanly"
+          for f in W1_IN_WA W2_IN_IG W3_IN_MSG W0_MODULE_GUARD W_DRIVER_ONBOARDING; do
+            jq empty workflows/$f.json || { echo "FAIL: invalid JSON $f"; exit 1; }
+            echo "PASS: $f is valid JSON"
+          done
+          echo "::endgroup::"
