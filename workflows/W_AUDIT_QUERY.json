@@ -23,7 +23,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "var qs = $json.query || {};\nvar startDate = qs.start_date || new Date(Date.now() - 7 * 86400000).toISOString();\nvar endDate = qs.end_date || new Date().toISOString();\nvar workflowName = (qs.workflow_name || '').toString().trim();\nvar page = Math.max(1, parseInt(qs.page || '1', 10));\nvar pageSize = Math.min(200, Math.max(1, parseInt(qs.page_size || '50', 10)));\nvar offset = (page - 1) * pageSize;\n\nvar whereClause = \"started_at >= '\" + startDate + \"'::timestamptz AND started_at <= '\" + endDate + \"'::timestamptz\";\nif (workflowName) {\n  var escaped = workflowName.replace(/'/g, \"''\").replace(/%/g, '\\\\%').replace(/_/g, '\\\\_');\n  whereClause += \" AND workflow_name ILIKE '%\" + escaped + \"%' ESCAPE '\\\\'\";\n}\n\nvar dataQuery = \"SELECT id, workflow_name, workflow_id, execution_id, channel, status, started_at, completed_at, duration_ms, tenant_id, correlation_id, error_message, created_at FROM ops.workflow_audit WHERE \" + whereClause + \" ORDER BY started_at DESC LIMIT \" + pageSize + \" OFFSET \" + offset;\nvar countQuery = \"SELECT COUNT(*) AS total FROM ops.workflow_audit WHERE \" + whereClause;\n\nreturn [{ json: { dataQuery: dataQuery, countQuery: countQuery, page: page, pageSize: pageSize, offset: offset } }];"
+        "jsCode": "var qs = $json.query || {};\nvar startDate = qs.start_date || new Date(Date.now() - 7 * 86400000).toISOString();\nvar endDate = qs.end_date || new Date().toISOString();\nvar workflowName = (qs.workflow_name || '').toString().trim();\nvar statusFilter = (qs.status || '').toString().trim();\nvar channelFilter = (qs.channel || '').toString().trim();\nvar page = Math.max(1, parseInt(qs.page || '1', 10));\nvar pageSize = Math.min(200, Math.max(1, parseInt(qs.page_size || qs.limit || '50', 10)));\nvar offset = (page - 1) * pageSize;\n\nvar whereClause = \"started_at >= '\" + startDate + \"'::timestamptz AND started_at <= '\" + endDate + \"'::timestamptz\";\nif (workflowName) {\n  var escaped = workflowName.replace(/'/g, \"''\").replace(/%/g, '\\\\%').replace(/_/g, '\\\\_');\n  whereClause += \" AND workflow_name ILIKE '%\" + escaped + \"%' ESCAPE '\\\\'\";\n}\n\nif (statusFilter && statusFilter !== 'all') {\n  whereClause += \" AND status = '\" + statusFilter.replace(/'/g, \"''\") + \"'\";\n}\nif (channelFilter && channelFilter !== 'all') {\n  whereClause += \" AND channel = '\" + channelFilter.replace(/'/g, \"''\") + \"'\";\n}\n\nvar dataQuery = \"SELECT id, workflow_name, workflow_id, execution_id, channel, status, started_at, completed_at, duration_ms, tenant_id, correlation_id, error_message, created_at FROM ops.workflow_audit WHERE \" + whereClause + \" ORDER BY started_at DESC LIMIT \" + pageSize + \" OFFSET \" + offset;\nvar countQuery = \"SELECT COUNT(*) AS total FROM ops.workflow_audit WHERE \" + whereClause;\n\nreturn [{ json: { dataQuery: dataQuery, countQuery: countQuery, page: page, pageSize: pageSize, offset: offset } }];"
       },
       "id": "audit-query-parse",
       "name": "B0 - Parse Params",
@@ -34,7 +34,25 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "={{ $json.dataQuery }}",
+        "query": "={{ $('B0 - Parse Params').first().json.countQuery }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "1mZZJEscADgQ8InR",
+          "name": "RestoBot PG (n8n DB)"
+        }
+      },
+      "id": "audit-query-count-pg",
+      "name": "PG - Count Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [-225, 160]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $('B0 - Parse Params').first().json.dataQuery }}",
         "options": {}
       },
       "credentials": {
@@ -47,12 +65,13 @@
       "name": "PG - Query Audit",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [-100, 0]
+      "position": [-100, 0],
+      "alwaysOutputData": true
     },
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "var cfg = $('B0 - Parse Params').first().json;\nvar items = $input.all().map(function(i) { return i.json; });\nreturn [{ json: { data: items, total: items.length, page: cfg.page, limit: cfg.pageSize } }];"
+        "jsCode": "var cfg = $('B0 - Parse Params').first().json;\nvar countRow = $('PG - Count Audit').first().json || {};\nvar total = parseInt(countRow.total != null ? countRow.total : (countRow.count || 0), 10) || 0;\nvar items = $input.all().map(function(i) { return i.json; });\nreturn [{ json: { data: items, total: total, page: cfg.page, limit: cfg.pageSize } }];"
       },
       "id": "audit-query-format",
       "name": "B0 - Format Response",
@@ -85,16 +104,59 @@
   ],
   "connections": {
     "IN - Webhook": {
-      "main": [[{ "node": "B0 - Parse Params", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "B0 - Parse Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "B0 - Parse Params": {
-      "main": [[{ "node": "PG - Query Audit", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "PG - Count Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG - Count Audit": {
+      "main": [
+        [
+          {
+            "node": "PG - Query Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "PG - Query Audit": {
-      "main": [[{ "node": "B0 - Format Response", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "B0 - Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "B0 - Format Response": {
-      "main": [[{ "node": "RESP - 200", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "RESP - 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   }
 }

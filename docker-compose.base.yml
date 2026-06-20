@@ -180,6 +180,7 @@ services:
       args:
         VITE_DOMAIN: ${DOMAIN_NAME}
         VITE_STRAPI_URL: https://cms.${DOMAIN_NAME}
+        VITE_API_URL: https://api.${DOMAIN_NAME}
       context: .
       dockerfile: admin-dashboard/Dockerfile
     expose:
