@@ -77,17 +77,17 @@ Plans:
 **Depends on**: Phase 15
 **Requirements**: TEN-02, DB-01
 **Success Criteria** (what must be TRUE):
-  1. `db/migrations/2026-04-06_saas_modules_entitlements.sql` runs a read-only duplicate probe before adding `uq_tenant_module`, dedupes (keep latest `activated_at`), and creates the unique constraint via `CREATE UNIQUE INDEX CONCURRENTLY` then attaches it — taking no `ACCESS EXCLUSIVE` lock and **not failing on pre-existing duplicate rows**
+  1. The SaaS migration runs a read-only duplicate probe before adding `uq_tenant_module`, dedupes (keep latest `activated_at`), and creates the unique constraint via `CREATE UNIQUE INDEX CONCURRENTLY` then attaches it (`USING INDEX`) — taking no `ACCESS EXCLUSIVE` lock and **not failing on pre-existing duplicate rows** (same pattern for `uq_product_module_key`)
   2. The migration sets a `lock_timeout`/`statement_timeout` and is idempotent (re-running is a no-op); a CI run that seeds duplicate entitlement rows proves the migration succeeds rather than erroring
-  3. A new `channel_identities(channel, identity, tenant_id, restaurant_id)` migration exists in the n8n DB with `(channel, identity)` as PK and FKs to `tenants`/`restaurants`, seeded with the live tenant's WhatsApp `phone_number_id`, IG/Messenger page/recipient ids, and kiosk device id
-  4. Both migrations are registered with the existing `db-migrate` service and tracked in `schema_migrations`; a CI schema check asserts the `channel_identities` table, `uq_tenant_module`, the four entitlement indexes, `uq_product_module_key`, and `entitlement_audit_log` all exist after apply
-  - 🔴 VPS: executing both migrations against production Postgres is deferred to a prod-connected session.
-**Plans**: TBD
+  3. A new `channel_identities(channel, identity, tenant_id, restaurant_id, is_active)` migration exists in the n8n DB with `(channel, identity)` as PK and FKs to `tenants`/`restaurants`, seeded with CI sentinels (real WhatsApp `phone_number_id`, IG/Messenger page ids, kiosk device id discovered at 🔴 VPS apply)
+  4. Both migrations are registered with the existing `db-migrate` service (strapi migration via a new `db/migrations-strapi/` PGDATABASE=strapi pass; CONCURRENTLY direct to `postgres:5432`) and tracked in `schema_migrations`; a two-DB CI check asserts the `channel_identities` table, `uq_tenant_module`, the four entitlement indexes, `uq_product_module_key`, and `entitlement_audit_log` all exist after apply
+  - 🔴 VPS: executing both migrations against production Postgres (and seeding real channel ids) is deferred to a prod-connected session.
+**Plans**: 3 plans (Wave 1: 16-01, 16-02 parallel — disjoint files; Wave 2: 16-03 wires both)
 
 Plans:
-- [ ] 16-01: Rewrite SaaS migration for live-safety (dup-probe + dedupe + CONCURRENTLY + timeouts)
-- [ ] 16-02: `channel_identities` migration + single-tenant seed
-- [ ] 16-03: Wire both into `db-migrate` + CI schema-presence check
+- [ ] 16-01-PLAN.md [DB-01] — Live-safe rewrite of the SaaS migration: read-only dup-probe → dedupe (keep latest `activated_at`) → `CREATE UNIQUE INDEX CONCURRENTLY` + `ALTER TABLE ... USING INDEX` for `uq_tenant_module` AND `uq_product_module_key` → `lock_timeout`/`statement_timeout` → fully idempotent. Relocated to `db/migrations-strapi/` (strapi DB target); old `db/migrations/2026-04-06_*` deleted. Includes Wave 0 fixture (`16-duplicate-entitlements-fixture.sql`) + schema-check assertion.
+- [ ] 16-02-PLAN.md [TEN-02] — `channel_identities` migration in the n8n DB: PK `(channel, identity)`, FKs to `tenants`/`restaurants`, `is_active boolean DEFAULT true`, seeded with 4 CI sentinels under canonical CI UUID; idempotent. 🔴 VPS seed discovers real values from `platform_settings`. Includes Wave 0 channel-identities assertion.
+- [ ] 16-03-PLAN.md [DB-01, TEN-02] — Wire both into `db-migrate`: new `db/migrations-strapi/` PGDATABASE=strapi pass direct to `postgres:5432` (CONCURRENTLY-safe) + separate strapi-DB `schema_migrations`; two-DB `phase-16-assertions.yml` (strapi + n8n) proving dup-survival, idempotent re-run, all unique constraints/indexes, and channel_identities existence.
 
 ### Phase 17: Inbound Tenant Derivation (Fail-Closed)
 **Goal**: Inbound adapters resolve a real `(tenant_id, restaurant_id)` from `channel_identities` using the already-parsed channel-native id, and an unknown identity fails closed (parked/rejected with a log event) instead of defaulting to `'default'`
@@ -180,7 +180,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 15. Tenant Identity Model (Canonical Key) | 0/3 | Planned | - |
-| 16. Live-Safe SaaS Migration + Channel Routing Table | 0/3 | Not started | - |
+| 16. Live-Safe SaaS Migration + Channel Routing Table | 0/3 | Planned | - |
 | 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Not started | - |
 | 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Not started | - |
 | 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 0/3 | Not started | - |
