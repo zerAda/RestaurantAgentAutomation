@@ -110,8 +110,9 @@ export async function writeAuditRow(knex: KnexLike, row: AuditRow): Promise<void
 
 /**
  * Invalidate the entitlement cache for one (tenant, module) by issuing an exact-key DEL on the
- * canonical key ralphe:entitlement:{tenant_id}:{module_key}. O(1) — NO SCAN/KEYS (the single-
- * threaded Redis hot path stays safe). Must match the Phase-20 GRD-01 GET byte-for-byte.
+ * canonical key ralphe:entitlement:{tenant_id}:{module_key}. O(1) — a single exact-key DEL,
+ * never a cursor scan or a blocking key-enumeration (the single-threaded Redis hot path stays
+ * safe). Must match the Phase-20 GRD-01 GET byte-for-byte.
  */
 export async function invalidateCache(
   redis: RedisLike,
