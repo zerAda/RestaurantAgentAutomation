@@ -1,0 +1,215 @@
+name: Phase 19 Entitlement Audit + Cache-Invalidation Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/audit-hook.ts'
+      - 'inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/lifecycles.ts'
+      - 'inventory-cms/src/api/product-module/content-types/product-module/lifecycles.ts'
+      - 'inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/__tests__/audit-hook.test.mjs'
+      - 'db/ci-fixtures/19-entitlement-audit-seed.sql'
+      - 'db/ci-assertions/19-entitlement-audit.sql'
+      - 'db/migrations-strapi/2026-06-20_entitlement_audit_uuid.sql'
+      - 'scripts/test-phase19.sh'
+      - '.github/workflows/phase-19-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  audit-row-sql:
+    name: Phase 19 Audit-Row SQL (entitlement_audit_log)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        options: >-
+          --health-cmd "pg_isready -U n8n -d n8n"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Apply entitlement-audit seed (uuid-NULL shape + tenants + FK)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply db/ci-fixtures/19-entitlement-audit-seed.sql"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-fixtures/19-entitlement-audit-seed.sql
+          echo "::endgroup::"
+
+      - name: Audit-row + invalid-uuid + NULL-tenant assertions
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Assert: a row per op (old->new captured), non-UUID rejected, product-module tenant_id IS NULL accepted"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-assertions/19-entitlement-audit.sql
+          echo "::endgroup::"
+
+  cache-invalidation-redis:
+    name: Phase 19 Cache-Invalidation Round-Trip (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        options: >-
+          --health-cmd "pg_isready -U n8n -d n8n"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # BLOCKER A: this job runs `node --test --experimental-strip-types` importing the .ts
+      # helper — that requires Node >= 22.18. The phase-18 mirror has NO setup-node (defaults
+      # to the repo's Node 20), so we MUST pin Node 22 here BEFORE any node step.
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Apply entitlement-audit seed (so writeAuditRow has the table)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply db/ci-fixtures/19-entitlement-audit-seed.sql"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-fixtures/19-entitlement-audit-seed.sql
+          echo "::endgroup::"
+
+      - name: Install CMS deps for the helper (ioredis / knex / pg / zod)
+        run: |
+          echo "::group::cd inventory-cms && npm install (helper imports)"
+          cd inventory-cms
+          npm install --no-save --no-audit --no-fund ioredis knex pg zod
+          echo "::endgroup::"
+
+      - name: Run the audit-hook node-test (SET -> invalidateCache -> GET nil + audit-row write)
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: '6379'
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: n8n
+          PGPASSWORD: n8npass
+          PGDATABASE: n8n
+        run: |
+          echo "::group::node --test --experimental-strip-types audit-hook.test.mjs"
+          node --version
+          node --test --experimental-strip-types \
+            inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/__tests__/audit-hook.test.mjs
+          echo "::endgroup::"
+
+  hook-structural:
+    name: Phase 19 Hook Structural Assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # BLOCKER A: `node --check` on the .mjs test also wants a pinned modern Node.
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Audit-hook uses the canonical cache key
+        run: |
+          echo "::group::Assert: audit-hook.ts contains ralphe:entitlement:"
+          grep -q "ralphe:entitlement:" \
+            inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/audit-hook.ts \
+            || { echo "FAIL: audit-hook.ts missing canonical cache key"; exit 1; }
+          echo "PASS: canonical cache key present"
+          echo "::endgroup::"
+
+      - name: Both lifecycles.ts exist
+        run: |
+          echo "::group::Assert: tenant-entitlement + product-module lifecycles.ts present"
+          test -f inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/lifecycles.ts \
+            || { echo "FAIL: tenant-entitlement lifecycles.ts missing"; exit 1; }
+          test -f inventory-cms/src/api/product-module/content-types/product-module/lifecycles.ts \
+            || { echo "FAIL: product-module lifecycles.ts missing"; exit 1; }
+          echo "PASS: both lifecycles.ts exist"
+          echo "::endgroup::"
+
+      - name: Audit-hook is a PURE helper (no @strapi/strapi import on the test seam)
+        run: |
+          echo "::group::Assert: audit-hook.ts has no @strapi/strapi import"
+          if grep -q "@strapi/strapi" \
+            inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/audit-hook.ts; then
+            echo "FAIL: audit-hook.ts imports @strapi/strapi (breaks the pure seam)"; exit 1
+          fi
+          echo "PASS: audit-hook.ts is Strapi-free"
+          echo "::endgroup::"
+
+      - name: Audit-hook validates tenant_id with zod (uuid/guid)
+        run: |
+          echo "::group::Assert: audit-hook.ts uses zod uuid/guid validation"
+          grep -qE "z\.string\(\)\.(uuid|guid)|z\.(uuid|guid)" \
+            inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/audit-hook.ts \
+            || { echo "FAIL: audit-hook.ts missing zod uuid/guid validation"; exit 1; }
+          echo "PASS: zod uuid/guid validation present"
+          echo "::endgroup::"
+
+      - name: No bare swallow / no SCAN/KEYS in the hook
+        run: |
+          echo "::group::Assert: no continueOnFail / .catch(()=>{}) / SCAN / KEYS in audit-hook.ts"
+          if grep -Eq "continueOnFail|\.catch\(\(\) *=> *\{\}\)|\.scan\(|KEYS " \
+            inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/audit-hook.ts; then
+            echo "FAIL: bare swallow or SCAN/KEYS in audit-hook.ts"; exit 1
+          fi
+          echo "PASS: no bare swallow / no SCAN/KEYS"
+          echo "::endgroup::"
+
+      - name: product-module lifecycle is audit-only (no invalidateCache — O-1)
+        run: |
+          echo "::group::Assert: product-module/lifecycles.ts does NOT call invalidateCache (O-1 audit-only)"
+          if grep -q "invalidateCache" \
+            inventory-cms/src/api/product-module/content-types/product-module/lifecycles.ts; then
+            echo "FAIL: product-module lifecycle calls invalidateCache (must be audit-only per O-1)"; exit 1
+          fi
+          echo "PASS: product-module is audit-only"
+          echo "::endgroup::"
+
+      - name: node --check the test file
+        run: |
+          echo "::group::node --check audit-hook.test.mjs"
+          node --version
+          node --check \
+            inventory-cms/src/api/tenant-entitlement/content-types/tenant-entitlement/__tests__/audit-hook.test.mjs
+          echo "::endgroup::"
