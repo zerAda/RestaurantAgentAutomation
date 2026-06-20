@@ -132,12 +132,12 @@ Plans (3/3 executed — code/CI complete, awaiting verifier):
   2. The cross-DB write question is resolved and documented (move the table to the strapi DB, or give the writer an explicit n8n-DB connection) and the chosen path is implemented so the writer targets a table that actually exists
   3. The same hook issues an explicit Redis `DEL` of the entitlement cache key on every change, and a test proves a key present before an entitlement mutation is gone after it (no stale grant survives revocation)
   4. The audit write is **not** silent fire-and-forget — any write failure routes to a counter/alert (no bare `continueOnFail` swallowing), and `tenant_id` is validated to the canonical UUID before insert
-**Plans**: TBD
+**Plans**: 3 plans (2 waves — disjoint file ownership: 19-01 owns the ADR + uuid migration; 19-03 owns the CI fixtures/assertions/yml + node-test + harness (the validation infra); 19-02 owns the two `lifecycles.ts` + the pure `audit-hook.ts`. 19-01 + 19-03 are Wave 1 (parallel); 19-02 is Wave 2 — its node-test consumes the 19-03 harness and its helper is the seam 19-03 tests. No file is touched by two plans.)
 
 Plans:
-- [ ] 19-01: Resolve `entitlement_audit_log` placement (cross-DB) + writer connection
-- [ ] 19-02: `tenant-entitlement` lifecycles.ts — audit-row write (typed, validated, alert-on-failure)
-- [ ] 19-03: Redis cache-key `DEL` in the same hook + invalidation test
+- [ ] 19-01-PLAN.md [AUD-01] — ADR `docs/adr/0003-entitlement-audit-placement.md` (cross-DB: table stays in the strapi DB, raw-Knex `strapi.db.connection` writer since it is NOT a content type; locks the `ralphe:entitlement:{tenant_id}:{module_key}` cache-key contract + records O-1/O-2/O-3) + idempotent live-safe `db/migrations-strapi/2026-06-20_entitlement_audit_uuid.sql` (`tenant_id` VARCHAR→uuid + nullable FK; 🔴 VPS apply deferred)
+- [ ] 19-02-PLAN.md [AUD-01, AUD-02] — Pure `audit-hook.ts` helper (deriveAction + zod canonical-UUID validate + raw-Knex audit insert + exact-key Redis DEL) wired through `tenant-entitlement/lifecycles.ts` (audit + invalidate; old→new captured in before* hooks, actor via `requestContext`) and `product-module/lifecycles.ts` (audit-only — O-1, maps `key`→`module_key`); fail-loud (validate-throw-pre-write, log-error+count-post-commit, no bare swallow); no NEW CMS TS errors
+- [ ] 19-03-PLAN.md [AUD-02] — Validation infra: `db/ci-fixtures/19-entitlement-audit-seed.sql` + `db/ci-assertions/19-entitlement-audit.sql` (row-per-op + invalid-uuid negative, nested `BEGIN..EXCEPTION`, no SAVEPOINT) + `__tests__/audit-hook.test.mjs` (`node --test`: SET→`invalidateCache`→GET-nil on the canonical key + the audit-row write) + `scripts/test-phase19.sh` (ephemeral PG + `redis-server`, docker DOWN) + `.github/workflows/phase-19-assertions.yml` (mirrors phase-18 + adds a `redis:7-alpine` service)
 
 ### Phase 20: Redis-Cached Fail-Closed Guard + Internal Token Provisioning
 **Goal**: `W0_MODULE_GUARD` caches module/entitlement lookups in Redis so a cache hit skips both Strapi round-trips per inbound message (still fail-closed on error), and `STRAPI_API_TOKEN_INTERNAL` is a first-class, preflight-checked secret so a missing secret can no longer become a total inbound/operator lockout
