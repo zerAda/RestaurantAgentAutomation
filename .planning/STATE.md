@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: active
-stopped_at: v2.0 roadmap created (7 phases, 15–21); requirements + research complete. Ready for /gsd:plan-phase 15.
+stopped_at: Phase 15 (Tenant Identity Model) COMPLETE + verified (code/CI; VPS backfill deferred). Next: plan+execute Phase 16.
 last_updated: "2026-06-20T13:00:00.000Z"
 previous_milestone: v1.0
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 0
   completed_plans: 0
 ---
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: Not started — roadmap ready (Phases 15–21)
-Next: /gsd:plan-phase 15 — Tenant Identity Model (Canonical Key)
+Phase: 15 COMPLETE (Tenant Identity Model) — verified passed (TEN-01, code/CI; live VPS backfill deferred)
+Next: Phase 16 — Live-Safe SaaS Migration + Channel Routing Table [TEN-02, DB-01]
 
 ### Previous milestone — v1.0 Platform Hardening & Reliability (archived)
 

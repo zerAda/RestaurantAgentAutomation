@@ -45,7 +45,7 @@ step is called out as a deferred sub-step where it exists.
 - Integer phases (15, 16, …): Planned milestone work
 - Decimal phases (16.1, …): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 15: Tenant Identity Model (Canonical Key)** - Establish the UUID `tenants.tenant_id` as the single system of record and reconcile the VARCHAR entitlement plane to it [TEN-01]
+- [x] **Phase 15: Tenant Identity Model (Canonical Key)** - Establish the UUID `tenants.tenant_id` as the single system of record and reconcile the VARCHAR entitlement plane to it [TEN-01] — COMPLETE (2026-06-20, code/CI; live VPS backfill deferred)
 - [ ] **Phase 16: Live-Safe SaaS Migration + Channel Routing Table** - Make the SaaS constraints migration safe to apply on a live table (dup-probe + `CREATE INDEX CONCURRENTLY`), add the `channel_identities` routing table, and wire both into `db-migrate` [TEN-02, DB-01]
 - [ ] **Phase 17: Inbound Tenant Derivation (Fail-Closed)** - Resolve tenant from `channel_identities` in `B0 - Apply Auth Context`; an unknown channel identity fails closed instead of defaulting to `'default'` [TEN-03]
 - [ ] **Phase 18: Per-Tenant Data-Plane Scoping + Isolation CI** - Scope every order/customer read and write by a non-defaultable `tenant_id`, and prove cross-tenant isolation with an automated CI test [TEN-04, TEN-05]
@@ -68,9 +68,9 @@ step is called out as a deferred sub-step where it exists.
 **Plans**: 3 plans (all Wave 1, parallel — disjoint file ownership)
 
 Plans:
-- [ ] 15-01-PLAN.md — Canonical-key ADR (`docs/adr/0001`): names `tenants.tenant_id` (UUID) canonical, records 1:1 entitlement mapping + the keep-`VARCHAR(255)`/migrate-in-P19 audit-log decision, confirms schema.json, surfaces the 🔴 VPS runtime-UUID-discovery caveat
-- [ ] 15-02-PLAN.md — Idempotent entitlement-plane backfill + CI assertion harness (`db/ci-fixtures/`, `db/ci-assertions/`, `phase-15-assertions.yml`): seeds an ephemeral Postgres `'default'` row, runs the backfill, asserts zero `'default'` rows remain (NOT a `db/migrations/` file — strapi-DB target)
-- [ ] 15-03-PLAN.md — Seeder fix to canonical UUID + node seed-assertion + annotated 5-occurrence `|| 'default'` fallback inventory (`docs/adr/0002`), each site tagged with its owning phase (15/17/17/17/21)
+- [x] 15-01-PLAN.md — Canonical-key ADR (`docs/adr/0001`): names `tenants.tenant_id` (UUID) canonical, records 1:1 entitlement mapping + the keep-`VARCHAR(255)`/migrate-in-P19 audit-log decision, confirms schema.json, surfaces the 🔴 VPS runtime-UUID-discovery caveat
+- [x] 15-02-PLAN.md — Idempotent entitlement-plane backfill + CI assertion harness (`db/ci-fixtures/`, `db/ci-assertions/`, `phase-15-assertions.yml`): seeds an ephemeral Postgres `'default'` row, runs the backfill, asserts zero `'default'` rows remain (NOT a `db/migrations/` file — strapi-DB target)
+- [x] 15-03-PLAN.md — Seeder fix to canonical UUID + node seed-assertion + annotated 5-occurrence `|| 'default'` fallback inventory (`docs/adr/0002`), each site tagged with its owning phase (15/17/17/17/21)
 
 ### Phase 16: Live-Safe SaaS Migration + Channel Routing Table
 **Goal**: The SaaS constraints/indexes/audit-log migration is safe to apply on a live, possibly-duplicated table, the new `channel_identities` routing table exists (seeded for the current single tenant), and both are wired into the existing `db-migrate` mechanism
