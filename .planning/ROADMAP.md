@@ -99,12 +99,12 @@ Plans:
   3. A message arriving on an **unmapped/unknown** identity is failed closed — parked or rejected with a `UNKNOWN_CHANNEL_IDENTITY`/`TENANT_UNRESOLVED` `security_events` row — and is **never** silently routed to tenant `'default'`
   4. Any legacy single-tenant fallback is gated behind one explicit, documented flag (e.g. `SINGLE_TENANT_MODE`); no bare `|| 'default'` remains on the resolution path
   - 🔴 VPS: importing/activating the updated inbound workflows on the production n8n is deferred to a prod-connected session.
-**Plans**: TBD
+**Plans**: 3 plans (all Wave 1, parallel — disjoint file ownership: 17-01 owns W1/W2/W3; 17-02 owns W0_MODULE_GUARD + W_DRIVER_ONBOARDING + ADR 0002; 17-03 owns the CI gate files)
 
 Plans:
-- [ ] 17-01: `channel_identities` resolution rung in `B0 - Apply Auth Context` (WA/IG/MSG)
-- [ ] 17-02: Fail-closed `UNKNOWN_CHANNEL_IDENTITY` path + `security_events` write
-- [ ] 17-03: Resolution fixtures/tests (mapped → real tenant, unmapped → rejected)
+- [ ] 17-01-PLAN.md [TEN-03] — `channel_identities` resolver rung in W1/W2/W3: insert `B0 - Resolve Channel Identity (DB)` (postgres typeVersion 2, credential `postgres-main`, exact SQL) + `B0 - Map Channel Identity Result` shim between `B0 - Resolve Client (DB)` and `B0 - Apply Auth Context`; rewrite `B0 - Apply Auth Context` to consume `ci_tenant_id`/`ci_restaurant_id`, fail closed with `denyReason='UNKNOWN_CHANNEL_IDENTITY'`, remove env/hardcoded fallbacks, and fix the duplicate `const metaSigValid` bug in W2/W3
+- [ ] 17-02-PLAN.md [TEN-03] — Remove the remaining fail-open fallbacks outside the adapters: `W0_MODULE_GUARD.json` (`|| DEFAULT_TENANT_ID || 'default'` → fail-closed `allowed:false`) + `W_DRIVER_ONBOARDING.json` (UUID/env fallback → no-fallback NOT NULL); strip `__inventory_15` markers; update `docs/adr/0002` occurrences #2/#3/#4 → `REMOVED (Phase 17)`
+- [ ] 17-03-PLAN.md [TEN-03] — CI gate: `db/ci-assertions/17-tenant-resolution.sql` (known WA/IG identity resolves to right tenant; unknown returns 0 rows) + `.github/workflows/phase-17-assertions.yml` (ephemeral-PG SQL job + structural jq/grep job: resolver present in W1/W2/W3, no `'default'`/`DEFAULT_TENANT_ID` on tenant path, `UNKNOWN_CHANNEL_IDENTITY` present, no `INVENTORY-17` markers, W2/W3 single-`const metaSigValid`)
 
 ### Phase 18: Per-Tenant Data-Plane Scoping + Isolation CI
 **Goal**: Every order and customer read and write is scoped by a non-defaultable `tenant_id`, and an automated CI test proves a request resolved to tenant A cannot read or write tenant B's data
@@ -181,7 +181,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 |-------|----------------|--------|-----------|
 | 15. Tenant Identity Model (Canonical Key) | 0/3 | Planned | - |
 | 16. Live-Safe SaaS Migration + Channel Routing Table | 0/3 | Planned | - |
-| 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Not started | - |
+| 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Planned | - |
 | 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Not started | - |
 | 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 0/3 | Not started | - |
 | 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 0/3 | Not started | - |
