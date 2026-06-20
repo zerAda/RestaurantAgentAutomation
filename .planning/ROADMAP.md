@@ -165,12 +165,13 @@ Plans:
   2. Every gated nav module-key in `admin-dashboard/src/App.tsx` maps to a real key in `config/product_modules.json` / `saas-entitlements.ts` (no ghost `addon_kitchen_display`-style keys); a CI check asserts every `module_key` referenced in `workflows/` and `App.tsx` exists in the seeder
   3. Typed `ProductModule` and `TenantEntitlement` interfaces (tolerant of v4/v5 response shapes) replace the `any` usages in `useEntitlements.ts` and the five flagged components (`NotificationCenter.tsx`, `ToastProvider.tsx`, `AnalyticsView.tsx`, `AutomationView.tsx`, `AIChatBubble.tsx`)
   4. `npm run lint` passes for `admin-dashboard` — the standing Frontend Lint CI job goes green
-**Plans**: TBD
+**Plans**: 4 plans (Wave 1: 21-02, 21-03, 21-04 parallel — disjoint files; Wave 2: 21-01 depends on 21-03's shared DTO types)
 
 Plans:
-- [ ] 21-01: `useEntitlements.hasModule` fail-closed default + explicit error/locked UI state
-- [ ] 21-02: `App.tsx` module-key alignment + CI module-key consistency check
-- [ ] 21-03: Typed `ProductModule`/`TenantEntitlement` DTOs replacing `any` (lint green)
+- [ ] 21-01-PLAN.md [ENT-01, TYP-01] — Fail-closed `useEntitlements.hasModule` (false on loading/error except a static `shared_core` allowlist so core admin nav is never locked out) + explicit `error`/`EntitlementErrorBanner` surface + DTO-typed (clears the 6 `no-explicit-any` → `npm run lint` green) + ENT-01 Vitest test (v4/v5-tolerant); handles ADR-0002 fallback #5 fail-closed-on-result. Wave 2 (imports 21-03's types)
+- [ ] 21-02-PLAN.md [ENT-02] — Fix the 6 ghost module-keys (3 App.tsx nav gates → `kiosk_instore`/`admin_ai_intelligence`/`growth_marketing`; 3 workflow guard calls W_KIOSK_ORDER/W_ORDER_FINALIZER/W30_VOICE_CALL_INIT → `kiosk_instore`/`order_bot_core`/`voice`) + `scripts/check-module-keys.mjs` (+ `node --test`) asserting every referenced key exists in the manifest/seeder + creates `phase-21-assertions.yml` (admin lint+vitest Node 20, module-key Node 22). Wave 1
+- [ ] 21-03-PLAN.md [TYP-01] — Shared v4/v5-tolerant `ProductModuleRaw`/`TenantEntitlementRaw` DTOs + `unwrap()` in `src/types/entitlements.ts` (consumed by 21-01) + retire the `AIChatBubble.tsx` `as any`/disable via a typed `AgentChatResponse`. Wave 1
+- [ ] 21-04-PLAN.md [TYP-01] — CMS-TS fully-green: 4 `// @ts-ignore - UID registered at runtime` on the SaaS controller/route factories (the 12-file precedent) + the proven ioredis static-import fix in `auth-ratelimit.ts` → `npx tsc --noEmit` 0 errors; appends the `cms-ts-compile` job to `phase-21-assertions.yml`. Wave 1
 
 ## Progress
 
@@ -185,7 +186,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 | 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Planned | - |
 | 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 3/3 | Complete   | 2026-06-20 |
 | 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 3/3 | Complete   | 2026-06-20 |
-| 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 0/3 | Not started | - |
+| 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 0/4 | Planned | - |
 
 **Coverage:** All 13 v2.0 requirements mapped to exactly one phase — TEN-01 → P15; TEN-02, DB-01 → P16;
 TEN-03 → P17; TEN-04, TEN-05 → P18; AUD-01, AUD-02 → P19; GRD-01, ENT-03 → P20; ENT-01, ENT-02,
