@@ -1,0 +1,225 @@
+name: Phase 18 Per-Tenant Data-Plane Scoping + Isolation Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'workflows/W_ORDER_FINALIZER.json'
+      - 'workflows/W51_VIP_WIN_BACK.json'
+      - 'workflows/W53_DYNAMIC_KITCHEN_LOAD.json'
+      - 'workflows/W_THE_USUAL.json'
+      - 'workflows/W_ADMIN_PROACTIVE_AGENT.json'
+      - 'workflows/W14_ADMIN_WA_SUPPORT_CONSOLE.json'
+      - 'workflows/W4_CORE.json'
+      - 'workflows/W12_ADMIN_ORDERS.json'
+      - 'inventory-cms/src/api/order/content-types/order/schema.json'
+      - 'inventory-cms/src/api/customer/content-types/customer/schema.json'
+      - 'db/ci-fixtures/18-two-tenant-seed.sql'
+      - 'db/ci-assertions/18-cross-tenant-isolation.sql'
+      - '.github/workflows/phase-18-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cross-tenant-isolation-sql:
+    name: Phase 18 Cross-Tenant Isolation SQL (n8n DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        options: >-
+          --health-cmd "pg_isready -U n8n -d n8n"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Seed FK parents — tenants + restaurants (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Seed canonical CI tenant A + restaurant A AND tenant B + restaurant B (FK parents)"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+            CREATE TABLE IF NOT EXISTS tenants (
+              tenant_id uuid PRIMARY KEY,
+              name text,
+              slug text,
+              plan text,
+              status text
+            );
+            CREATE TABLE IF NOT EXISTS restaurants (
+              restaurant_id uuid PRIMARY KEY,
+              tenant_id uuid REFERENCES tenants(tenant_id),
+              name text,
+              phone text,
+              default_language text,
+              is_active boolean
+            );
+            INSERT INTO tenants(tenant_id, name, slug, plan, status)
+            VALUES (
+              '00000000-0000-0000-0000-000000000001',
+              'Tenant A',
+              'tenant-a',
+              'professional',
+              'active'
+            ) ON CONFLICT (tenant_id) DO NOTHING;
+            INSERT INTO tenants(tenant_id, name, slug, plan, status)
+            VALUES (
+              '00000000-0000-0000-0000-0000000000b2',
+              'Tenant B',
+              'tenant-b',
+              'professional',
+              'active'
+            ) ON CONFLICT (tenant_id) DO NOTHING;
+            INSERT INTO restaurants(restaurant_id, tenant_id, name, phone, default_language, is_active)
+            VALUES (
+              '00000000-0000-0000-0000-000000000000',
+              '00000000-0000-0000-0000-000000000001',
+              'Rest A',
+              '+213000000000',
+              'fr',
+              true
+            ) ON CONFLICT (restaurant_id) DO NOTHING;
+            INSERT INTO restaurants(restaurant_id, tenant_id, name, phone, default_language, is_active)
+            VALUES (
+              '00000000-0000-0000-0000-0000000000bb',
+              '00000000-0000-0000-0000-0000000000b2',
+              'Rest B',
+              '+213000000001',
+              'fr',
+              true
+            ) ON CONFLICT (restaurant_id) DO NOTHING;
+          "
+          echo "::endgroup::"
+
+      - name: Create minimal orders table (isolation surface only)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Create minimal orders table with tenant_id NOT NULL + FK (not the full bootstrap)"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+            CREATE TABLE IF NOT EXISTS orders (
+              order_id uuid PRIMARY KEY,
+              tenant_id uuid NOT NULL REFERENCES tenants(tenant_id),
+              restaurant_id uuid NOT NULL REFERENCES restaurants(restaurant_id),
+              channel text NOT NULL,
+              \"customer_userId\" text NOT NULL,
+              total_amount numeric NOT NULL DEFAULT 0,
+              status text
+            );
+          "
+          echo "::endgroup::"
+
+      - name: Apply two-tenant seed
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply db/ci-fixtures/18-two-tenant-seed.sql"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-fixtures/18-two-tenant-seed.sql
+          echo "::endgroup::"
+
+      - name: Cross-tenant isolation assertions
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Assert: A cannot read/write B, B cannot read A, non-defaultable write, FK enforcement"
+          psql -h localhost -p 5432 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-assertions/18-cross-tenant-isolation.sql
+          echo "::endgroup::"
+
+  workflow-structural:
+    name: Phase 18 Workflow + Schema Structural Assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: W12 reference read still scoped (regression guard)
+        run: |
+          echo "::group::Assert: W12_ADMIN_ORDERS order query still carries o.tenant_id = \$1"
+          jq -r '.nodes[]|select(.parameters.query)|.parameters.query' workflows/W12_ADMIN_ORDERS.json \
+            | grep -q "o.tenant_id = \$1" \
+            || { echo "FAIL: W12 reference scoped read regressed"; exit 1; }
+          echo "PASS: W12 reference read still scoped"
+          echo "::endgroup::"
+
+      - name: W_ORDER_FINALIZER order INSERT carries tenant_id
+        run: |
+          echo "::group::Assert: W_ORDER_FINALIZER INSERT INTO orders includes tenant_id; no order_items drift"
+          FQ=$(jq -r '.nodes[]|select(.parameters.query)|.parameters.query' workflows/W_ORDER_FINALIZER.json)
+          echo "$FQ" | grep -q "INSERT INTO orders" \
+            || { echo "FAIL: finalizer orders INSERT missing"; exit 1; }
+          echo "$FQ" | grep -q "tenant_id" \
+            || { echo "FAIL: finalizer orders INSERT missing tenant_id"; exit 1; }
+          if echo "$FQ" | grep -Eq "quantity, price_cents"; then
+            echo "FAIL: order_items column drift (quantity/price_cents) remains"; exit 1
+          fi
+          echo "$FQ" | grep -Eq "qty|unit_price_cents" \
+            || { echo "FAIL: order_items not using qty/unit_price_cents"; exit 1; }
+          echo "PASS: W_ORDER_FINALIZER order INSERT carries tenant_id + correct order_items columns"
+          echo "::endgroup::"
+
+      - name: Previously-unscoped order queries now carry tenant_id
+        run: |
+          echo "::group::Assert: W51/W53/W_THE_USUAL/W_ADMIN_PROACTIVE/W14 order queries carry tenant_id"
+          for f in W51_VIP_WIN_BACK W53_DYNAMIC_KITCHEN_LOAD W_THE_USUAL W_ADMIN_PROACTIVE_AGENT W14_ADMIN_WA_SUPPORT_CONSOLE; do
+            jq -r '.nodes[]|select(.parameters.query)|.parameters.query' workflows/$f.json \
+              | grep -q "tenant_id" \
+              || { echo "FAIL: $f order query not tenant-scoped"; exit 1; }
+            echo "PASS: $f carries tenant_id"
+          done
+          echo "::endgroup::"
+
+      - name: Strapi order/customer schemas have tenant_id
+        run: |
+          echo "::group::Assert: Strapi order/customer schemas have tenant_id; customer phone no longer globally unique"
+          jq -e '.attributes.tenant_id' inventory-cms/src/api/order/content-types/order/schema.json >/dev/null \
+            || { echo "FAIL: order schema missing tenant_id"; exit 1; }
+          jq -e '.attributes.restaurant_id' inventory-cms/src/api/order/content-types/order/schema.json >/dev/null \
+            || { echo "FAIL: order schema missing restaurant_id"; exit 1; }
+          jq -e '.attributes.tenant_id' inventory-cms/src/api/customer/content-types/customer/schema.json >/dev/null \
+            || { echo "FAIL: customer schema missing tenant_id"; exit 1; }
+          if jq -e '.attributes.phone.unique == true' inventory-cms/src/api/customer/content-types/customer/schema.json >/dev/null; then
+            echo "FAIL: customer.phone still globally unique"; exit 1
+          fi
+          echo "PASS: Strapi schemas carry tenant_id; customer phone no longer globally unique"
+          echo "::endgroup::"
+
+      - name: No tenant fallback on the fixed order paths
+        run: |
+          echo "::group::Assert: no DEFAULT_TENANT_ID / || 'default' on the fixed order workflows"
+          for f in W_ORDER_FINALIZER W51_VIP_WIN_BACK W53_DYNAMIC_KITCHEN_LOAD W_THE_USUAL W_ADMIN_PROACTIVE_AGENT W14_ADMIN_WA_SUPPORT_CONSOLE W4_CORE; do
+            if grep -Eq "DEFAULT_TENANT_ID|\|\| *'default'" workflows/$f.json; then
+              echo "FAIL: tenant fallback remains in $f"; exit 1
+            fi
+            echo "PASS: no fallback in $f"
+          done
+          echo "::endgroup::"
+
+      - name: All touched workflow + schema JSONs are valid JSON
+        run: |
+          echo "::group::Assert: all touched workflow + Strapi schema JSONs parse cleanly"
+          for f in W_ORDER_FINALIZER W51_VIP_WIN_BACK W53_DYNAMIC_KITCHEN_LOAD W_THE_USUAL W_ADMIN_PROACTIVE_AGENT W14_ADMIN_WA_SUPPORT_CONSOLE W4_CORE W12_ADMIN_ORDERS; do
+            jq empty workflows/$f.json || { echo "FAIL: invalid JSON $f"; exit 1; }
+            echo "PASS: $f is valid JSON"
+          done
+          for s in inventory-cms/src/api/order/content-types/order/schema.json inventory-cms/src/api/customer/content-types/customer/schema.json; do
+            jq empty "$s" || { echo "FAIL: invalid JSON $s"; exit 1; }
+            echo "PASS: $s is valid JSON"
+          done
+          echo "::endgroup::"
