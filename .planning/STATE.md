@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
-status: unknown
-stopped_at: Completed 21-02/21-03/21-04/21-01-PLAN.md (all 4 plans; code/CI complete; awaiting verifier). Lint 0 / vitest 11 / CMS tsc 0 / module-key exit 0 / integrity exit 0. NOT pushed.
-last_updated: "2026-06-20T19:38:42.518Z"
+status: complete
+stopped_at: v2.0 COMPLETE — all 7 phases (15-21) verified passed (code/CI); milestone integration audit verdict COMPLETE (8/8 cross-phase seams connect); 13/13 requirements satisfied. Archived to .planning/milestones/v2.0-{ROADMAP,REQUIREMENTS,AUDIT}.md. Pushed to claude/milestone-v2-saas-hardening (PR #29, awaiting merge). 🔴 VPS cutover checklist in v2.0-AUDIT.md.
+last_updated: "2026-06-20T20:05:00.000Z"
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 22
 ---
 
 # Project State
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** v2.0 — SaaS Multi-Tenant Hardening. Roadmap complete: 7 phases (15–21) sequencing the research's keystone-first dependency chain. Next: `/gsd:plan-phase 15` (Tenant Identity Model). Scope/research in `.planning/research/SUMMARY.md`; requirements in REQUIREMENTS.md.
+**Current focus:** v2.0 — SaaS Multi-Tenant Hardening is **COMPLETE** (all 7 phases verified, audit verdict COMPLETE, 13/13 requirements). Archived in `.planning/milestones/v2.0-*.md`. Remaining work is the 🔴 VPS production cutover (see `.planning/milestones/v2.0-AUDIT.md`) + merging PR #29 to main. No next milestone defined yet — run `/gsd:new-milestone` to start one.
 
 ## Current Position
 
-Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: 20 — Redis-Cached Fail-Closed Guard + Internal Token Provisioning [GRD-01, ENT-03] — all 3 plans executed (code/CI complete; awaiting `/gsd:verify-work` + 🔴 VPS deferrals). 20-01 (GRD-01): `W0_MODULE_GUARD.json` restructured into a Redis cache-aside topology (GET/SET nodes around a pure `.mjs` seam) on the locked key `ralphe:entitlement:{tenant_id}:{module_key}` — a HIT skips both Strapi round-trips (graph-reachability jq proof: 0 httpRequest reachable on the IF HIT branch) while still failing closed on Strapi error; `scripts/guard/entitlement-decision.mjs` (buildCacheKey + decideFromCache re-eval-expiry-on-read + evaluateLive fail-closed/cacheable/ttl) 20/20 `node --test`; raw-row-not-boolean caching + transient GUARD_ERROR_FAILCLOSED never cached; `scripts/test-phase20.sh` + `phase-20-assertions.yml` (pinned Node 22). 20-02 (ENT-03): `STRAPI_API_TOKEN_INTERNAL` first-class secret — HARD `${VAR:?}` in prod compose (both n8n services), SOFT in base, in `.env.example` + secrets inventory; `scripts/preflight.sh` REQ_VARS fail-fast (negative test exit 1 + `❌ Missing env: STRAPI_API_TOKEN_INTERNAL`); `preflight-prod.sh` STRAPI_KEYS extended (O-5); TTL envs 300/60 declared. 20-03 (GRD-01 crit 4): pure `scripts/guard/classify-deny.mjs` (FAILCLOSED->pageable HIGH vs NO_ENTITLEMENT/EXPIRED/MODULE_NOT_FOUND->non-pageable LOW; unknown->safe-default pageable HIGH) 11/11 `node --test` + `docs/guard-alert-split.md` (security_events.severity + W8_OPS ALERT_WEBHOOK_URL wiring, downstream-only O-3, guard topology unchanged). Integrity gate exit 0 on the restructured workflow. Phases 15-17 COMPLETE + verified; Phase 18 + Phase 19 awaiting verifier.
-Next: verifier for Phase 18 + Phase 19 + Phase 20; then 🔴 VPS deferrals (import restructured W0_MODULE_GUARD wiring REDIS_CREDENTIAL_ID->43SDqJYMGa6RvFqW, provision real STRAPI_API_TOKEN_INTERNAL, wire live alert split, confirm allkeys-lru + shared Redis keyspace), then Phase 21.
+Milestone: v2.0 — SaaS Multi-Tenant Hardening — **COMPLETE & AUDITED** (2026-06-20).
+All 7 phases (15-21) executed via research→plan→check→execute→verify and verified `passed` at code/CI level; milestone integration audit verdict **COMPLETE** (8/8 cross-phase seams connect end-to-end). 13/13 requirements satisfied (TEN-01..05, ENT-01..03, GRD-01, AUD-01/02, DB-01, TYP-01). Phase 21 additionally turned the long-standing Frontend Lint (admin-dashboard) + CMS TypeScript Compilation CI baselines green (lint 0, build exit 0, CMS tsc 0). All seven `phase-1X/2X-assertions.yml` gates + gitleaks + integrity gate green on the branch. Snapshotted to `.planning/milestones/v2.0-{ROADMAP,REQUIREMENTS,AUDIT}.md`.
+Next: (1) merge PR #29 to main (user/MCP — not done autonomously); (2) execute the 🔴 VPS production cutover checklist in `.planning/milestones/v2.0-AUDIT.md` (migrations apply → backfill → channel_identities seed → STRAPI_API_TOKEN_INTERNAL provision → CMS rebuild → workflow import → Redis identity/eviction → live alert wiring); (3) optional `/gsd:cleanup` to archive the 15-21 phase dirs (post-merge hygiene); (4) `/gsd:new-milestone` when ready. Follow-up surfaced by the audit: kiosk O-3 (device→tenant resolution) — kiosk order-create fails closed until implemented.
 
 ### Phase 19 VPS-deferred (NOT attempted — prod-connected session required)
 
