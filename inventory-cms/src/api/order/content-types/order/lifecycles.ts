@@ -8,6 +8,15 @@ export default {
      */
     async beforeCreate(event: any) {
         const { data } = event.params;
+
+        // TEN-04: tenant_id is non-defaultable on the order write path (parity with the
+        // n8n orders.tenant_id NOT NULL constraint). An absent tenant MUST throw — it is
+        // never substituted with a fallback tenant value.
+        const tenantId = (data.tenant_id || '').toString().trim();
+        if (!tenantId) {
+            throw new Error('tenant_id is required for an order (non-defaultable, no default tenant).');
+        }
+
         const orderItems: any[] = data.order_items || [];
 
         if (orderItems.length === 0) {
