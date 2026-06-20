@@ -51,7 +51,7 @@ step is called out as a deferred sub-step where it exists.
 - [x] **Phase 18: Per-Tenant Data-Plane Scoping + Isolation CI** - Scope every order/customer read and write by a non-defaultable `tenant_id`, and prove cross-tenant isolation with an automated CI test [TEN-04, TEN-05] — CODE COMPLETE (2026-06-20, 3/3 plans; awaiting verifier; live strapi-DB apply + CMS rebuild + prod n8n import deferred)
 - [x] **Phase 19: Entitlement Audit + Cache-Invalidation Lifecycle Hook** - Add the single Strapi `lifecycles.ts` that writes `entitlement_audit_log` rows AND invalidates the Redis entitlement cache on every change [AUD-01, AUD-02] (completed 2026-06-20)
 - [x] **Phase 20: Redis-Cached Fail-Closed Guard + Internal Token Provisioning** - Cache guard lookups in Redis (still fail-closed on error) and make `STRAPI_API_TOKEN_INTERNAL` a first-class, preflight-checked secret so a missing secret can't become a total inbound lockout [GRD-01, ENT-03] (completed 2026-06-20)
-- [ ] **Phase 21: UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup** - Default `useEntitlements.hasModule` to false on loading/error, align `App.tsx` nav keys to the seeder, and replace the `any` debt with typed entitlement DTOs so Frontend Lint goes green [ENT-01, ENT-02, TYP-01]
+- [x] **Phase 21: UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup** - Default `useEntitlements.hasModule` to false on loading/error, align `App.tsx` nav keys to the seeder, and replace the `any` debt with typed entitlement DTOs so Frontend Lint goes green [ENT-01, ENT-02, TYP-01] (completed 2026-06-20)
 
 ## Phase Details
 
@@ -186,7 +186,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 | 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Planned | - |
 | 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 3/3 | Complete   | 2026-06-20 |
 | 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 3/3 | Complete   | 2026-06-20 |
-| 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 0/4 | Planned | - |
+| 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 4/4 | Complete   | 2026-06-20 |
 
 **Coverage:** All 13 v2.0 requirements mapped to exactly one phase — TEN-01 → P15; TEN-02, DB-01 → P16;
 TEN-03 → P17; TEN-04, TEN-05 → P18; AUD-01, AUD-02 → P19; GRD-01, ENT-03 → P20; ENT-01, ENT-02,

@@ -20,8 +20,8 @@
 
 ### Fail-Closed Entitlement Consistency
 
-- [ ] **ENT-01**: `useEntitlements.hasModule` (`admin-dashboard/src/hooks/useEntitlements.ts`) defaults to **false** (or a known shared-core allowlist) while `loading` and on fetch error — parity with `W0_MODULE_GUARD`'s fail-closed posture. The UI surfaces an explicit error/locked state instead of silently rendering all modules.
-- [ ] **ENT-02**: Admin navigation module-keys in `admin-dashboard/src/App.tsx` are reconciled with the seeder/manifest keys (`config/product_modules.json`, `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts`). Every gated nav item maps to a real entitlement key (no silent fail-closed from `addon_kitchen_display`-style ghost keys).
+- [x] **ENT-01**: `useEntitlements.hasModule` (`admin-dashboard/src/hooks/useEntitlements.ts`) defaults to **false** (or a known shared-core allowlist) while `loading` and on fetch error — parity with `W0_MODULE_GUARD`'s fail-closed posture. The UI surfaces an explicit error/locked state instead of silently rendering all modules.
+- [x] **ENT-02**: Admin navigation module-keys in `admin-dashboard/src/App.tsx` are reconciled with the seeder/manifest keys (`config/product_modules.json`, `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts`). Every gated nav item maps to a real entitlement key (no silent fail-closed from `addon_kitchen_display`-style ghost keys).
 - [x] **ENT-03**: `STRAPI_API_TOKEN_INTERNAL` is a first-class secret — declared in `docker-compose.hostinger.prod.yml`/`base`, `config/.env.example`, and the secrets inventory — so the fail-closed guard cannot convert a missing secret into a total inbound/operator lockout. A startup/preflight check fails fast (with a clear message) if it is unset. *(VPS provisioning of the secret value: 🔴 deferred.)*
 
 ### Guard Caching, Entitlement Audit & DB Constraints
@@ -33,7 +33,7 @@
 
 ### Type & Lint Debt Cleanup
 
-- [ ] **TYP-01**: Typed interfaces for the Strapi `ProductModule` and `TenantEntitlement` responses (tolerant of v4/v5 shapes) replace the `any` usages in `admin-dashboard/src/hooks/useEntitlements.ts` and the five other flagged components (`NotificationCenter.tsx`, `ToastProvider.tsx`, `AnalyticsView.tsx`, `AutomationView.tsx`, `AIChatBubble.tsx`). `npm run lint` passes for `admin-dashboard` (the standing Frontend Lint CI failure goes green).
+- [x] **TYP-01**: Typed interfaces for the Strapi `ProductModule` and `TenantEntitlement` responses (tolerant of v4/v5 shapes) replace the `any` usages in `admin-dashboard/src/hooks/useEntitlements.ts` and the five other flagged components (`NotificationCenter.tsx`, `ToastProvider.tsx`, `AnalyticsView.tsx`, `AutomationView.tsx`, `AIChatBubble.tsx`). `npm run lint` passes for `admin-dashboard` (the standing Frontend Lint CI failure goes green).
 
 ## Out of Scope (v2.0)
 

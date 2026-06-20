@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: unknown
-stopped_at: Completed 20-01/20-02/20-03-PLAN.md (code/CI; awaiting verifier + VPS deferrals)
-last_updated: "2026-06-20T18:48:06.755Z"
+stopped_at: Completed 21-02/21-03/21-04/21-01-PLAN.md (all 4 plans; code/CI complete; awaiting verifier). Lint 0 / vitest 11 / CMS tsc 0 / module-key exit 0 / integrity exit 0. NOT pushed.
+last_updated: "2026-06-20T19:38:42.518Z"
 progress:
   total_phases: 7
-  completed_phases: 5
-  total_plans: 18
-  completed_plans: 15
+  completed_phases: 6
+  total_plans: 22
+  completed_plans: 19
 ---
 
 # Project State
@@ -86,6 +86,10 @@ Next: verifier for Phase 18 + Phase 19 + Phase 20; then 🔴 VPS deferrals (impo
 | Phase 20 P01 | 5min | 3 tasks | 5 files |
 | Phase 20 P02 | 3min | 3 tasks | 7 files |
 | Phase 20 P03 | 2min | 2 tasks | 4 files |
+| Phase 21 P02 | 4 | 3 tasks | 7 files |
+| Phase 21 P03 | 2 | 2 tasks | 2 files |
+| Phase 21 P04 | 2 | 2 tasks | 6 files |
+| Phase 21 P01 | 4 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -109,6 +113,10 @@ Next: verifier for Phase 18 + Phase 19 + Phase 20; then 🔴 VPS deferrals (impo
 - [Phase 20]: 20-01: W0_MODULE_GUARD restructured into Redis cache-aside (GET/SET nodes around pure .mjs seam); HIT skips both Strapi fetches (graph-proven); cache stores RAW row (expiry re-eval on read); transient GUARD_ERROR_FAILCLOSED never cached
 - [Phase 20]: 20-02: STRAPI_API_TOKEN_INTERNAL first-class secret — HARD ${VAR:?} prod / SOFT base + .env.example + secrets inventory + preflight.sh REQ_VARS fail-fast (ENT-03)
 - [Phase 20]: 20-03: pure downstream classify-deny.mjs maps GUARD_ERROR_FAILCLOSED->pageable HIGH vs NO_ENTITLEMENT->non-pageable LOW (unknown->safe-default HIGH); wiring documented into security_events.severity + W8_OPS ALERT_WEBHOOK_URL; guard topology unchanged (O-3, GRD-01 crit 4)
+- [Phase 21]: 21-01 (ENT-01): useEntitlements fail-closed — SHARED_CORE allowlist (platform_runtime, order_bot_core) visible in every state (no admin lockout), non-core false while loading/error; explicit error/status + EntitlementErrorBanner; DTO-typed (6 any cleared); fallback #5 KEPT-but-fail-closed-on-result (no tenant UUID in UI)
+- [Phase 21]: 21-02 (ENT-02): 6 ghost module_keys reconciled (3 App.tsx + 3 workflows); W_ORDER_FINALIZER->order_bot_core deliberately (NOT payment, so COD not denied); scripts/check-module-keys.mjs one-directional check + manifest==seeder guard; phase-21-assertions.yml created (admin lint/vitest Node 20, module-key Node 22)
+- [Phase 21]: 21-03 (TYP-01): shared v4/v5-tolerant DTOs (ProductModuleRaw/TenantEntitlementRaw/unwrap) in src/types/entitlements.ts; AIChatBubble as-any+disable retired via AgentChatResponse; 4 already-clean components untouched
+- [Phase 21]: 21-04 (TYP-01): CMS TS fully green (0 errors) — 4 @ts-ignore UID lines + static ioredis import (realtime.ts pattern); cms-ts-compile job appended Node 20
 
 ### Reconciliation & gap-closure (2026-06-19 → 2026-06-20)
 
@@ -138,8 +146,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-20T18:48:06.751Z
-Stopped at: Completed 20-01/20-02/20-03-PLAN.md (code/CI; awaiting verifier + VPS deferrals)
+Last session: 2026-06-20T19:38:42.514Z
+Stopped at: Completed 21-02/21-03/21-04/21-01-PLAN.md (all 4 plans; code/CI complete; awaiting verifier). Lint 0 / vitest 11 / CMS tsc 0 / module-key exit 0 / integrity exit 0. NOT pushed.
 Resume file: None
 
 ### To finish v1.0 (VPS-connected session required)
