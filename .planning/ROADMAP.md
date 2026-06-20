@@ -65,12 +65,12 @@ step is called out as a deferred sub-step where it exists.
   3. A repo-wide grep shows every `|| 'default'` / `DEFAULT_TENANT_ID` fallback on a tenant-key path is inventoried and annotated (justified, or marked for removal in a later phase) — no silent substitution remains undocumented
   4. `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts` seeds entitlements against the canonical UUID, not the literal `'default'`, verified by a unit/seed assertion
   - 🔴 VPS: backfilling/aligning the live `tenant_entitlements` rows on production Postgres is deferred to a prod-connected session.
-**Plans**: TBD
+**Plans**: 3 plans (all Wave 1, parallel — disjoint file ownership)
 
 Plans:
-- [ ] 15-01: Canonical-key decision record + `entitlement_audit_log.tenant_id` type decision
-- [ ] 15-02: First-restaurant `tenants`/`restaurants` seed + entitlement-plane backfill SQL (CI-verified)
-- [ ] 15-03: Seeder reconciliation to canonical UUID + `|| 'default'` fallback inventory
+- [ ] 15-01-PLAN.md — Canonical-key ADR (`docs/adr/0001`): names `tenants.tenant_id` (UUID) canonical, records 1:1 entitlement mapping + the keep-`VARCHAR(255)`/migrate-in-P19 audit-log decision, confirms schema.json, surfaces the 🔴 VPS runtime-UUID-discovery caveat
+- [ ] 15-02-PLAN.md — Idempotent entitlement-plane backfill + CI assertion harness (`db/ci-fixtures/`, `db/ci-assertions/`, `phase-15-assertions.yml`): seeds an ephemeral Postgres `'default'` row, runs the backfill, asserts zero `'default'` rows remain (NOT a `db/migrations/` file — strapi-DB target)
+- [ ] 15-03-PLAN.md — Seeder fix to canonical UUID + node seed-assertion + annotated 5-occurrence `|| 'default'` fallback inventory (`docs/adr/0002`), each site tagged with its owning phase (15/17/17/17/21)
 
 ### Phase 16: Live-Safe SaaS Migration + Channel Routing Table
 **Goal**: The SaaS constraints/indexes/audit-log migration is safe to apply on a live, possibly-duplicated table, the new `channel_identities` routing table exists (seeded for the current single tenant), and both are wired into the existing `db-migrate` mechanism
@@ -179,7 +179,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 15. Tenant Identity Model (Canonical Key) | 0/3 | Not started | - |
+| 15. Tenant Identity Model (Canonical Key) | 0/3 | Planned | - |
 | 16. Live-Safe SaaS Migration + Channel Routing Table | 0/3 | Not started | - |
 | 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Not started | - |
 | 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Not started | - |
