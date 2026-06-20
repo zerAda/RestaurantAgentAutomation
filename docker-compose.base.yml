@@ -312,6 +312,13 @@ services:
       - QUEUE_BULL_REDIS_PORT=6379
       - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
       - EXECUTIONS_DATA_PRUNE=true
+      # ENT-03 / GRD-01: SOFT ${VAR:-} on base so dev/CI `docker compose config`
+      # stays green while the token is unprovisioned (prod uses HARD ${VAR:?}).
+      # scripts/preflight.sh is the fail-fast gate for base/dev.
+      - STRAPI_API_URL=${STRAPI_API_URL:-http://strapi:1337}
+      - STRAPI_API_TOKEN_INTERNAL=${STRAPI_API_TOKEN_INTERNAL:-}
+      - ENTITLEMENT_CACHE_TTL_SEC=${ENTITLEMENT_CACHE_TTL_SEC:-300}
+      - ENTITLEMENT_NEG_CACHE_TTL_SEC=${ENTITLEMENT_NEG_CACHE_TTL_SEC:-60}
     expose:
       - "5678"
     healthcheck:
@@ -365,6 +372,12 @@ services:
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
+      # ENT-03 / GRD-01: SOFT ${VAR:-} on base (n8n-worker) so dev/CI compose
+      # config stays green; prod uses HARD ${VAR:?}. preflight.sh is the gate.
+      - STRAPI_API_URL=${STRAPI_API_URL:-http://strapi:1337}
+      - STRAPI_API_TOKEN_INTERNAL=${STRAPI_API_TOKEN_INTERNAL:-}
+      - ENTITLEMENT_CACHE_TTL_SEC=${ENTITLEMENT_CACHE_TTL_SEC:-300}
+      - ENTITLEMENT_NEG_CACHE_TTL_SEC=${ENTITLEMENT_NEG_CACHE_TTL_SEC:-60}
     healthcheck:
       interval: 30s
       retries: 5

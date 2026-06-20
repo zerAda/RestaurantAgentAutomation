@@ -396,6 +396,13 @@ services:
       - ADMIN_WA_AUDIT_ENABLED=${ADMIN_WA_AUDIT_ENABLED:-true}
       - RATE_LIMIT_PER_30S=${RATE_LIMIT_PER_30S:-6}
       - MENU_CACHE_TTL_SEC=${MENU_CACHE_TTL_SEC:-300}
+      # ENT-03 / GRD-01: W0_MODULE_GUARD internal Strapi token + URL + cache TTLs.
+      # HARD ${VAR:?} on prod (mirrors the Strapi secret precedent at :94-101) so n8n
+      # refuses to start tokenless rather than fail-closed-deny every inbound message.
+      - STRAPI_API_URL=${STRAPI_API_URL:-http://strapi:1337}
+      - STRAPI_API_TOKEN_INTERNAL=${STRAPI_API_TOKEN_INTERNAL:?STRAPI_API_TOKEN_INTERNAL must be set — W0_MODULE_GUARD fails closed without it (total inbound/operator lockout)}
+      - ENTITLEMENT_CACHE_TTL_SEC=${ENTITLEMENT_CACHE_TTL_SEC:-300}
+      - ENTITLEMENT_NEG_CACHE_TTL_SEC=${ENTITLEMENT_NEG_CACHE_TTL_SEC:-60}
       - ALLOWED_AUDIO_DOMAINS=${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
       - L10N_ENABLED=${L10N_ENABLED:-true}
       - L10N_STICKY_AR_ENABLED=${L10N_STICKY_AR_ENABLED:-true}
@@ -539,6 +546,13 @@ services:
       - ADMIN_WA_AUDIT_ENABLED=${ADMIN_WA_AUDIT_ENABLED:-true}
       - RATE_LIMIT_PER_30S=${RATE_LIMIT_PER_30S:-6}
       - MENU_CACHE_TTL_SEC=${MENU_CACHE_TTL_SEC:-300}
+      # ENT-03 / GRD-01: W0_MODULE_GUARD internal Strapi token + URL + cache TTLs.
+      # HARD ${VAR:?} on prod (mirrors the Strapi secret precedent at :94-101) so n8n
+      # refuses to start tokenless rather than fail-closed-deny every inbound message.
+      - STRAPI_API_URL=${STRAPI_API_URL:-http://strapi:1337}
+      - STRAPI_API_TOKEN_INTERNAL=${STRAPI_API_TOKEN_INTERNAL:?STRAPI_API_TOKEN_INTERNAL must be set — W0_MODULE_GUARD fails closed without it (total inbound/operator lockout)}
+      - ENTITLEMENT_CACHE_TTL_SEC=${ENTITLEMENT_CACHE_TTL_SEC:-300}
+      - ENTITLEMENT_NEG_CACHE_TTL_SEC=${ENTITLEMENT_NEG_CACHE_TTL_SEC:-60}
       - ALLOWED_AUDIO_DOMAINS=${ALLOWED_AUDIO_DOMAINS:-cdn.fbsbx.com,lookaside.fbsbx.com,mmg.whatsapp.net,graph.facebook.com}
       - L10N_ENABLED=${L10N_ENABLED:-true}
       - L10N_STICKY_AR_ENABLED=${L10N_STICKY_AR_ENABLED:-true}
