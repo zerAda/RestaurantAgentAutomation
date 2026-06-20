@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: active
-stopped_at: Phases 15-16 COMPLETE + verified (code/CI; VPS apply deferred). Next: plan+execute Phase 17.
+stopped_at: Phases 15-17 COMPLETE + verified (code/CI; VPS apply/import deferred). Next: plan+execute Phase 18.
 last_updated: "2026-06-20T13:00:00.000Z"
 previous_milestone: v1.0
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 0
   completed_plans: 0
 ---
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: 16 COMPLETE (Live-Safe SaaS Migration + Channel Routing Table) — verified passed (TEN-02, DB-01, code/CI; VPS apply deferred). Phase 15 also complete.
-Next: Phase 17 — Inbound Tenant Derivation (Fail-Closed) [TEN-03]
+Phase: 17 COMPLETE (Inbound Tenant Derivation Fail-Closed) — verified passed (TEN-03, code/CI; prod workflow import deferred). Phases 15-16 also complete.
+Next: Phase 18 — Per-Tenant Data-Plane Scoping + Isolation CI [TEN-04, TEN-05]
 
 ### Previous milestone — v1.0 Platform Hardening & Reliability (archived)
 
