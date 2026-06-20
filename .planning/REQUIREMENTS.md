@@ -1,173 +1,77 @@
-# Requirements: RESTO BOT — Platform Hardening & Reliability
+# Requirements: RESTO BOT — v2.0 SaaS Multi-Tenant Hardening
 
-**Defined:** 2026-03-18
+**Defined:** 2026-06-20
 **Core Value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
+**Milestone Goal:** Turn the shipped-but-scaffolding-only SaaS multi-tenant layer into a genuinely production-safe one, so a *second* restaurant/tenant can be onboarded without cross-tenant data leakage or entitlement bypass.
 
-> **Checkbox status reconciled 2026-06-19** to match the authoritative 2026-04-04 milestone audit
-> (`.planning/v1.0-MILESTONE-AUDIT.md`). A checked box means satisfied at code/CI level **and** not
-> flagged as broken at VPS runtime by the audit. The 7 audit-confirmed runtime gaps remain unchecked
-> with a `(gap → Phase NN)` annotation pointing at the closure phase. See `.planning/REMAINING-WORK.md`.
+> Grounded in `.planning/research/SUMMARY.md` and `.planning/codebase/CONCERNS.md`. **Keystone:** the platform has two disjoint `tenant_id` planes — a UUID data plane (`orders.tenant_id uuid`, already scoped) and a VARCHAR entitlement plane keyed on the literal `'default'`. The canonical key is the UUID `tenants.tenant_id`; both planes must reconcile to it.
+>
+> **Deploy posture (same as v1.0):** every requirement is implemented and CI-verified **locally**; steps that require the production VPS (applying a migration to live Postgres, provisioning a secret on the VPS, importing a workflow) are designed here but their *execution* is 🔴 **deferred** to a prod-connected session.
 
-## v1 Requirements
+## v2.0 Requirements
 
-### CMS Stability
+### Tenant Resolution & Data Isolation
 
-- [x] **CMS-01**: CMS routes for all 15 APIs (ingredient, system-config, restaurant-brand, delivery-assignment, feedback, supplier, marketing-campaign, loyalty-tier, and 7 others) are defined in TypeScript source files and survive container rebuild
-- [x] **CMS-02**: CMS Docker image can be rebuilt (`docker compose build cms`) without losing any API routes
-- [x] **CMS-03**: All Strapi API routes return correct HTTP status codes after a fresh container start (no manual injection needed)
+- [ ] **TEN-01**: A single canonical tenant key is established — the UUID `tenants.tenant_id` is the system of record. The entitlement plane's VARCHAR `tenant_id` (`tenant_entitlements`, `saas-entitlements.ts`) is reconciled to the canonical UUID (or a documented, enforced 1:1 mapping). No runtime path silently substitutes the literal `'default'`.
+- [ ] **TEN-02**: A `channel_identities` routing table (migration) maps channel-native identifiers — WhatsApp `phone_number_id`, Instagram/Messenger `recipient_id`/page id, kiosk device id — to `(tenant_id, restaurant_id)`. Seeded for the current single tenant.
+- [ ] **TEN-03**: Inbound adapters resolve tenant from `channel_identities`: `B0 - Apply Auth Context` (in `W1_IN_WA.json`, `W2_IN_IG.json`, `W3_IN_MSG.json`) uses the already-parsed `phone_number_id`/`recipient_id` instead of falling through to `DEFAULT_TENANT_ID`. An **unknown** channel identity fails closed (message parked/rejected with a log event) — it does **not** default to `'default'`.
+- [ ] **TEN-04**: Order and customer **reads and writes** are scoped by `tenant_id`. `tenant_id` is non-defaultable on the write path (NOT NULL, no `|| 'default'` fallback). Existing scoped reads (e.g. `W12_ADMIN_ORDERS.json`) are confirmed; unscoped paths are closed.
+- [ ] **TEN-05**: An automated CI test proves cross-tenant isolation — a request resolved to tenant A cannot read or write tenant B's orders/customers (seeds two tenants, asserts separation).
 
-### Infrastructure Upgrade
+### Fail-Closed Entitlement Consistency
 
-- [x] **INFRA-01**: All frontend Dockerfiles (admin-dashboard, kiosk-app) use `node:20-alpine` base image (was: node:18-alpine, EOL)
-- [x] **INFRA-02**: CMS Dockerfile uses `node:20-alpine` (consistent base across all services)
-- [x] **INFRA-03**: Rebuilt images are verified to function correctly (login, product display, CMS health) — *partial: kiosk/admin gateway 403s are pre-existing and user-accepted*
+- [ ] **ENT-01**: `useEntitlements.hasModule` (`admin-dashboard/src/hooks/useEntitlements.ts`) defaults to **false** (or a known shared-core allowlist) while `loading` and on fetch error — parity with `W0_MODULE_GUARD`'s fail-closed posture. The UI surfaces an explicit error/locked state instead of silently rendering all modules.
+- [ ] **ENT-02**: Admin navigation module-keys in `admin-dashboard/src/App.tsx` are reconciled with the seeder/manifest keys (`config/product_modules.json`, `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts`). Every gated nav item maps to a real entitlement key (no silent fail-closed from `addon_kitchen_display`-style ghost keys).
+- [ ] **ENT-03**: `STRAPI_API_TOKEN_INTERNAL` is a first-class secret — declared in `docker-compose.hostinger.prod.yml`/`base`, `config/.env.example`, and the secrets inventory — so the fail-closed guard cannot convert a missing secret into a total inbound/operator lockout. A startup/preflight check fails fast (with a clear message) if it is unset. *(VPS provisioning of the secret value: 🔴 deferred.)*
 
-### Observability — Structured Logging
+### Guard Caching, Entitlement Audit & DB Constraints
 
-- [x] **OBS-01**: n8n workflows emit structured JSON logs with correlation IDs (workflow_id, execution_id, step, timestamp, level)
-- [x] **OBS-02**: Strapi CMS uses JSON log format in production (Winston JSON formatter)
-- [x] **OBS-03**: Nginx access log includes request_id header for cross-service tracing
-- [x] **OBS-04**: A correlation ID is generated at the gateway and propagated to upstream services via `X-Request-ID` header
+- [ ] **GRD-01**: `W0_MODULE_GUARD.json` caches module/entitlement lookups in Redis (≈5-min TTL, keyed by `tenant_id:module_key`), so a cache hit skips both synchronous Strapi round-trips per inbound message. Cache miss falls back to Strapi and still fails closed on error.
+- [ ] **AUD-01**: The `tenant-entitlement` (and `product-module`) Strapi content types gain `lifecycles.ts` that write an `entitlement_audit_log` row on create/update/delete (who/what/when/old→new). The currently-dead `entitlement_audit_log` table gets real writers (or is explicitly dropped if descoped — decision recorded).
+- [ ] **AUD-02**: The same lifecycle hook **invalidates** the Redis entitlement cache (`GRD-01`) on any entitlement change, so a revoked or expired entitlement cannot survive in cache.
+- [ ] **DB-01**: The `db/migrations/2026-04-06_saas_modules_entitlements.sql` constraints (`uq_tenant_module`, the four entitlement indexes, `uq_product_module_key`, `entitlement_audit_log`) are made **safe to apply on a live table**: a pre-apply duplicate probe + `CREATE UNIQUE INDEX CONCURRENTLY` (no exclusive lock, no failure on existing duplicates). The migration is wired into the existing `db-migrate` mechanism. *(VPS apply: 🔴 deferred.)*
 
-### Observability — Metrics & Alerting
+### Type & Lint Debt Cleanup
 
-- [ ] **METR-01**: n8n queue depth (pending executions) is exported as a metric — *code complete (`W_QUEUE_METRICS`) but **gap → Phase 12**: PG credential ID is an empty `$env` expression on VPS, node fails at runtime*
-- [ ] **METR-02**: Workflow error rate is tracked and loggable (failures per hour per workflow) — *same credential gap as METR-01; **gap → Phase 12***
-- [x] **METR-03**: Nginx rate limit hit events are logged (zone, IP, endpoint) — nginx.conf `limit_req_log_level` (2026-03-26)
-- [ ] **METR-04**: Alert fires when queue depth > 50 pending executions for > 5 minutes — *cascade from METR-01; **gap → Phase 12***
-- [ ] **METR-05**: Alert fires when disk usage > 80% of 119GB (< 24GB free) — ***gap → Phase 12**: disk check regressed to `stat -f -c` (Alpine-incompatible), must restore `df -k /`*
+- [ ] **TYP-01**: Typed interfaces for the Strapi `ProductModule` and `TenantEntitlement` responses (tolerant of v4/v5 shapes) replace the `any` usages in `admin-dashboard/src/hooks/useEntitlements.ts` and the five other flagged components (`NotificationCenter.tsx`, `ToastProvider.tsx`, `AnalyticsView.tsx`, `AutomationView.tsx`, `AIChatBubble.tsx`). `npm run lint` passes for `admin-dashboard` (the standing Frontend Lint CI failure goes green).
 
-### Observability — Audit Trail
+## Out of Scope (v2.0)
 
-- [x] **AUDIT-01**: A `workflow_audit` table exists in PostgreSQL (workflow_id, execution_id, trigger, input_hash, output_hash, status, started_at, completed_at) — migration `2026-03-23_p3_workflow_audit.sql` + CI schema check (2026-03-26)
-- [ ] **AUDIT-02**: All inbound adapter workflows (W_IN_WHATSAPP, W_IN_INSTAGRAM, W_IN_MESSENGER) write an audit entry on execution start and end — *code complete; **gap → Phase 11**: ops.workflow_audit table not applied to VPS, W_AUDIT_WRITE INSERT fails silently*
-- [ ] **AUDIT-03**: Audit log is queryable from the admin dashboard (search by date range + workflow name) — *code complete; **gap → Phase 13**: `VITE_API_URL` not in compose build args (URL unrouted) + W_AUDIT_QUERY count/filter defects*
-- [ ] **AUDIT-04**: Audit entries are retained for 90 days, then archived (not deleted) — *code complete; **gap → Phase 11**: W_AUDIT_ARCHIVE cron incompatible with n8n 2.x, not re-imported/activated on VPS*
+| Item | Reason |
+|------|--------|
+| Postgres Row-Level Security (RLS) | Conflicts with pgBouncer transaction-mode pooling; app-layer scoping + non-defaultable `tenant_id` + CI test chosen instead (research SUMMARY). May revisit as defense-in-depth later. |
+| Schema-per-tenant / DB-per-tenant isolation | Over-engineered for a single-operator-multi-restaurant model; pooled `tenant_id` column is sufficient. |
+| Self-serve tenant signup / billing / per-tenant RBAC | Operator-provisioned tenants only this milestone. |
+| External feature-flag SaaS (LaunchDarkly, etc.) | Strapi entitlements + Redis cache cover the need. |
+| n8n 2.x → 3.x / Strapi / Postgres major upgrades | Hard constraint — no major version changes. |
+| Multi-tenant Strapi community plugins | Built-in Document-Service middleware + policies suffice. |
 
-### Test Coverage — Nginx Routing
+## Constraints
 
-- [x] **TEST-01**: Smoke test verifies each of the 8 nginx routing zones returns the expected HTTP status (not 502/404)
-- [x] **TEST-02**: Smoke test verifies `Access-Control-Allow-Origin` header appears exactly once on kiosk endpoints (no duplicates)
-- [x] **TEST-03**: Rate limiting smoke test: 25 rapid requests to `/v1/inbound/whatsapp` triggers 429 after burst limit
-- [x] **TEST-04**: Smoke tests run automatically in CI on every PR that touches `infra/gateway/nginx.conf`
+- **No major version upgrades** (n8n 2.9.4, Strapi 5.37.1, Postgres 15, Redis 7).
+- **No new runtime libraries** — `ioredis`, `pg`, `zod` already installed; use Strapi-5-native middleware/policies.
+- **Zero downtime / live-data safe** — migrations must not lock or fail on the production table; entitlement fail-closed flips must not lock operators out before the secret exists.
+- **Public API contract** `https://api.../v1/*` stays stable.
 
-### Test Coverage — Strapi Permissions
+## Traceability (requirement → scope group)
 
-- [x] **TEST-05**: Integration test: unauthenticated request to `GET /api/products` returns 200 with data (public role works)
-- [x] **TEST-06**: Integration test: unauthenticated request to `POST /api/orders` returns 403 or 401
-- [x] **TEST-07**: Integration test: authenticated admin user can `GET /api/orders` with full data
-- [x] **TEST-08**: Permission tests run automatically in CI against a local Strapi instance
+| Req | Group | Local-implementable | VPS-deferred part |
+|-----|-------|---------------------|-------------------|
+| TEN-01 | Resolution & Isolation | Yes | — |
+| TEN-02 | Resolution & Isolation | Yes (migration + seed) | apply on VPS |
+| TEN-03 | Resolution & Isolation | Yes (workflow JSON) | import on VPS |
+| TEN-04 | Resolution & Isolation | Yes | — |
+| TEN-05 | Resolution & Isolation | Yes (CI test) | — |
+| ENT-01 | Fail-Closed Entitlements | Yes | — |
+| ENT-02 | Fail-Closed Entitlements | Yes | — |
+| ENT-03 | Fail-Closed Entitlements | Yes (compose/env/preflight) | set secret value on VPS |
+| GRD-01 | Caching/Audit/DB | Yes (workflow JSON) | import on VPS |
+| AUD-01 | Caching/Audit/DB | Yes (lifecycles.ts) | rebuild CMS on VPS |
+| AUD-02 | Caching/Audit/DB | Yes | rebuild CMS on VPS |
+| DB-01 | Caching/Audit/DB | Yes (safe migration) | apply on VPS |
+| TYP-01 | Type/Lint Debt | Yes | — |
 
-### Test Coverage — n8n Workflows
-
-- [x] **TEST-09**: E2E test: POST to `/v1/inbound/whatsapp` with valid Meta payload triggers WA inbound adapter and creates a record in Postgres `inbound_messages` (delivered in Phase 8)
-- [x] **TEST-10**: E2E test: failed outbound message is retried with exponential backoff (Redis queue entry exists after first failure) (delivered in Phase 8)
-- [x] **TEST-11**: Workflow smoke tests run in CI using a full compose-stack lifecycle (delivered in Phase 8)
-
-### Performance — Database
-
-- [x] **PERF-01**: Migration adds `CREATE INDEX idx_orders_status_created ON orders(status, created_at)` if not exists — `2026-03-26_p6_orders_indexes.sql`
-- [x] **PERF-02**: Migration adds `CREATE INDEX idx_orders_customer_status ON orders(customer_id, status)` if not exists — `2026-03-26_p6_orders_indexes.sql`
-- [x] **PERF-03**: EXPLAIN ANALYZE on the 3 most common order queries shows index usage — tooling `scripts/verify-orders-indexes.sh` (audit: satisfied)
-
-### Performance — Redis
-
-- [x] **PERF-04**: Redis `maxmemory-policy` is set to `allkeys-lru` (prevents OOM kill) — `infra/redis/entrypoint.sh`
-- [x] **PERF-05**: Redis memory usage is logged on a schedule (every 15 minutes) and alert fires if > 200MB used — `W_REDIS_MONITOR` (2026-03-26; PERF-05 connectivity-only scope user-accepted)
-- [x] **PERF-06**: Redis configuration is documented in `ENV_REFERENCE.md` — updated 2026-03-26
-
-### Performance — Frontend
-
-- [x] **PERF-07**: Admin dashboard uses React Router `lazy()` for all view components (code splitting) — `admin-dashboard/src/App.tsx` (2026-03-26)
-- [x] **PERF-08**: Initial JS bundle size is reduced by at least 30% compared to the monolithic build — lazy loading applied (audit: satisfied)
-- [x] **PERF-09**: Kiosk menu data is cached (ETag or 5-min TTL) to reduce Strapi API calls on re-render — `menuService.ts` + VerticalVideoFeed (2026-03-26)
-
-## v2 Requirements
-
-### Backup & Recovery
-
-- **BAK-01**: Automated daily pg_dump to `/opt/resto/backups/` with 7-day retention
-- **BAK-02**: Backup sync to S3 or secondary storage
-- **BAK-03**: Monthly restore drill documented in RUNBOOK.md
-
-### n8n Upgrade
-
-- **N8N-01**: n8n 2.9.4 → 3.x upgrade (after test coverage exists)
-- **N8N-02**: Task-runner properly disabled in n8n 3.x
-- **N8N-03**: All 54 workflows verified on n8n 3.x
-
-### Advanced Observability
-
-- **ADVOBS-01**: Grafana dashboard for error rates, latency percentiles, queue depth
-- **ADVOBS-02**: ELK/Loki log aggregation
-- **ADVOBS-03**: PagerDuty or webhook alerting for P0 events
-
-## Out of Scope
-
-| Feature | Reason |
-|---------|--------|
-| n8n 2.x → 3.x upgrade | High blast radius; defer until test coverage shields the migration |
-| DB backup automation | Important but not blocking prod; deferred to v2 |
-| Multi-tenant support | (Note: a SaaS/multi-tenant track has since landed in the codebase outside this milestone's planning scope) |
-| Mobile app | Web kiosk covers current use case |
-| Real-time WebSocket dashboard | Polling sufficient for current ops volume |
-| mTLS for admin services | Defense-in-depth; current triple-auth layer is sufficient |
-| NemoClaw Telegram Bot | Descoped from v1.0 (was a draft Phase 7); intended for its own repository |
-
-## Traceability
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| CMS-01 | Phase 1 | Satisfied |
-| CMS-02 | Phase 1 | Satisfied |
-| CMS-03 | Phase 1 | Satisfied |
-| INFRA-01 | Phase 1 | Satisfied |
-| INFRA-02 | Phase 1 | Satisfied |
-| INFRA-03 | Phase 1 | Partial (gateway 403s pre-existing, accepted) |
-| OBS-01 | Phase 2 | Satisfied |
-| OBS-02 | Phase 2 | Satisfied |
-| OBS-03 | Phase 2 | Satisfied |
-| OBS-04 | Phase 2 | Satisfied |
-| METR-01 | Phase 3 → **12** | Unsatisfied (W_QUEUE_METRICS credential gap) |
-| METR-02 | Phase 3 → **12** | Unsatisfied (cascade from METR-01) |
-| METR-03 | Phase 3 | Satisfied (nginx rate-limit logging) |
-| METR-04 | Phase 3 → **12** | Unsatisfied (cascade from METR-01) |
-| METR-05 | Phase 7 → **12** | Unsatisfied (disk check `stat -f -c` Alpine-incompatible regression) |
-| AUDIT-01 | Phase 3/9 | Satisfied (table + CI schema check) |
-| AUDIT-02 | Phase 3 → **11** | Unsatisfied (ops table not on VPS) |
-| AUDIT-03 | Phase 7 → **13** | Unsatisfied (VITE_API_URL + W_AUDIT_QUERY defects) |
-| AUDIT-04 | Phase 3 → **11** | Unsatisfied (W_AUDIT_ARCHIVE cron not activated) |
-| TEST-01 | Phase 4 | Satisfied |
-| TEST-02 | Phase 4 | Satisfied |
-| TEST-03 | Phase 4/9 | Satisfied |
-| TEST-04 | Phase 4/9 | Satisfied |
-| TEST-05 | Phase 4 | Satisfied |
-| TEST-06 | Phase 4 | Satisfied |
-| TEST-07 | Phase 4 | Satisfied |
-| TEST-08 | Phase 4 | Satisfied |
-| TEST-09 | Phase 8 | Satisfied |
-| TEST-10 | Phase 8 | Satisfied |
-| TEST-11 | Phase 8 | Satisfied |
-| PERF-01 | Phase 6 | Satisfied |
-| PERF-02 | Phase 6 | Satisfied |
-| PERF-03 | Phase 6 | Satisfied |
-| PERF-04 | Phase 6 | Satisfied |
-| PERF-05 | Phase 6 | Satisfied (user-accepted scope) |
-| PERF-06 | Phase 6 | Satisfied |
-| PERF-07 | Phase 6 | Satisfied |
-| PERF-08 | Phase 6 | Satisfied |
-| PERF-09 | Phase 6 | Satisfied |
-
-**Coverage (per 2026-04-04 milestone audit):**
-- v1 requirements satisfied: **27/34**
-- Unsatisfied (runtime gaps): **7** — METR-01, METR-02, METR-04, METR-05, AUDIT-02, AUDIT-03, AUDIT-04
-- Closure phases for the gaps: Phase 11 (AUDIT-02/04, VPS), Phase 12 (METR-01/02/04/05), Phase 13 (AUDIT-03)
-- Unmapped: 0
-
-> Note: the requirement list enumerates 39 IDs; the audit's headline "27/34" preserves the
-> milestone's original 34-requirement framing. The 7 unsatisfied IDs above are the authoritative
-> remaining set regardless of which denominator is used.
+**Coverage:** 13 requirements across 4 scoped groups. All have a local-implementable, CI-verifiable core; 6 carry a 🔴 VPS execution step deferred to a prod-connected session.
 
 ---
-*Requirements defined: 2026-03-18*
-*Last updated: 2026-06-19 — checkbox status reconciled to the 2026-04-04 milestone audit; 7 runtime gaps annotated with closure phases (11/12/13); NemoClaw descoped*
+*Requirements defined: 2026-06-20 — v2.0 SaaS Multi-Tenant Hardening; seeded by 4-agent domain research + the 2026-06-20 codebase audit.*
