@@ -2,8 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-06-20
-**Phase:** 15
-**Requirement:** TEN-01
+**Phase:** 15 (inventory), 17 (removals)
+**Requirement:** TEN-01, TEN-03
 
 ---
 
@@ -26,10 +26,10 @@ The canonical UUID for CI/dev is `00000000-0000-0000-0000-000000000001` (seeded 
 
 | # | File | Line / Node | Pattern | Disposition | Owning Phase |
 |---|------|-------------|---------|-------------|--------------|
-| 1 | `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts` | 127 | `process.env.DEFAULT_TENANT_ID \|\| 'default'` | **REMOVED** (this plan) — replaced with `CANONICAL_FIRST_TENANT_UUID` constant and trimmed-env resolution | 15 |
-| 2 | `workflows/W0_MODULE_GUARD.json` | node "Module Guard" (~L21) | `$input.first().json.tenant_id \|\| $env.DEFAULT_TENANT_ID \|\| 'default'` | **ANNOTATED** (`__inventory_15` key on node), left in place — Phase 17 removes this by ensuring callers always provide a real UUID from `channel_identities` | 17 |
-| 3 | `workflows/W1_IN_WA.json` | node "B0 - Apply Auth Context" (~L6) | `$env.DEFAULT_TENANT_ID \|\| ''` (used as `defaultTenantId` for `meta_signature`/`legacy_shared` auth modes) | **ANNOTATED** (`__inventory_15` key on node), left in place — Phase 17 replaces with `channel_identities` lookup | 17 |
-| 4 | `workflows/W_DRIVER_ONBOARDING.json` | node "Ensure Customer Profile" | `$json.tenant_id \|\| $env.DEFAULT_TENANT_ID \|\| '00000000-0000-0000-0000-000000000001'` (UUID-safe fallback, not `'default'`) | **ANNOTATED** (`__inventory_15` key on node), left in place — fallback is UUID-safe; superseded by trusted derivation in Phase 17 | 17 |
+| 1 | `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts` | 127 | `process.env.DEFAULT_TENANT_ID \|\| 'default'` | **REMOVED** (Phase 15) — replaced with `CANONICAL_FIRST_TENANT_UUID` constant and trimmed-env resolution | 15 |
+| 2 | `workflows/W0_MODULE_GUARD.json` | node "Module Guard" (~L21) | `$input.first().json.tenant_id \|\| $env.DEFAULT_TENANT_ID \|\| 'default'` | **REMOVED (Phase 17)** — fallback deleted; guard now fails closed (`allowed:false`) on blank tenant_id | 17 |
+| 3 | `workflows/W1_IN_WA.json` | node "B0 - Apply Auth Context" (~L6) | `$env.DEFAULT_TENANT_ID \|\| ''` (used as `defaultTenantId` for `meta_signature`/`legacy_shared` auth modes) | **REMOVED (Phase 17)** — defaultTenantId/fallback construct removed; tenant comes from channel_identities lookup (Plan 17-01) | 17 |
+| 4 | `workflows/W_DRIVER_ONBOARDING.json` | node "Ensure Customer Profile" | `$json.tenant_id \|\| $env.DEFAULT_TENANT_ID \|\| '00000000-0000-0000-0000-000000000001'` (UUID-safe fallback, not `'default'`) | **REMOVED (Phase 17)** — UUID/env fallback removed from queryParams; NOT NULL enforces correctness | 17 |
 | 5 | `admin-dashboard/src/hooks/useEntitlements.ts` | 5 | `function useEntitlements(tenantId = 'default')` | **ANNOTATED** (`// INVENTORY-15:` comment), left in place — Phase 21 cleanup item (ENT-01/ENT-02); UI queries entitlements for `'default'` until authenticated context provides the real UUID | 21 |
 
 ---
@@ -56,18 +56,39 @@ env var or the canonical CI/dev UUID.
 
 ---
 
-## Phase 17 Remaining Work (Occurrences #2, #3, #4)
+## Phase 17 Action Taken (Occurrences #2, #3, #4)
 
-Three workflow fallbacks remain **annotated and not removed** because they are in scope for Phase 17:
+Three workflow fallbacks have been **removed** as part of Phase 17 (Inbound Tenant Derivation — Fail-Closed):
 
-- **W0_MODULE_GUARD.json** — Phase 17 ensures callers always supply a real UUID derived from
-  `channel_identities`, eliminating the need for a fallback. Until then, this is a documented
-  fail-open risk: if `tenant_id` is `'default'`, the guard may allow/deny incorrectly.
-- **W1_IN_WA.json** — Phase 17 replaces the `DEFAULT_TENANT_ID` resolution ladder with a proper
-  `channel_identities` lookup. This is the root cause of the Phase 15 problem: unauthenticated
-  fallback to env default.
-- **W_DRIVER_ONBOARDING.json** — The fallback here is already UUID-safe (falls to the canonical
-  UUID, not `'default'`). Phase 17 removes it by making derivation trustworthy upstream.
+- **#2 W0_MODULE_GUARD.json** node "Module Guard": The line
+  `const tenantId = $input.first().json.tenant_id || $env.DEFAULT_TENANT_ID || 'default'`
+  was replaced with a fail-closed guard:
+  ```javascript
+  const tenantId = ($input.first().json.tenant_id || '').toString().trim();
+  if (!tenantId) {
+    return [{ json: { allowed: false, reason: 'GUARD_ERROR: tenant_id not provided (UNKNOWN_CHANNEL_IDENTITY)' } }];
+  }
+  ```
+  The `__inventory_15` annotation key was stripped from the node object. Phase 17 ensures callers
+  always supply a real UUID derived from `channel_identities`, so the guard itself now also fails
+  closed as defense-in-depth.
+
+- **#3 W1_IN_WA.json** node "B0 - Apply Auth Context": The entire `defaultTenantId` /
+  `fallbackTenantId` / `envDefaultTenantId` construct (and the `PROD_DEFAULTS_MISSING` block) were
+  removed. The `meta_signature` and `legacy_shared` branches now use `ciTenantId` from the new
+  `B0 - Resolve Channel Identity (DB)` → `B0 - Map Channel Identity Result` resolver rung. An
+  unresolved identity sets `denyReason = 'UNKNOWN_CHANNEL_IDENTITY'` and routes through the
+  existing `B0 - Token OK?` → `B0 - Log Deny (DB)` → `END - Drop/Done` path. The `__inventory_15`
+  annotation key was stripped from the node object. W2_IN_IG and W3_IN_MSG had the same structural
+  problem (hardcoded UUID `00000000-0000-0000-0000-000000000001` instead of env vars) — also fixed
+  in the same Plan 17-01 rewrite; their duplicate `const metaSigValid` latent bug was also
+  eliminated.
+
+- **#4 W_DRIVER_ONBOARDING.json** node "Ensure Customer Profile": The queryParams expression
+  `[$json.phone, $json.tenant_id || $env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001', $json.restaurant_id || $env.DEFAULT_RESTAURANT_ID || '00000000-0000-0000-0000-000000000000']`
+  was replaced with `[$json.phone, $json.tenant_id, $json.restaurant_id]`. A missing tenant now
+  causes a loud NOT NULL constraint violation rather than a silent wrong-tenant write. The
+  `__inventory_15` annotation key was stripped from the node object.
 
 ---
 
@@ -82,25 +103,22 @@ to the UI and removes this default.
 
 ---
 
-## Post-Phase 15 State
+## Post-Phase 17 State
 
-After Phase 15:
+After Phase 17:
 
-- The **only runtime path that wrote `'default'` into `tenant_entitlements`** (the Strapi seeder)
-  is eliminated. The seeder now always writes the canonical UUID.
-- The remaining 4 fallback sites are **documented** with phase assignments. No silent substitution
-  remains undocumented.
-- The CI backfill harness (Plan 15-02) proves zero `'default'` rows survive in ephemeral Postgres.
-
-A post-Phase-15 repo-wide grep:
-
-```bash
-grep -rn "|| 'default'" workflows/ inventory-cms/ admin-dashboard/ \
-  --include='*.ts' --include='*.js' --include='*.json'
-```
-
-will return exactly **4 matches** (the 4 annotated-not-removed sites). Every match is cross-referenced
-in this document with its owning phase.
+- A post-Phase-17 repo-wide grep for `|| 'default'` and `DEFAULT_TENANT_ID` on the **tenant path
+  in `workflows/`** returns **ZERO matches**. Every workflow that previously fell back to
+  `'default'` or `DEFAULT_TENANT_ID` now fails closed or derives the real tenant from the
+  `channel_identities` table.
+- Exactly **one annotated occurrence remains repo-wide**: occurrence #5
+  (`admin-dashboard/src/hooks/useEntitlements.ts`, Phase 21 scope). This is a UI query parameter
+  default and is documented above.
+- The `__inventory_15` annotation keys have been stripped from all three fixed nodes
+  (W0_MODULE_GUARD "Module Guard", W1_IN_WA "B0 - Apply Auth Context",
+  W_DRIVER_ONBOARDING "Ensure Customer Profile").
+- Structural CI assertions are encoded in `.github/workflows/phase-17-assertions.yml` and proven
+  by `db/ci-assertions/17-tenant-resolution.sql`.
 
 ---
 
@@ -110,5 +128,8 @@ in this document with its owning phase.
 - `inventory-cms/src/bootstrap-seeds/assert-canonical-tenant.mjs` — node assertion proving seeder fix
 - `db/ci-assertions/15-backfill-tenant-entitlements.sql` — idempotent backfill SQL
 - `db/ci-assertions/15-tenant-canonical-key.sql` — DO-block assertion
-- `.github/workflows/phase-15-assertions.yml` — CI PR gate
+- `.github/workflows/phase-15-assertions.yml` — CI PR gate (Phase 15)
 - `15-RESEARCH.md` "Fallback Inventory" section — research grounding these 5 occurrences
+- `.planning/phases/17-inbound-tenant-derivation-fail-closed/17-RESEARCH.md` — Phase 17 research
+- `.github/workflows/phase-17-assertions.yml` — CI PR gate (Phase 17)
+- `db/ci-assertions/17-tenant-resolution.sql` — SQL assertions for resolver behavior

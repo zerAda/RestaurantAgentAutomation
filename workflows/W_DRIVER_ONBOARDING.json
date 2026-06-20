@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const driver = $input.first().json.entry || $input.first().json;\n\nconst phone = (driver.phone_number || '').toString().trim();\nconst firstName = (driver.first_name || '').toString().trim();\nconst lastName = (driver.last_name || '').toString().trim();\nconst driverId = driver.id;\nconst isActive = driver.is_active !== false;\n\nif (!phone) {\n  return { json: { error: 'PHONE_MISSING', skip: true } };\n}\n\nreturn {\n  json: {\n    driverId,\n    phone,\n    isActive,\n    fullName: `${firstName} ${lastName}`.trim(),\n    welcomeText: `Salut ${firstName} ! \ud83d\udc4b\\n\\nTu as \u00e9t\u00e9 ajout\u00e9 comme livreur. Clique ci-dessous pour acc\u00e9der \u00e0 ton tableau de bord.`\n  }\n};"
+        "jsCode": "const driver = $input.first().json.entry || $input.first().json;\n\nconst phone = (driver.phone_number || '').toString().trim();\nconst firstName = (driver.first_name || '').toString().trim();\nconst lastName = (driver.last_name || '').toString().trim();\nconst driverId = driver.id;\nconst isActive = driver.is_active !== false;\n\nif (!phone) {\n  return { json: { error: 'PHONE_MISSING', skip: true } };\n}\n\nreturn {\n  json: {\n    driverId,\n    phone,\n    isActive,\n    fullName: `${firstName} ${lastName}`.trim(),\n    welcomeText: `Salut ${firstName} ! 👋\\n\\nTu as été ajouté comme livreur. Clique ci-dessous pour accéder à ton tableau de bord.`\n  }\n};"
       },
       "name": "Parse Driver",
       "type": "n8n-nodes-base.code",
@@ -32,7 +32,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO public.restaurant_users (tenant_id, restaurant_id, channel, user_id, role)\nVALUES ($2, $3, 'whatsapp', $1, 'driver')\nON CONFLICT (restaurant_id, channel, user_id) DO NOTHING;",
         "additionalFields": {
-          "queryParams": "={{[$json.phone, $json.tenant_id || $env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001', $json.restaurant_id || $env.DEFAULT_RESTAURANT_ID || '00000000-0000-0000-0000-000000000000']}}"
+          "queryParams": "={{[$json.phone, $json.tenant_id, $json.restaurant_id]}}"
         }
       },
       "id": "e6a4b12c-3d4f-4e5a-8b6c-7d8e9f0a1b2c",
@@ -42,8 +42,7 @@
       "position": [
         400,
         400
-      ],
-      "__inventory_15": "INVENTORY-15: || DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001' fallback is UUID-safe (falls back to UUID, not 'default'). Will be superseded by trusted derivation from channel_identities in Phase 17. See docs/adr/0002-tenant-id-fallback-inventory.md"
+      ]
     },
     {
       "parameters": {
@@ -90,7 +89,7 @@
             },
             {
               "name": "interactive",
-              "value": "={{ { type: 'button', body: { text: $json.welcomeText }, action: { buttons: [{ type: 'reply', reply: { id: 'MENU', title: '\ud83d\udce6 Mon Dashboard' } }] } } }}"
+              "value": "={{ { type: 'button', body: { text: $json.welcomeText }, action: { buttons: [{ type: 'reply', reply: { id: 'MENU', title: '📦 Mon Dashboard' } }] } } }}"
             }
           ]
         },
