@@ -1,0 +1,176 @@
+name: Phase 16 Live-Safe SaaS Migration + Channel Routing Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'db/migrations-strapi/**'
+      - 'db/migrations/2026-06-20_channel_identities.sql'
+      - 'db/ci-fixtures/16-*.sql'
+      - 'db/ci-assertions/16-*.sql'
+      - '.github/workflows/phase-16-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  saas-migration-and-routing:
+    name: Phase 16 Two-DB Assertions (strapi + n8n)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres_strapi:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: strapi
+        options: >-
+          --health-cmd "pg_isready -U n8n -d strapi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      postgres_n8n:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: n8n
+        options: >-
+          --health-cmd "pg_isready -U n8n -d n8n"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # -----------------------------------------------------------------------
+      # STRAPI-DB track (port 5432, -d strapi)
+      # -----------------------------------------------------------------------
+
+      - name: Seed duplicate fixture (strapi DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Seed duplicate entitlements fixture (exercises probe+dedupe path)"
+          psql -h localhost -p 5432 -U n8n -d strapi -v ON_ERROR_STOP=1 \
+            -f db/ci-fixtures/16-duplicate-entitlements-fixture.sql
+          echo "::endgroup::"
+
+      - name: Apply live-safe SaaS migration (strapi DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply live-safe migration (probe -> dedupe -> CONCURRENTLY -> attach)"
+          psql -h localhost -p 5432 -U n8n -d strapi -v ON_ERROR_STOP=1 \
+            -f db/migrations-strapi/2026-04-06_saas_modules_entitlements.sql
+          echo "::endgroup::"
+
+      - name: Idempotent re-run of live-safe migration (strapi DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Idempotent re-run: applying migration a second time must exit 0"
+          psql -h localhost -p 5432 -U n8n -d strapi -v ON_ERROR_STOP=1 \
+            -f db/migrations-strapi/2026-04-06_saas_modules_entitlements.sql
+          echo "::endgroup::"
+
+      - name: Schema-presence assertions (strapi DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Assert: all 6 SaaS objects exist; uq_tenant_module rejects duplicates"
+          psql -h localhost -p 5432 -U n8n -d strapi -v ON_ERROR_STOP=1 \
+            -f db/ci-assertions/16-saas-migration-schema-check.sql
+          echo "::endgroup::"
+
+      # -----------------------------------------------------------------------
+      # N8N-DB track (port 5433, -d n8n)
+      # -----------------------------------------------------------------------
+
+      - name: Seed FK parents — tenants + restaurants (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Seed canonical CI tenant + restaurant rows (FK parents for channel_identities)"
+          psql -h localhost -p 5433 -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+            CREATE TABLE IF NOT EXISTS tenants (
+              tenant_id uuid PRIMARY KEY,
+              name text,
+              slug text,
+              plan text,
+              status text
+            );
+            CREATE TABLE IF NOT EXISTS restaurants (
+              restaurant_id uuid PRIMARY KEY,
+              tenant_id uuid REFERENCES tenants(tenant_id),
+              name text,
+              phone text,
+              default_language text,
+              is_active boolean
+            );
+            INSERT INTO tenants(tenant_id, name, slug, plan, status)
+            VALUES (
+              '00000000-0000-0000-0000-000000000001',
+              'Default Chain',
+              'default-chain',
+              'professional',
+              'active'
+            ) ON CONFLICT (tenant_id) DO NOTHING;
+            INSERT INTO restaurants(restaurant_id, tenant_id, name, phone, default_language, is_active)
+            VALUES (
+              '00000000-0000-0000-0000-000000000000',
+              '00000000-0000-0000-0000-000000000001',
+              'Branch 1',
+              '+213000000000',
+              'fr',
+              true
+            ) ON CONFLICT (restaurant_id) DO NOTHING;
+          "
+          echo "::endgroup::"
+
+      - name: Apply channel_identities migration (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply channel_identities routing table migration"
+          psql -h localhost -p 5433 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/migrations/2026-06-20_channel_identities.sql
+          echo "::endgroup::"
+
+      - name: Idempotent re-run of channel_identities migration (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Idempotent re-run: still exactly 4 rows after second apply"
+          psql -h localhost -p 5433 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/migrations/2026-06-20_channel_identities.sql
+          psql -h localhost -p 5433 -U n8n -d n8n -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE v_count integer;
+            BEGIN
+              SELECT COUNT(*) INTO v_count FROM channel_identities;
+              IF v_count <> 4 THEN
+                RAISE EXCEPTION 'FAIL: idempotent re-run produced % rows, expected 4', v_count;
+              END IF;
+              RAISE NOTICE 'PASS: idempotent re-run verified — still % rows', v_count;
+            END \$\$;
+          "
+          echo "::endgroup::"
+
+      - name: channel_identities assertions (n8n DB)
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Assert: table + PK + FKs + is_active + 4 seed rows + constraint enforcement"
+          psql -h localhost -p 5433 -U n8n -d n8n -v ON_ERROR_STOP=1 \
+            -f db/ci-assertions/16-channel-identities-check.sql
+          echo "::endgroup::"

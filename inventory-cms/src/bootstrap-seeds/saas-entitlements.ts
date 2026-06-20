@@ -124,7 +124,13 @@ export const SAAS_MODULES: ProductModuleSeed[] = [
 ];
 
 export async function seedSaaSEntitlements(strapi: Core.Strapi) {
-  const defaultTenantId = process.env.DEFAULT_TENANT_ID || 'default';
+  // This MUST match the 'Default Chain' tenant seeded at bootstrap (db/bootstrap.sql).
+  // Never fall back to the string 'default' — that is an invalid tenant_id in the data plane
+  // (uuid column) and will cause silent zero-row matches or type errors.
+  // If DEFAULT_TENANT_ID is set in env (e.g. for future tenants), that value wins.
+  // See docs/adr/0001-canonical-tenant-key.md for the full decision record.
+  const CANONICAL_FIRST_TENANT_UUID = '00000000-0000-0000-0000-000000000001';
+  const defaultTenantId = (process.env.DEFAULT_TENANT_ID || '').trim() || CANONICAL_FIRST_TENANT_UUID;
   strapi.log.info(`[SaaS] Seeding activation for tenant: ${defaultTenantId}`);
 
   // 1. Seed Modules

@@ -35,9 +35,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO orders (customer_phone, \"customer_userId\", restaurant_id, total_amount, items_summary, status, source, metadata) \nVALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7) \nRETURNING id;",
+        "query": "INSERT INTO orders (tenant_id, restaurant_id, customer_phone, \"customer_userId\", total_amount, items_summary, status, source, metadata) \nVALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8) \nRETURNING id;",
         "additionalFields": {
-          "queryParams": "={{[$item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.restaurantId, $item(0).$node[\"Webhook - Finalize Order\"].json.body.totalAmount, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.items || []), $item(0).$node[\"Webhook - Finalize Order\"].json.body.source, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {})]}}"
+          "queryParams": "={{[$item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId, $item(0).$node[\"Webhook - Finalize Order\"].json.body.restaurantId, $item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.customerPhone, $item(0).$node[\"Webhook - Finalize Order\"].json.body.totalAmount, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.items || []), $item(0).$node[\"Webhook - Finalize Order\"].json.body.source, JSON.stringify($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {})]}}"
         }
       },
       "name": "Create Order (DB)",
@@ -64,9 +64,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO order_items (order_id, item_code, quantity, price_cents) \nVALUES ($1, $2, $3, $4);",
+        "query": "INSERT INTO order_items (order_id, item_code, qty, unit_price_cents) \nVALUES ($1, $2, $3, $4);",
         "additionalFields": {
-          "queryParams": "={{[$json.order_id, $json.item_code, $json.quantity, $json.price_cents]}}"
+          "queryParams": "={{[$json.order_id, $json.item_code, $json.qty, $json.unit_price_cents]}}"
         }
       },
       "name": "Batch Insert Items (DB)",
@@ -117,9 +117,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE orders SET status = 'ERROR_INVENTORY', metadata = $2 WHERE id = $1;",
+        "query": "-- PK-keyed defense-in-depth: $1 is the serial id RETURNed by 'Create Order (DB)'\n-- and can only target the order this finalizer just created (cross-tenant impossible).\n-- AND tenant_id parity added for symmetry with the rest of the data plane.\nUPDATE orders SET status = 'ERROR_INVENTORY', metadata = $2 WHERE id = $1 AND tenant_id = $3;",
         "additionalFields": {
-          "queryParams": "={{ [ $item(0).$node[\"Create Order (DB)\"].json.id, JSON.stringify({ ...($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {}), \"inventory_commit_failed\": true, \"error_time\": new Date().toISOString() }) ] }}"
+          "queryParams": "={{ [ $item(0).$node[\"Create Order (DB)\"].json.id, JSON.stringify({ ...($item(0).$node[\"Webhook - Finalize Order\"].json.body.metadata || {}), \"inventory_commit_failed\": true, \"error_time\": new Date().toISOString() }), $item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId ] }}"
         }
       },
       "name": "E1 - Mark Inventory ERROR",
@@ -197,7 +197,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "json": "={{ { module_key: 'ordering_core', tenant_id: $item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId } }}"
+            "json": "={{ { module_key: 'order_bot_core', tenant_id: $item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId } }}"
           }
         }
       },
@@ -249,7 +249,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={ \"success\": false, \"error\": \"DUPLICATE_REQUEST\", \"message\": \"Une commande est déjà en cours de finalisation pour ce numéro.\" }",
+        "responseBody": "={ \"success\": false, \"error\": \"DUPLICATE_REQUEST\", \"message\": \"Une commande est d\u00e9j\u00e0 en cours de finalisation pour ce num\u00e9ro.\" }",
         "options": {}
       },
       "name": "C0 - Early Response (Duplicate)",

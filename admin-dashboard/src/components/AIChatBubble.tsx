@@ -23,6 +23,15 @@ interface AgentAction {
     status?: 'success' | 'pending' | 'error';
 }
 
+// Shape of the /api/agent/chat response body (mirrors the ChatMessage field reads below).
+interface AgentChatResponse {
+    reply?: string;
+    actions?: ChatMessage['actions'];
+    needsConfirmation?: boolean;
+    confirmAction?: ChatMessage['confirmAction'];
+    ragSlices?: string[];
+}
+
 /* ─────────── Quick Action Presets ─────────── */
 
 const QUICK_ACTIONS = [
@@ -130,8 +139,7 @@ export function AIChatBubble() {
             if (!rawRes.ok) throw new Error(`Strapi ${rawRes.status}`);
             const resJson = await rawRes.json();
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const data = (resJson?.data || resJson || {}) as any;
+            const data = (resJson?.data ?? resJson ?? {}) as AgentChatResponse;
 
             const agentMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),

@@ -25,7 +25,10 @@
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT customer_phone, COUNT(*) as total_orders, MAX(created_at) as last_order_date FROM orders GROUP BY customer_phone HAVING COUNT(*) > 5 AND MAX(created_at) < NOW() - INTERVAL '30 days';"
+                "query": "SELECT customer_phone, COUNT(*) as total_orders, MAX(created_at) as last_order_date FROM orders WHERE tenant_id = $1 GROUP BY customer_phone HAVING COUNT(*) > 5 AND MAX(created_at) < NOW() - INTERVAL '30 days';",
+                "additionalFields": {
+                    "queryParams": "={{ [$json.tenant_id] }}"
+                }
             },
             "id": "find-lost-vips",
             "name": "Find Lost VIPs (DB)",

@@ -148,8 +148,33 @@ services:
         INSERT INTO schema_migrations (filename) VALUES ('$$filename')\"\n\n  echo \"\
         \  -> Applied: $$filename\"\n  PENDING=$$((PENDING + 1))\ndone\n\necho \"\"\n\
         echo \"=== Migration Summary ===\"\necho \"Already applied: $$APPLIED_COUNT\"\
-        \necho \"Newly applied:   $$PENDING\"\necho \"=== DB Migration Complete ===\"\
-        \n"
+        \necho \"Newly applied:   $$PENDING\"\necho \"=== DB Migration Complete ===\"\n\n\
+        echo \"=== Strapi-DB migration pass (PGDATABASE=strapi) ===\"\n\n\
+        # direct to postgres:5432 — CONCURRENTLY cannot run through pgbouncer POOL_MODE=transaction\n\
+        psql -h postgres -p 5432 -d strapi -U n8n -v ON_ERROR_STOP=1 <<'EOSQL'\nCREATE TABLE IF\
+        \ NOT EXISTS schema_migrations (\n  id          serial PRIMARY KEY,\n  filename\
+        \    text NOT NULL UNIQUE,\n  applied_at  timestamptz NOT NULL DEFAULT now(),\n\
+        \  checksum    text NULL\n);\nEOSQL\n\n\
+        APPLIED_STRAPI=$$(psql -h postgres -p 5432 -t -A -d strapi -U n8n -c \"SELECT filename FROM\
+        \ schema_migrations ORDER BY filename\")\n\n\
+        PENDING_STRAPI=0\nAPPLIED_STRAPI_COUNT=0\n\n\
+        for migration in $$(ls -1 /migrations-strapi/*.sql 2>/dev/null | sort); do\n\
+        \  filename=$$(basename \"$$migration\")\n\n\
+        \  if echo \"$$APPLIED_STRAPI\" | grep -qx \"$$filename\"; then\n\
+        \    APPLIED_STRAPI_COUNT=$$((APPLIED_STRAPI_COUNT + 1))\n\
+        \    continue\n\
+        \  fi\n\n\
+        \  echo \"Applying (strapi): $$filename\"\n\
+        \  psql -h postgres -p 5432 -U n8n -d strapi -v ON_ERROR_STOP=1 < \"$$migration\"\n\n\
+        \  psql -h postgres -p 5432 -d strapi -U n8n -v ON_ERROR_STOP=1 -c \\\n\
+        \    \"INSERT INTO schema_migrations (filename) VALUES ('$$filename') ON CONFLICT (filename) DO NOTHING\"\n\n\
+        \  echo \"  -> Applied (strapi): $$filename\"\n\
+        \  PENDING_STRAPI=$$((PENDING_STRAPI + 1))\n\
+        done\n\n\
+        echo \"\"\necho \"=== Strapi Migration Summary ===\"\n\
+        echo \"Already applied: $$APPLIED_STRAPI_COUNT\"\n\
+        echo \"Newly applied:   $$PENDING_STRAPI\"\n\
+        echo \"=== Strapi-DB Migration Complete ===\"\n"
     depends_on:
       pgbouncer:
         condition: service_started
@@ -174,6 +199,7 @@ services:
     volumes:
       - ./secrets/postgres_password:/run/secrets/postgres_password:ro
       - ./db/migrations:/migrations:ro
+      - ./db/migrations-strapi:/migrations-strapi:ro
 
   admin-dashboard:
     build:
@@ -286,6 +312,13 @@ services:
       - QUEUE_BULL_REDIS_PORT=6379
       - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
       - EXECUTIONS_DATA_PRUNE=true
+      # ENT-03 / GRD-01: SOFT ${VAR:-} on base so dev/CI `docker compose config`
+      # stays green while the token is unprovisioned (prod uses HARD ${VAR:?}).
+      # scripts/preflight.sh is the fail-fast gate for base/dev.
+      - STRAPI_API_URL=${STRAPI_API_URL:-http://strapi:1337}
+      - STRAPI_API_TOKEN_INTERNAL=${STRAPI_API_TOKEN_INTERNAL:-}
+      - ENTITLEMENT_CACHE_TTL_SEC=${ENTITLEMENT_CACHE_TTL_SEC:-300}
+      - ENTITLEMENT_NEG_CACHE_TTL_SEC=${ENTITLEMENT_NEG_CACHE_TTL_SEC:-60}
     expose:
       - "5678"
     healthcheck:
@@ -339,6 +372,12 @@ services:
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
+      # ENT-03 / GRD-01: SOFT ${VAR:-} on base (n8n-worker) so dev/CI compose
+      # config stays green; prod uses HARD ${VAR:?}. preflight.sh is the gate.
+      - STRAPI_API_URL=${STRAPI_API_URL:-http://strapi:1337}
+      - STRAPI_API_TOKEN_INTERNAL=${STRAPI_API_TOKEN_INTERNAL:-}
+      - ENTITLEMENT_CACHE_TTL_SEC=${ENTITLEMENT_CACHE_TTL_SEC:-300}
+      - ENTITLEMENT_NEG_CACHE_TTL_SEC=${ENTITLEMENT_NEG_CACHE_TTL_SEC:-60}
     healthcheck:
       interval: 30s
       retries: 5

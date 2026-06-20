@@ -20,7 +20,13 @@ All secrets in `.env.production` were previously committed to git history.
 | `OPENAI_API_KEY` | OpenAI Dashboard | P1 |
 | `REDIS_PASSWORD` | Redis config | P1 |
 | `N8N_BASIC_AUTH_PASSWORD` | n8n env | P1 |
-| `STRAPI_API_TOKEN_INTERNAL` | Strapi admin | P1 |
+| `STRAPI_API_TOKEN_INTERNAL` | Strapi admin (internal API token for W0_MODULE_GUARD) | P1 |
+
+> **`STRAPI_API_TOKEN_INTERNAL`** is read by `W0_MODULE_GUARD` to call Strapi
+> (`product-modules` + `tenant-entitlements`). If unset the guard fails closed and
+> denies every inbound message + operator action (total lockout). `docker compose up`
+> (prod) hard-fails via `${STRAPI_API_TOKEN_INTERNAL:?…}` and `scripts/preflight.sh`
+> exits non-zero with a clear message when it is missing.
 
 ## How to Rotate
 

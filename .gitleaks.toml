@@ -64,6 +64,11 @@ paths = [
   '''scripts/smoke\.sh$''',
   '''scripts/smoke_security_gateway\.sh$''',
   '''docs/.*\.md$''',
+  # Internal GSD planning artifacts (research/plans/summaries/roadmap/state). Like
+  # docs/, these quote CI-ephemeral values (e.g. the throwaway CI postgres password
+  # n8npass) and n8n credential *reference* IDs — never production secrets. Real
+  # env/config files (.env, .env.production, config/*) remain fully scanned.
+  '''\.planning/.*\.md$''',
   '''RUNBOOK\.md$''',
   '''TEST_REPORT\.md$''',
   '''agents/.*''',

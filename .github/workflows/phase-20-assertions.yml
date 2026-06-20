@@ -1,0 +1,217 @@
+name: Phase 20 Redis-Cached Fail-Closed Guard + Internal Token Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'workflows/W0_MODULE_GUARD.json'
+      - 'scripts/guard/entitlement-decision.mjs'
+      - 'scripts/guard/__tests__/entitlement-decision.test.mjs'
+      - 'scripts/test-phase20.sh'
+      - '.github/workflows/phase-20-assertions.yml'
+      # 20-02 (ENT-03 token wiring)
+      - 'docker-compose.hostinger.prod.yml'
+      - 'docker-compose.base.yml'
+      - 'config/.env.example'
+      - 'docs/SECRETS_ROTATION_REQUIRED.md'
+      - 'scripts/preflight.sh'
+      # 20-03 (guard alert split)
+      - 'scripts/guard/classify-deny.mjs'
+      - 'scripts/guard/__tests__/classify-deny.test.mjs'
+      - 'docs/guard-alert-split.md'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard-decision-node-test:
+    name: Phase 20 Guard Decision Seam (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # Pin Node 22 even though the seam is .mjs (no --experimental-strip-types
+      # needed) — determinism / parity with phase-19's BLOCKER-A pin.
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Run the entitlement-decision node-test (HIT->0 fetches, Redis-err->fallthrough, Strapi-err->DENY, expired re-eval, key byte-for-byte)
+        run: |
+          echo "::group::node --test scripts/guard/__tests__/entitlement-decision.test.mjs"
+          node --version
+          node --test scripts/guard/__tests__/entitlement-decision.test.mjs
+          echo "::endgroup::"
+
+  guard-structural:
+    name: Phase 20 Guard Cache-Aside Structural Assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: node --check the seam + its test (valid ESM)
+        run: |
+          echo "::group::node --check seam + test"
+          node --version
+          node --check scripts/guard/entitlement-decision.mjs
+          node --check scripts/guard/__tests__/entitlement-decision.test.mjs
+          echo "::endgroup::"
+
+      - name: Guard JSON is valid
+        run: |
+          echo "::group::python3 json.load W0_MODULE_GUARD.json"
+          python3 -c "import json; json.load(open('workflows/W0_MODULE_GUARD.json'))"
+          echo "PASS: valid JSON"
+          echo "::endgroup::"
+
+      - name: "Redis GET + SET nodes keyed ralphe:entitlement: with a ttl on SET"
+        run: |
+          echo "::group::Assert: Redis GET/SET keyed to the canonical key"
+          F=workflows/W0_MODULE_GUARD.json
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.redis")|select(.parameters.operation=="get")|select(.parameters.key|test("ralphe:entitlement:"))]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: Redis GET not keyed ralphe:entitlement:"; exit 1; }
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.redis")|select(.parameters.operation=="set")|select(.parameters.key|test("ralphe:entitlement:"))|select(.parameters.ttl!=null)]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: Redis SET not keyed ralphe:entitlement: with a ttl"; exit 1; }
+          grep -q "REDIS_CREDENTIAL_ID" "$F" || { echo "FAIL: Redis credential placeholder missing"; exit 1; }
+          echo "PASS: Redis GET/SET keyed + SET has ttl + credential placeholder"
+          echo "::endgroup::"
+
+      - name: Exactly 2 Strapi httpRequest nodes (product-modules + tenant-entitlements)
+        run: |
+          echo "::group::Assert: exactly 2 Strapi httpRequest nodes on the miss path"
+          F=workflows/W0_MODULE_GUARD.json
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.httpRequest")]|length==2' "$F" >/dev/null \
+            || { echo "FAIL: expected exactly 2 Strapi httpRequest nodes"; exit 1; }
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.httpRequest")|select(.parameters.url|test("product-modules"))]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: product-modules fetch missing"; exit 1; }
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.httpRequest")|select(.parameters.url|test("tenant-entitlements"))]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: tenant-entitlements fetch missing"; exit 1; }
+          echo "PASS: 2 Strapi httpRequest nodes (product-modules + tenant-entitlements)"
+          echo "::endgroup::"
+
+      - name: Graph-reachability — ZERO Strapi httpRequest reachable on the HIT path (0 round-trips on hit)
+        run: |
+          echo "::group::Assert: walk connections from IF HIT branch (main[0]); 0 httpRequest reachable"
+          F=workflows/W0_MODULE_GUARD.json
+          jq -e '
+            (reduce .nodes[] as $n ({}; .[$n.name] = $n.type)) as $types |
+            .connections as $conn |
+            ($conn["IF - Cache Usable?"].main[0] | map(.node)) as $seed |
+            (reduce range(0;50) as $i ($seed;
+               . + ([.[] | $conn[.].main // [] | .[] | .[] | .node]) | unique)) as $reachable |
+            ([$reachable[] | select($types[.]=="n8n-nodes-base.httpRequest")] | length) == 0
+          ' "$F" >/dev/null \
+            || { echo "FAIL: a Strapi httpRequest node is reachable on the HIT path (0-round-trips-on-hit violated)"; exit 1; }
+          echo "PASS: 0 Strapi httpRequest reachable from the HIT branch"
+          echo "::endgroup::"
+
+      - name: Fail-closed reason + TTL envs present; no ioredis/SCAN/KEYS
+        run: |
+          echo "::group::Assert: GUARD_ERROR_FAILCLOSED + TTL envs; no forbidden patterns"
+          F=workflows/W0_MODULE_GUARD.json
+          grep -q "GUARD_ERROR_FAILCLOSED" "$F" || { echo "FAIL: fail-closed reason missing"; exit 1; }
+          grep -q "ENTITLEMENT_CACHE_TTL_SEC" "$F" || { echo "FAIL: positive TTL env not read"; exit 1; }
+          grep -q "ENTITLEMENT_NEG_CACHE_TTL_SEC" "$F" || { echo "FAIL: negative TTL env not read"; exit 1; }
+          if grep -qiE "NODE_FUNCTION_ALLOW_EXTERNAL|require\('ioredis'\)|require\(\"ioredis\"\)|\.scan\(|KEYS " "$F"; then
+            echo "FAIL: forbidden ioredis/SCAN/KEYS/NODE_FUNCTION_ALLOW_EXTERNAL pattern"; exit 1
+          fi
+          echo "PASS: fail-closed reason + TTL envs present; no ioredis/SCAN/KEYS"
+          echo "::endgroup::"
+
+  ent03-token-wiring:
+    name: Phase 20 ENT-03 Token Wiring + Preflight Fail-Fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Token declared in both compose files (prod HARD, base NOT hard)
+        run: |
+          echo "::group::Assert: STRAPI_API_TOKEN_INTERNAL in both composes; prod hard, base soft"
+          grep -q "STRAPI_API_TOKEN_INTERNAL" docker-compose.hostinger.prod.yml \
+            || { echo "FAIL: token missing from prod compose"; exit 1; }
+          grep -q "STRAPI_API_TOKEN_INTERNAL" docker-compose.base.yml \
+            || { echo "FAIL: token missing from base compose"; exit 1; }
+          grep -qE "STRAPI_API_TOKEN_INTERNAL:\?" docker-compose.hostinger.prod.yml \
+            || { echo "FAIL: prod token is not HARD \${VAR:?}"; exit 1; }
+          if grep -qE "STRAPI_API_TOKEN_INTERNAL:\?" docker-compose.base.yml; then
+            echo "FAIL: base token must NOT be HARD \${VAR:?} (breaks CI compose config)"; exit 1
+          fi
+          echo "PASS: prod-HARD vs base-NOT-hard token wiring"
+          echo "::endgroup::"
+
+      - name: Token in .env.example + secrets inventory
+        run: |
+          echo "::group::Assert: token in .env.example + SECRETS_ROTATION_REQUIRED.md"
+          grep -q "STRAPI_API_TOKEN_INTERNAL" config/.env.example \
+            || { echo "FAIL: token missing from .env.example"; exit 1; }
+          grep -q "STRAPI_API_TOKEN_INTERNAL" docs/SECRETS_ROTATION_REQUIRED.md \
+            || { echo "FAIL: token missing from secrets inventory"; exit 1; }
+          echo "PASS: token in .env.example + inventory"
+          echo "::endgroup::"
+
+      - name: TTL envs present in prod compose + .env.example
+        run: |
+          echo "::group::Assert: ENTITLEMENT_CACHE_TTL_SEC in prod compose + .env.example"
+          grep -q "ENTITLEMENT_CACHE_TTL_SEC" docker-compose.hostinger.prod.yml \
+            || { echo "FAIL: TTL env missing from prod compose"; exit 1; }
+          grep -q "ENTITLEMENT_CACHE_TTL_SEC" config/.env.example \
+            || { echo "FAIL: TTL env missing from .env.example"; exit 1; }
+          echo "PASS: TTL envs present"
+          echo "::endgroup::"
+
+      - name: Preflight fails fast when the token is unset (negative test)
+        run: |
+          echo "::group::Assert: env -u STRAPI_API_TOKEN_INTERNAL bash scripts/preflight.sh -> non-zero + token mentioned"
+          if out=$(env -u STRAPI_API_TOKEN_INTERNAL -u STRAPI_API_URL bash scripts/preflight.sh 2>&1); then
+            echo "FAIL: preflight passed with the token unset"; echo "$out"; exit 1
+          fi
+          echo "$out" | grep -qi "STRAPI_API_TOKEN_INTERNAL\|Missing env" \
+            || { echo "FAIL: preflight output did not mention the missing token"; echo "$out"; exit 1; }
+          echo "PASS: preflight fails fast with a token-mentioning message"
+          echo "::endgroup::"
+
+  guard-alert-classifier:
+    name: Phase 20 Guard Alert Classifier (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Run the classify-deny node-test (FAILCLOSED pageable, NO_ENTITLEMENT not, unknown->HIGH)
+        run: |
+          echo "::group::node --test scripts/guard/__tests__/classify-deny.test.mjs"
+          node --version
+          node --test scripts/guard/__tests__/classify-deny.test.mjs
+          echo "::endgroup::"
+
+      - name: Guard still emits the stable reason prefixes the classifier keys off (READ-ONLY — O-3)
+        run: |
+          echo "::group::Assert: W0_MODULE_GUARD.json still contains GUARD_ERROR_FAILCLOSED + NO_ENTITLEMENT"
+          grep -q "GUARD_ERROR_FAILCLOSED" workflows/W0_MODULE_GUARD.json \
+            || { echo "FAIL: guard no longer emits GUARD_ERROR_FAILCLOSED (classifier contract broken)"; exit 1; }
+          grep -q "NO_ENTITLEMENT" workflows/W0_MODULE_GUARD.json \
+            || { echo "FAIL: guard no longer emits NO_ENTITLEMENT (classifier contract broken)"; exit 1; }
+          echo "PASS: stable reason prefixes intact in the guard"
+          echo "::endgroup::"

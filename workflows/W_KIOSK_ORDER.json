@@ -36,7 +36,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "json": "={{ { module_key: 'feature_kiosk', tenant_id: $json.tenant_id || $json.restaurant_id } }}"
+            "json": "={{ { module_key: 'kiosk_instore', tenant_id: $json.tenant_id || $json.restaurant_id } }}"
           }
         }
       },

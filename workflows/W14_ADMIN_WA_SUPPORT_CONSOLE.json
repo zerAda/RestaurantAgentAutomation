@@ -1460,9 +1460,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE orders SET status='CANCELLED', payment_status='CANCELLED', updated_at=now() WHERE order_id=$1::uuid AND status NOT IN ('DONE','CANCELLED') RETURNING order_id;",
+        "query": "UPDATE orders SET status='CANCELLED', payment_status='CANCELLED', updated_at=now() WHERE order_id=$1::uuid AND tenant_id=$2::uuid AND status NOT IN ('DONE','CANCELLED') RETURNING order_id;",
         "additionalFields": {
-          "queryParams": "={{[$json.adminOrderId]}}"
+          "queryParams": "={{[$json.adminOrderId, $json.tenantId]}}"
         }
       },
       "id": "ORDER_CANCEL_DB",

@@ -12,6 +12,14 @@
     },
     "pluginOptions": {},
     "attributes": {
+        "tenant_id": {
+            "type": "string",
+            "required": true
+        },
+        "restaurant_id": {
+            "type": "string",
+            "required": true
+        },
         "total_amount": {
             "type": "decimal",
             "required": true

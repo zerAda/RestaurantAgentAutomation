@@ -10,6 +10,22 @@ The platform runs as 12 Docker containers on a Hostinger VPS, with Strapi CMS as
 
 Orders placed on any channel (messaging or kiosk) reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
 
+## Current Milestone: v2.0 — SaaS Multi-Tenant Hardening
+
+**Goal:** Turn the shipped-but-scaffolding-only SaaS multi-tenant layer into a genuinely production-safe one — real tenant derivation and data scoping, consistent fail-closed entitlement semantics, applied DB constraints, entitlement audit coverage, and guard performance.
+
+**Why now:** v3.5.0 shipped the multi-tenant module-guard + Strapi entitlements, but the 2026-06-20 codebase audit (`.planning/codebase/CONCERNS.md`) found it is effectively single-tenant and unsafe to onboard a second tenant: `DEFAULT_TENANT_ID` is unset (everything resolves to `'default'`), the admin UI fails *open* while the workflow guard fails *closed*, nav module-keys drift from the seeder, the SaaS DB migration/constraints aren't applied, the `entitlement_audit_log` table has no writers, and the guard adds 2 uncached Strapi round-trips per inbound message.
+
+**Target features (to be refined by research + requirements):**
+- Real per-tenant resolution from inbound channel identity (e.g. WABA phone-number-id) + tenant-scoped order/customer queries
+- Consistent fail-closed entitlement checks across UI and workflow guard
+- Module-key alignment between `App.tsx` navigation and the seeder/manifest
+- Apply SaaS DB constraints (`uq_tenant_module`, …) + wire `entitlement_audit_log` writers
+- Guard hardening (`STRAPI_API_TOKEN_INTERNAL` provisioning) + Redis-cached entitlement lookups
+- Remove `no-explicit-any` debt in `useEntitlements.ts`
+
+_Previous milestone (GSD v1.0 — Platform Hardening & Reliability): 13/14 phases complete; archived to `.planning/milestones/v1.0-*.md`. Only VPS-runtime deploy steps (Phase 11 + 12/13 deploy) remain, tracked in `.planning/REMAINING-WORK.md`._
+
 ## Requirements
 
 ### Validated
