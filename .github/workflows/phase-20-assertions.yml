@@ -8,6 +8,12 @@ on:
       - 'scripts/guard/__tests__/entitlement-decision.test.mjs'
       - 'scripts/test-phase20.sh'
       - '.github/workflows/phase-20-assertions.yml'
+      # 20-02 (ENT-03 token wiring)
+      - 'docker-compose.hostinger.prod.yml'
+      - 'docker-compose.base.yml'
+      - 'config/.env.example'
+      - 'docs/SECRETS_ROTATION_REQUIRED.md'
+      - 'scripts/preflight.sh'
 
 permissions:
   contents: read
@@ -118,4 +124,59 @@ jobs:
             echo "FAIL: forbidden ioredis/SCAN/KEYS/NODE_FUNCTION_ALLOW_EXTERNAL pattern"; exit 1
           fi
           echo "PASS: fail-closed reason + TTL envs present; no ioredis/SCAN/KEYS"
+          echo "::endgroup::"
+
+  ent03-token-wiring:
+    name: Phase 20 ENT-03 Token Wiring + Preflight Fail-Fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Token declared in both compose files (prod HARD, base NOT hard)
+        run: |
+          echo "::group::Assert: STRAPI_API_TOKEN_INTERNAL in both composes; prod hard, base soft"
+          grep -q "STRAPI_API_TOKEN_INTERNAL" docker-compose.hostinger.prod.yml \
+            || { echo "FAIL: token missing from prod compose"; exit 1; }
+          grep -q "STRAPI_API_TOKEN_INTERNAL" docker-compose.base.yml \
+            || { echo "FAIL: token missing from base compose"; exit 1; }
+          grep -qE "STRAPI_API_TOKEN_INTERNAL:\?" docker-compose.hostinger.prod.yml \
+            || { echo "FAIL: prod token is not HARD \${VAR:?}"; exit 1; }
+          if grep -qE "STRAPI_API_TOKEN_INTERNAL:\?" docker-compose.base.yml; then
+            echo "FAIL: base token must NOT be HARD \${VAR:?} (breaks CI compose config)"; exit 1
+          fi
+          echo "PASS: prod-HARD vs base-NOT-hard token wiring"
+          echo "::endgroup::"
+
+      - name: Token in .env.example + secrets inventory
+        run: |
+          echo "::group::Assert: token in .env.example + SECRETS_ROTATION_REQUIRED.md"
+          grep -q "STRAPI_API_TOKEN_INTERNAL" config/.env.example \
+            || { echo "FAIL: token missing from .env.example"; exit 1; }
+          grep -q "STRAPI_API_TOKEN_INTERNAL" docs/SECRETS_ROTATION_REQUIRED.md \
+            || { echo "FAIL: token missing from secrets inventory"; exit 1; }
+          echo "PASS: token in .env.example + inventory"
+          echo "::endgroup::"
+
+      - name: TTL envs present in prod compose + .env.example
+        run: |
+          echo "::group::Assert: ENTITLEMENT_CACHE_TTL_SEC in prod compose + .env.example"
+          grep -q "ENTITLEMENT_CACHE_TTL_SEC" docker-compose.hostinger.prod.yml \
+            || { echo "FAIL: TTL env missing from prod compose"; exit 1; }
+          grep -q "ENTITLEMENT_CACHE_TTL_SEC" config/.env.example \
+            || { echo "FAIL: TTL env missing from .env.example"; exit 1; }
+          echo "PASS: TTL envs present"
+          echo "::endgroup::"
+
+      - name: Preflight fails fast when the token is unset (negative test)
+        run: |
+          echo "::group::Assert: env -u STRAPI_API_TOKEN_INTERNAL bash scripts/preflight.sh -> non-zero + token mentioned"
+          if out=$(env -u STRAPI_API_TOKEN_INTERNAL -u STRAPI_API_URL bash scripts/preflight.sh 2>&1); then
+            echo "FAIL: preflight passed with the token unset"; echo "$out"; exit 1
+          fi
+          echo "$out" | grep -qi "STRAPI_API_TOKEN_INTERNAL\|Missing env" \
+            || { echo "FAIL: preflight output did not mention the missing token"; echo "$out"; exit 1; }
+          echo "PASS: preflight fails fast with a token-mentioning message"
           echo "::endgroup::"
