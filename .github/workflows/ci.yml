@@ -159,6 +159,7 @@ jobs:
           export STRAPI_TRANSFER_TOKEN_SALT=ci-test-salt-value
           export STRAPI_ENCRYPTION_KEY=ci-test-encryption-key
           export STRAPI_APP_KEYS=ci-test-app-key-1,ci-test-app-key-2
+          export STRAPI_API_TOKEN_INTERNAL=ci-test
           export POSTGRES_USER=n8n
           # P0-01 DB Migration dummy values
           export PGPASSWORD=n8npass
