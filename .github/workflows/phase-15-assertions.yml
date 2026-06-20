@@ -1,0 +1,81 @@
+name: Phase 15 Tenant Canonical Key Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'db/ci-fixtures/**'
+      - 'db/ci-assertions/**'
+      - 'inventory-cms/src/bootstrap-seeds/saas-entitlements.ts'
+      - '.github/workflows/phase-15-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  tenant-canonical-key:
+    name: Tenant Canonical Key Assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: n8n
+          POSTGRES_PASSWORD: n8npass
+          POSTGRES_DB: strapi
+        options: >-
+          --health-cmd "pg_isready -U n8n -d strapi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Apply CI fixture
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Apply tenant_entitlements fixture (simulates Strapi-auto-created table)"
+          psql -h localhost -U n8n -d strapi -f db/ci-fixtures/15-tenant-entitlements-fixture.sql
+          echo "::endgroup::"
+
+      - name: Run backfill
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Backfill: replace 'default' tenant_id rows with canonical UUID"
+          psql -h localhost -U n8n -d strapi -v ON_ERROR_STOP=1 -f db/ci-assertions/15-backfill-tenant-entitlements.sql
+          echo "::endgroup::"
+
+      - name: Assert canonical key
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Assert: zero 'default' rows, >=1 canonical-UUID rows"
+          psql -h localhost -U n8n -d strapi -v ON_ERROR_STOP=1 -f db/ci-assertions/15-tenant-canonical-key.sql
+          echo "::endgroup::"
+
+      - name: Idempotence — re-run backfill is a no-op
+        env:
+          PGPASSWORD: n8npass
+        run: |
+          echo "::group::Idempotence: re-run backfill then assert 0 default rows remain"
+          psql -h localhost -U n8n -d strapi -v ON_ERROR_STOP=1 -f db/ci-assertions/15-backfill-tenant-entitlements.sql
+          psql -h localhost -U n8n -d strapi -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE v_count integer;
+            BEGIN
+              SELECT COUNT(*) INTO v_count FROM tenant_entitlements WHERE tenant_id='default';
+              IF v_count > 0 THEN
+                RAISE EXCEPTION 'FAIL: idempotence check — % default rows remain after second backfill run', v_count;
+              END IF;
+              RAISE NOTICE 'PASS: idempotence verified — 0 default rows after second run';
+            END \$\$;
+          "
+          echo "::endgroup::"
