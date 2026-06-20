@@ -149,12 +149,12 @@ Plans:
   3. `STRAPI_API_TOKEN_INTERNAL` is declared in `docker-compose.hostinger.prod.yml`/`base`, `config/.env.example`, and the secrets inventory; a startup/preflight check fails fast with a clear message if it is unset (the fail-closed flip is not made before the secret exists)
   4. A `GUARD_ERROR_FAILCLOSED` condition (cannot-determine) is distinguishable from a legitimate `NO_ENTITLEMENT` denial in logs/alerting, so a missing/expired token is pageable rather than a silent total outage
   - 🔴 VPS: importing the updated `W0_MODULE_GUARD` and provisioning the real `STRAPI_API_TOKEN_INTERNAL` value on the VPS is deferred to a prod-connected session.
-**Plans**: TBD
+**Plans**: 3 plans (all Wave 1, parallel — disjoint file ownership: 20-01 owns the pure decision seam + the SOLE edit of `W0_MODULE_GUARD.json` + the harness + the CI-gate creation; 20-02 owns the compose/env/secrets-inventory/preflight token wiring (NO workflow edits); 20-03 owns the pure reason-classifier + the alert-split doc (downstream-only — does NOT edit the guard, O-3). The only shared file is `phase-20-assertions.yml`: created by 20-01, appended by 20-02/20-03.)
 
 Plans:
-- [ ] 20-01: Redis cache-aside in `W0_MODULE_GUARD` (keying, TTLs, fail-closed-on-error)
-- [ ] 20-02: `STRAPI_API_TOKEN_INTERNAL` declared in compose/env/secrets-inventory + startup preflight
-- [ ] 20-03: `GUARD_ERROR_FAILCLOSED` vs `NO_ENTITLEMENT` alert split
+- [ ] 20-01-PLAN.md [GRD-01] — Redis cache-aside restructure of `W0_MODULE_GUARD.json` (Redis GET/SET nodes keyed `ralphe:entitlement:{tenant_id}:{module_key}` + 2 Strapi httpRequest nodes on the miss branch only) + pure `scripts/guard/entitlement-decision.mjs` seam (node --test: HIT→0 fetches, Redis-err→fallthrough, Strapi-err→DENY, expired re-eval) + `scripts/test-phase20.sh` + structural-jq/node-test halves of `phase-20-assertions.yml`
+- [ ] 20-02-PLAN.md [ENT-03] — `STRAPI_API_TOKEN_INTERNAL` (+ `STRAPI_API_URL` + TTL envs) declared in both compose files (hard `${VAR:?}` prod / soft `${VAR:-}` base) + `config/.env.example` + secrets-inventory annotation + `scripts/preflight.sh` REQ_VARS fail-fast; appends the ENT-03 grep/preflight-negative CI job
+- [ ] 20-03-PLAN.md [GRD-01] — `GUARD_ERROR_FAILCLOSED` vs `NO_ENTITLEMENT` alert split: pure `scripts/guard/classify-deny.mjs` (FAILCLOSED→pageable HIGH, NO_ENTITLEMENT/EXPIRED/MODULE_NOT_FOUND→non-pageable LOW, unknown→pageable HIGH) + `docs/guard-alert-split.md` (downstream wiring into `security_events` severity + `W8_OPS` `ALERT_WEBHOOK_URL`, guard unchanged); appends the classifier CI job
 
 ### Phase 21: UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup
 **Goal**: The admin UI fails closed in parity with the guard, every gated nav item maps to a real entitlement key, and the entitlement `any` debt is replaced with typed DTOs so the standing Frontend Lint CI failure goes green — done last, after the backend returns correct entitlements
