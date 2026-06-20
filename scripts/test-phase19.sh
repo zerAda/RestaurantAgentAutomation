@@ -73,10 +73,13 @@ su postgres -c "$PGBIN/psql -h $TMPPG -p $PGPORT_LOCAL -U postgres -d postgres -
 # ---- Run the node --test helper suite ----
 echo "--> running node --test (type-stripping the .ts helper)"
 set +e
-REDIS_HOST=127.0.0.1 REDIS_PORT="$RPORT" \
-PGHOST="$TMPPG" PGPORT="$PGPORT_LOCAL" PGUSER=postgres PGDATABASE=postgres \
-NODE_PATH="$REPO_ROOT/inventory-cms/node_modules" \
-  node --test --experimental-strip-types "$TESTFILE"
+# Run from inside inventory-cms so Node's normal node_modules resolution finds the helper's
+# imports (zod) and the test's ioredis/knex. The test path is relative to inventory-cms.
+TEST_REL="src/api/tenant-entitlement/content-types/tenant-entitlement/__tests__/audit-hook.test.mjs"
+( cd "$REPO_ROOT/inventory-cms" && \
+  REDIS_HOST=127.0.0.1 REDIS_PORT="$RPORT" \
+  PGHOST="$TMPPG" PGPORT="$PGPORT_LOCAL" PGUSER=postgres PGDATABASE=postgres \
+    node --test --experimental-strip-types "$TEST_REL" )
 NODE_TEST_RC=$?
 set -e
 

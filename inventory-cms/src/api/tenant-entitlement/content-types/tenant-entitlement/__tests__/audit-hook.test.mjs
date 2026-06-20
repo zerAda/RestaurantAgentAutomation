@@ -11,8 +11,9 @@
 //
 // FRAGILITY GUARD: audit-hook.ts is authored by Plan 19-02 (Wave 2). This file is committed
 // in Wave 1 BEFORE the helper exists. The helper import is a DYNAMIC import() inside before()
-// — NOT a static top-level import — so node --test can load this file without hard-crashing,
-// and the helper/IO cases test.skip gracefully when the module or a service env var is absent.
+// — NOT a static top-level import — so node --test can load this file without hard-crashing.
+// Each test calls t.skip() at RUNTIME (not the static `skip` option, which Node evaluates at
+// definition time before before() has run) when the helper or a service is absent.
 // =============================================================================
 
 import { test, before, after } from 'node:test';
@@ -69,6 +70,14 @@ after(async () => {
   if (knex) { try { await knex.destroy(); } catch { /* ignore */ } }
 });
 
+// Runtime skip helpers — evaluated AFTER before() has run (unlike the static `skip` option).
+function needHelper(t) {
+  if (!helper) { t.skip(`audit-hook.ts not present yet${helperError ? ' (' + helperError.message + ')' : ''}`); return false; }
+  return true;
+}
+function needRedis(t) { if (!needHelper(t)) return false; if (!redis) { t.skip('no ephemeral redis'); return false; } return true; }
+function needPg(t) { if (!needHelper(t)) return false; if (!knex) { t.skip('no ephemeral pg'); return false; } return true; }
+
 // ---- Cache-key contract (no IO, no helper required) ----
 
 test('canonical cache key is byte-for-byte ralphe:entitlement:{tenant_id}:{module_key}', () => {
@@ -77,18 +86,21 @@ test('canonical cache key is byte-for-byte ralphe:entitlement:{tenant_id}:{modul
 
 // ---- Pure unit cases (no IO) ----
 
-test('deriveAction: null->non-null is created; non-null->null is deleted', { skip: !helper && (helperError ? 'audit-hook.ts not present yet' : true) }, () => {
+test('deriveAction: null->non-null is created; non-null->null is deleted', (t) => {
+  if (!needHelper(t)) return;
   assert.equal(helper.deriveAction(null, { enabled: true }), 'created');
   assert.equal(helper.deriveAction({ enabled: true }, null), 'deleted');
 });
 
-test('deriveAction: enabled toggles map to enabled/disabled; benign change is config_changed', { skip: !helper && 'audit-hook.ts not present yet' }, () => {
+test('deriveAction: enabled toggles map to enabled/disabled; benign change is config_changed', (t) => {
+  if (!needHelper(t)) return;
   assert.equal(helper.deriveAction({ enabled: true }, { enabled: false }), 'disabled');
   assert.equal(helper.deriveAction({ enabled: false }, { enabled: true }), 'enabled');
   assert.equal(helper.deriveAction({ enabled: true, notes: 'a' }, { enabled: true, notes: 'b' }), 'config_changed');
 });
 
-test('validateTenantId: canonical UUID returns it; "default" and "" throw; NULL is allowed (global)', { skip: !helper && 'audit-hook.ts not present yet' }, () => {
+test('validateTenantId: canonical UUID returns it; "default" and "" throw; NULL is allowed (global)', (t) => {
+  if (!needHelper(t)) return;
   assert.equal(helper.validateTenantId(TENANT), TENANT);
   assert.throws(() => helper.validateTenantId('default'));
   assert.throws(() => helper.validateTenantId(''));
@@ -99,15 +111,17 @@ test('validateTenantId: canonical UUID returns it; "default" and "" throw; NULL 
 
 // ---- IO cases (ephemeral redis / pg) ----
 
-test('invalidateCache: SET canonical key -> invalidateCache -> GET nil (AUD-02, no stale grant)', { skip: (!helper && 'audit-hook.ts not present yet') || (!redis && 'no ephemeral redis') }, async () => {
+test('invalidateCache: SET canonical key -> invalidateCache -> GET nil (AUD-02, no stale grant)', async (t) => {
+  if (!needRedis(t)) return;
   await redis.set(KEY, '1');
   assert.equal(await redis.get(KEY), '1', 'precondition: key is set');
   await helper.invalidateCache(redis, TENANT, MODULE);
-  const after = await redis.get(KEY);
-  assert.equal(after, null, 'stale grant survived invalidateCache — AUD-02 regression');
+  const result = await redis.get(KEY);
+  assert.equal(result, null, 'stale grant survived invalidateCache — AUD-02 regression');
 });
 
-test('writeAuditRow: writes one created row (old null, new set) for the canonical tenant (AUD-01)', { skip: (!helper && 'audit-hook.ts not present yet') || (!knex && 'no ephemeral pg') }, async () => {
+test('writeAuditRow: writes one created row (old null, new set) for the canonical tenant (AUD-01)', async (t) => {
+  if (!needPg(t)) return;
   const before = Number((await knex('entitlement_audit_log')
     .where({ tenant_id: TENANT, module_key: MODULE }).count('* as c'))[0].c);
   await helper.writeAuditRow(knex, {
@@ -124,7 +138,8 @@ test('writeAuditRow: writes one created row (old null, new set) for the canonica
   assert.notEqual(rows[0].new_value, null, 'created row has new_value');
 });
 
-test('writeAuditRow: product-module global row writes tenant_id IS NULL (Blocker B; nullable FK accepts)', { skip: (!helper && 'audit-hook.ts not present yet') || (!knex && 'no ephemeral pg') }, async () => {
+test('writeAuditRow: product-module global row writes tenant_id IS NULL (Blocker B; nullable FK accepts)', async (t) => {
+  if (!needPg(t)) return;
   await helper.writeAuditRow(knex, {
     tenant_id: null, module_key: MODULE, action: 'config_changed',
     changed_by: 'system', old_value: { enabled_globally: true }, new_value: { enabled_globally: false },
@@ -136,7 +151,8 @@ test('writeAuditRow: product-module global row writes tenant_id IS NULL (Blocker
   assert.equal(sentinel, 0, 'all-zero sentinel must NOT be used for globals');
 });
 
-test('writeAuditRow: a non-canonical tenant_id throws BEFORE insert (fail-loud, no row)', { skip: (!helper && 'audit-hook.ts not present yet') || (!knex && 'no ephemeral pg') }, async () => {
+test('writeAuditRow: a non-canonical tenant_id throws BEFORE insert (fail-loud, no row)', async (t) => {
+  if (!needPg(t)) return;
   const before = Number((await knex('entitlement_audit_log').count('* as c'))[0].c);
   await assert.rejects(
     () => helper.writeAuditRow(knex, { tenant_id: 'default', module_key: MODULE, action: 'created' }),
@@ -146,7 +162,8 @@ test('writeAuditRow: a non-canonical tenant_id throws BEFORE insert (fail-loud, 
   assert.equal(after, before, 'no row written for a bad tenant_id (validate-throw-pre-write)');
 });
 
-test('fail-loud: writeAuditRow surfaces a rejecting knex (no silent swallow)', { skip: !helper && 'audit-hook.ts not present yet' }, async () => {
+test('fail-loud: writeAuditRow surfaces a rejecting knex (no silent swallow)', async (t) => {
+  if (!needHelper(t)) return;
   // Inject a knex stub whose insert rejects — the helper must propagate, not swallow.
   const rejectingKnex = () => ({ insert: () => Promise.reject(new Error('db down')) });
   await assert.rejects(
@@ -158,7 +175,8 @@ test('fail-loud: writeAuditRow surfaces a rejecting knex (no silent swallow)', {
   );
 });
 
-test('fail-loud: invalidateCache surfaces a rejecting redis (no silent swallow)', { skip: !helper && 'audit-hook.ts not present yet' }, async () => {
+test('fail-loud: invalidateCache surfaces a rejecting redis (no silent swallow)', async (t) => {
+  if (!needHelper(t)) return;
   const rejectingRedis = { del: () => Promise.reject(new Error('redis down')) };
   await assert.rejects(
     () => helper.invalidateCache(rejectingRedis, TENANT, MODULE),
