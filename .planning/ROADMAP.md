@@ -36,9 +36,9 @@ credentials, the VPS DB migration, the admin audit-log view, and documentation/v
 - [ ] **Phase 9: Integration Wiring & CI Fixes** - Activate the five Phase-3 workflows on VPS, inject real credential IDs, fix CI — PARTIAL (plan 02 complete; plan 01 has 3 unresolved VPS blockers; VERIFICATION.md missing → Phase 14)
 - [x] **Phase 10: Verification & Nyquist Compliance** - Bring every executed phase to a passing VERIFICATION.md and non-draft VALIDATION.md (verified passed 6/6)
 - [ ] **Phase 11: VPS Ops — Apply DB Migration & Activate Audit Chain** - Apply the Phase-3 migration on VPS, recreate the gateway, re-import/activate W_AUDIT_ARCHIVE — researched, NOT executed (VPS-runtime only; DEFERRED to a prod-connected session)
-- [ ] **Phase 12: W_QUEUE_METRICS Runtime Fix** - Hardcode the PG/Redis credential IDs and restore the `df -k /` disk check so METR-01/02/04/05 fire on VPS — NOT STARTED (local code fix + VPS import)
-- [ ] **Phase 13: Admin Dashboard Audit-Log Repair** - Add the `VITE_API_URL` build arg and fix W_AUDIT_QUERY count/filter defects so AUDIT-03 works end-to-end — NOT STARTED (local code fix + VPS rebuild)
-- [ ] **Phase 14: Nyquist Compliance & Documentation Cleanup** - Create the missing Phase 09 VERIFICATION.md and Phase 03 VALIDATION.md, lift draft VALIDATIONs to compliant, and close stale checkboxes — NOT STARTED (local docs)
+- [x] **Phase 12: W_QUEUE_METRICS Runtime Fix** - Hardcode the PG/Redis credential IDs and restore the `df -k /` disk check so METR-01/02/04/05 fire on VPS — CODE COMPLETE (2026-06-20); VPS import deferred
+- [x] **Phase 13: Admin Dashboard Audit-Log Repair** - Add the `VITE_API_URL` build arg and fix W_AUDIT_QUERY count/filter defects so AUDIT-03 works end-to-end — CODE COMPLETE (2026-06-20); VPS rebuild deferred
+- [x] **Phase 14: Nyquist Compliance & Documentation Cleanup** - Create the missing Phase 09 VERIFICATION.md and Phase 03 VALIDATION.md, lift draft VALIDATIONs to compliant, and close stale checkboxes — COMPLETE (2026-06-20)
 
 ## Phase Details
 
@@ -190,21 +190,21 @@ Plans:
 **Goal**: Make METR-01, METR-02, METR-04, and METR-05 fire on VPS by replacing the empty `$env.*` credential-ID expressions in `W_QUEUE_METRICS.json` with the real hardcoded ID (`1mZZJEscADgQ8InR`) and restoring the `df -k /` disk check (Alpine-compatible) in place of the regressed `stat -f -c`
 **Depends on**: Phase 3
 **Requirements**: METR-01, METR-02, METR-04, METR-05
-**Status**: NOT STARTED (empty directory). Local code fix to the workflow JSON, followed by a VPS import (deploy step deferred per `.planning/REMAINING-WORK.md`).
+**Status**: CODE COMPLETE (2026-06-20, plan 12-01). W_QUEUE_METRICS.json PG/Redis credential IDs hardcoded and disk check switched to `df -k /`. VPS import + live alert verification deferred per `.planning/REMAINING-WORK.md`.
 **Plans:** 0 plans
 
 ### Phase 13: Admin Dashboard Audit-Log Repair
 **Goal**: Make AUDIT-03 work end-to-end by adding `VITE_API_URL: https://api.${DOMAIN_NAME}` to the admin-dashboard compose build args, and fixing the W_AUDIT_QUERY defects (count query never executes, `limit` vs `page_size` mismatch, status/channel filters ignored in SQL)
 **Depends on**: Phases 3, 7, 11 (ops.workflow_audit table)
 **Requirements**: AUDIT-03
-**Status**: NOT STARTED (empty directory). Local code fix (compose build arg + workflow SQL + dashboard wiring), followed by a VPS rebuild (deploy step deferred per `.planning/REMAINING-WORK.md`).
+**Status**: CODE COMPLETE (2026-06-20, plan 13-01). VITE_API_URL build arg added (prod+base); AuditLogView dead var removed; W_AUDIT_QUERY count/limit/filter defects fixed. VPS rebuild + e2e verification deferred per `.planning/REMAINING-WORK.md`.
 **Plans:** 0 plans
 
 ### Phase 14: Nyquist Compliance & Documentation Cleanup
 **Goal**: Bring the planning artifacts to full audit coverage: create the missing Phase 09 VERIFICATION.md and Phase 03 VALIDATION.md, lift Phases 01/07/09/10 VALIDATION.md from draft to compliant, and close stale ROADMAP/REQUIREMENTS checkboxes
 **Depends on**: Phases 9, 11, 12, 13 (so verification reflects the real runtime state)
 **Requirements**: (process/quality)
-**Status**: NOT STARTED (empty directory). Local documentation only. This reconciliation (2026-06-19) completed the ROADMAP/REQUIREMENTS/STATE portion; the per-phase VERIFICATION/VALIDATION work remains.
+**Status**: COMPLETE (2026-06-20, plan 14-01). Created 09-VERIFICATION.md (partial) and 03-VALIDATION.md; lifted 01/07/09/10 VALIDATIONs to compliant. ROADMAP/REQUIREMENTS/STATE reconciled 2026-06-19.
 **Plans:** 0 plans
 
 ## Progress
@@ -222,10 +222,12 @@ Plans:
 | 9. Integration Wiring & CI Fixes | 2/2 | Partial (VPS blockers; no VERIFICATION) | - |
 | 10. Verification & Nyquist Compliance | 2/2 | Complete | 2026-03-30 |
 | 11. VPS Ops — Migration & Audit Chain | 0/0 | Researched, deferred (VPS-only) | - |
-| 12. W_QUEUE_METRICS Runtime Fix | 0/0 | Not started | - |
-| 13. Admin Dashboard Audit-Log Repair | 0/0 | Not started | - |
-| 14. Nyquist Compliance & Doc Cleanup | 0/0 | Not started (docs synced 2026-06-19) | - |
+| 12. W_QUEUE_METRICS Runtime Fix | 1/1 | Code complete (VPS import deferred) | 2026-06-20 |
+| 13. Admin Dashboard Audit-Log Repair | 1/1 | Code complete (VPS rebuild deferred) | 2026-06-20 |
+| 14. Nyquist Compliance & Doc Cleanup | 1/1 | Complete | 2026-06-20 |
 
-**Milestone status:** 27/34 requirements satisfied (per 2026-04-04 audit). Remaining work: 7 runtime
-requirements (METR-01/02/04/05, AUDIT-02/03/04) across Phases 11-13, plus documentation/verification
-in Phase 14. See `.planning/REMAINING-WORK.md` for the consolidated, deploy-aware checklist.
+**Milestone status:** 27/34 requirements satisfied at code level (per 2026-04-04 audit). The 7 runtime
+requirements (METR-01/02/04/05, AUDIT-02/03/04) are now **code-complete** via Phases 12 (METR) and 13
+(AUDIT-03), with Phase 14 closing the documentation/verification debt. What remains is purely VPS
+deployment: Phase 11 (apply migration, recreate gateway, activate W_AUDIT_ARCHIVE) and the import/
+rebuild/verify steps of Phases 12-13. See `.planning/REMAINING-WORK.md` for the deploy-aware checklist.

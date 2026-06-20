@@ -1,15 +1,17 @@
 ---
 phase: 7
 slug: fix-critical-defects
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: compliant
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-28
 ---
 
 # Phase 7 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
+>
+> **Reconciliation (2026-06-20):** Lifted from draft 2026-06-20 (Phase 14): Phase 07 VERIFICATION.md is `passed` (7/7 at code level). Note: a later regression of the disk check and residual AuditLogView defects were re-closed in Phases 12 and 13.
 
 ---
 
