@@ -116,12 +116,12 @@ Plans:
   3. An automated CI test seeds two tenants and asserts that a request resolved to tenant A cannot read or write tenant B's orders/customers (separation proven in both directions)
   4. The CI isolation test is wired into the pipeline and fails the build if a cross-tenant read or write succeeds
   - 🔴 VPS: applying any new `tenant_id` column/backfill migration to production Postgres, and importing the updated workflows, is deferred to a prod-connected session.
-**Plans**: TBD
+**Plans**: 3 plans (all Wave 1, parallel — disjoint file ownership: 18-01 owns the checklist artifact; 18-02 owns the scoped workflows + Strapi schemas/lifecycles + migrations-strapi SQL; 18-03 owns the CI fixtures/assertions/yml)
 
 Plans:
-- [ ] 18-01: Order/customer read+write inventory checklist (phase-research pass)
-- [ ] 18-02: Apply `WHERE tenant_id` scoping + non-defaultable write paths across workflows + lifecycles
-- [ ] 18-03: Cross-tenant isolation CI test (two-tenant seed, both-direction assertions)
+- [ ] 18-01-PLAN.md [TEN-04] — Order/customer read+write inventory checklist (`18-SCOPING-CHECKLIST.md`): every order/customer path annotated scoped/unscoped before any change; FIRST resolves O-1 (Strapi `order`/`customer` are PARALLEL tables in the separate strapi DB — confirmed: Strapi `DATABASE_NAME=strapi` vs n8n `POSTGRES_DB=n8n`; kiosk writes via `strapi.post('/api/orders')`), which gates the 18-02 Strapi migration; records the O-2 scheduled-sweep decisions
+- [ ] 18-02-PLAN.md [TEN-04] — Apply scoping + non-defaultable writes: fix `W_ORDER_FINALIZER`'s tenant_id-omitting + column-drifted INSERT, add `WHERE tenant_id` to W51/W53/W_THE_USUAL/W_ADMIN_PROACTIVE/W14 (+ W4_CORE defense-in-depth), add required `tenant_id`/`restaurant_id` to the Strapi order/customer content types + fail-loud `beforeCreate` injection + relax `phone` to `(tenant_id,phone)` unique, and the `db/migrations-strapi/` column-add/backfill/NOT NULL migration (🔴 VPS apply deferred)
+- [ ] 18-03-PLAN.md [TEN-05] — Cross-tenant isolation CI: `db/ci-fixtures/18-two-tenant-seed.sql`, `db/ci-assertions/18-cross-tenant-isolation.sql` (both-direction read + write isolation + non-defaultable-write via nested `BEGIN..EXCEPTION` + FK, NO SAVEPOINT), `.github/workflows/phase-18-assertions.yml` (ephemeral-PG SQL job + structural jq/grep job, mirroring `phase-17-assertions.yml`), wired so a cross-tenant read/write success FAILS the build
 
 ### Phase 19: Entitlement Audit + Cache-Invalidation Lifecycle Hook
 **Goal**: A single Strapi lifecycle hook on the SaaS content types writes an `entitlement_audit_log` row on every entitlement change AND invalidates the Redis entitlement cache — so audit coverage exists and a revoked/expired entitlement cannot survive in cache
@@ -182,7 +182,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 | 15. Tenant Identity Model (Canonical Key) | 0/3 | Planned | - |
 | 16. Live-Safe SaaS Migration + Channel Routing Table | 0/3 | Planned | - |
 | 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Planned | - |
-| 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Not started | - |
+| 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Planned | - |
 | 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 0/3 | Not started | - |
 | 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 0/3 | Not started | - |
 | 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 0/3 | Not started | - |
