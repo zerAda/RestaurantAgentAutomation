@@ -3,14 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: active
-stopped_at: Completed 18-01/18-02/18-03-PLAN.md (code/CI; awaiting verifier). Phases 15-17 COMPLETE + verified. VPS apply/import deferred.
-last_updated: "2026-06-20T16:30:00.000Z"
-previous_milestone: v1.0
+stopped_at: Completed 19-01/19-02/19-03-PLAN.md (code/CI; awaiting verifier). Phases 15-18 prior; 18 awaiting verifier. VPS apply/rebuild deferred.
+last_updated: "2026-06-20T17:05:33.136Z"
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 4
+  total_plans: 15
+  completed_plans: 12
 ---
 
 # Project State
@@ -25,10 +24,18 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: 18 — Per-Tenant Data-Plane Scoping + Isolation CI [TEN-04, TEN-05] — all 3 plans executed (code/CI complete; awaiting `/gsd:verify-work`). 18-01 scoping checklist + O-1 resolved (two DBs), 18-02 scoped 7 workflows + Strapi schemas/lifecycles + strapi-DB migration (idempotent, proven on ephemeral PG), 18-03 cross-tenant isolation CI gate (both-direction assertions PASS twice + negative control fires). Phases 15-17 COMPLETE + verified.
-Next: verifier for Phase 18, then Phase 19 — Entitlement Audit + Cache-Invalidation Lifecycle Hook [AUD-01, AUD-02]
+Phase: 19 — Entitlement Audit + Cache-Invalidation Lifecycle Hook [AUD-01, AUD-02] — all 3 plans executed (code/CI complete; awaiting `/gsd:verify-work`). 19-01 ADR 0003 (strapi-DB placement + raw-Knex writer + locked `ralphe:entitlement:{tenant_id}:{module_key}` cache-key contract + O-1/O-2/O-3) + idempotent uuid-NULL + nullable-FK migration (proven apply-twice on ephemeral PG). 19-02 pure `audit-hook.ts` (deriveAction + zod `z.string().guid()` + raw-Knex insert + exact-key DEL) wired through `tenant-entitlement/lifecycles.ts` (audit + invalidate) + `product-module/lifecycles.ts` (audit-only O-1, tenant_id=NULL); fail-loud; tsc 5/5 unchanged. 19-03 validation infra (seed + DO-block assertions incl. NULL-tenant path + `node --test` + `scripts/test-phase19.sh` + `phase-19-assertions.yml` with redis:7-alpine + **pinned Node 22**); 10/10 node-tests + 4/4 SQL assertions PASS on ephemeral PG+Redis. Phases 15-17 COMPLETE + verified; Phase 18 awaiting verifier.
+Next: verifier for Phase 18 + Phase 19, then Phase 20 — Redis-Cached Fail-Closed Guard + Internal Token Provisioning [GRD-01, ENT-03]
+
+### Phase 19 VPS-deferred (NOT attempted — prod-connected session required)
+
+- Apply `db/migrations-strapi/2026-06-20_entitlement_audit_uuid.sql` to the live strapi DB using the LIVE tenant UUID discovered on prod (ADR 0001 — never hardcode `…0001`).
+- Rebuild the CMS so the new `tenant-entitlement`/`product-module` `lifecycles.ts` + `audit-hook.ts` take effect.
+- Confirm the prod Redis the hook's `DEL` targets is the SAME Redis the Phase-20 guard reads.
+- 🔴 manual-only: admin-panel entitlement edit → audit row's `changed_by` is the real admin actor (the node-test, no Strapi boot, can't cover the `requestContext` actor path) — see 19-VALIDATION.md.
 
 ### Phase 18 VPS-deferred (NOT attempted — prod-connected session required)
+
 - Apply `db/migrations-strapi/2026-06-20_strapi_order_customer_tenant.sql` to the live strapi DB (column add + backfill + NOT NULL + `CREATE UNIQUE INDEX CONCURRENTLY (tenant_id, phone)` direct to postgres:5432, not pgbouncer:6432).
 - Rebuild the CMS so the new order/customer `tenant_id` attributes + lifecycles take effect.
 - Import the updated scoped workflows (W_ORDER_FINALIZER, W51, W53, W_THE_USUAL, W_ADMIN_PROACTIVE, W14, W4_CORE) on prod n8n.
@@ -38,9 +45,11 @@ Next: verifier for Phase 18, then Phase 19 — Entitlement Audit + Cache-Invalid
 13/14 phases complete; ROADMAP/REQUIREMENTS archived to `.planning/milestones/v1.0-*.md`. Phases 12/13/14 code-complete (merged to main via PRs #26/#27/#28). Only VPS-runtime deploy steps remain (Phase 11 + 12/13 deploy), tracked in `.planning/REMAINING-WORK.md`.
 
 **v1.0 status by remaining phase:**
+
 - Phase 09 — PARTIAL: CI goals verified; 2 VPS activation items deferred to Phase 11. 09-VERIFICATION.md now exists (status: partial).
 
 **Status by remaining phase:**
+
 - Phase 09 — PARTIAL: CI goals verified; 2 VPS activation items deferred to Phase 11. 09-VERIFICATION.md now exists (status: partial).
 - Phase 11 — Researched only; VPS runtime ops; DEFERRED to a prod-connected session.
 - Phase 12 — CODE COMPLETE (2026-06-20): W_QUEUE_METRICS.json fixed. VPS import deferred.
@@ -73,11 +82,17 @@ Next: verifier for Phase 18, then Phase 19 — Entitlement Audit + Cache-Invalid
 | 12-w-queue-metrics-runtime-fix | 1/1 | Code complete (VPS import deferred) |
 | 13-admin-dashboard-audit-log-repair | 1/1 | Code complete (VPS rebuild deferred) |
 | 14-nyquist-compliance-and-documentation-cleanup | 1/1 | Complete |
+| Phase 19 Pall | ~70m | 8 tasks | 10 files |
 
 ## Accumulated Context
 
 ### Decisions
 
+- Phase 19 (ADR 0003): `entitlement_audit_log` stays in the strapi DB; writer is raw Knex `strapi.db.connection` (the table is NOT a Strapi content type, so `strapi.db.query('api::…')` is impossible) — no cross-DB connection, no table move
+- Phase 19: cache key LOCKED `ralphe:entitlement:{tenant_id}:{module_key}` (ROADMAP:147; exact-key DEL must match the Phase-20 GRD-01 GET byte-for-byte); product-module = audit-only (O-1, TTL-bounded, no global flush); single-row only (O-2, bulk *Many out of scope)
+- Phase 19 (Blocker B correction): `entitlement_audit_log.tenant_id` is `uuid NULL` + nullable FK (parity with `admin_audit_log`); global product-module audit rows carry `tenant_id = NULL` — the all-zero sentinel is NOT used
+- Phase 19 (Blocker A correction): `phase-19-assertions.yml` pins `actions/setup-node@v4.1.0` node-version 22 before every node step (the phase-18 mirror has no setup-node → would default to Node 20; `node --test --experimental-strip-types` of the `.ts` helper needs Node ≥22.18)
+- Phase 19: `validateTenantId` uses `z.string().guid()` not `.uuid()` — zod 4's `.uuid()` enforces RFC-9562 variant bits and rejects the all-zero canonical/sentinel UUIDs the Postgres `uuid` column accepts
 - Milestone scope: Fix-first; no new features this milestone (stabilize before extending)
 - CMS routes: Fix by adding TS source files to inventory-cms/src/api/ — never runtime injection
 - Node.js: Upgrade all Dockerfiles 18-alpine -> 20-alpine (EOL security fix)
@@ -117,11 +132,12 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-20
-Stopped at: Executed local gap-closure Phases 12/13/14 on branch `claude/gap-closure-phases-12-14` (stacked on the PR #26 docs reconciliation). All 7 runtime requirement gaps are now code-complete; only VPS deployment remains.
-Resume file: .planning/REMAINING-WORK.md
+Last session: 2026-06-20T17:05:33.133Z
+Stopped at: Completed 19-01/19-02/19-03-PLAN.md (code/CI; awaiting verifier)
+Resume file: None
 
 ### To finish v1.0 (VPS-connected session required)
+
 - Phase 11: apply `db/migrations/2026-03-23_p3_workflow_audit.sql` to the n8n DB, `docker compose up -d gateway`, re-import + activate W_AUDIT_ARCHIVE.
 - Phase 12 deploy: import the fixed `W_QUEUE_METRICS.json` on VPS; verify METR-04/05 alerts fire.
 - Phase 13 deploy: rebuild + redeploy admin-dashboard image; verify AuditLogView end-to-end against `ops.workflow_audit`.

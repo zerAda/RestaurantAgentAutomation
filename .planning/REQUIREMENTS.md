@@ -27,8 +27,8 @@
 ### Guard Caching, Entitlement Audit & DB Constraints
 
 - [ ] **GRD-01**: `W0_MODULE_GUARD.json` caches module/entitlement lookups in Redis (≈5-min TTL, keyed by `tenant_id:module_key`), so a cache hit skips both synchronous Strapi round-trips per inbound message. Cache miss falls back to Strapi and still fails closed on error.
-- [ ] **AUD-01**: The `tenant-entitlement` (and `product-module`) Strapi content types gain `lifecycles.ts` that write an `entitlement_audit_log` row on create/update/delete (who/what/when/old→new). The currently-dead `entitlement_audit_log` table gets real writers (or is explicitly dropped if descoped — decision recorded).
-- [ ] **AUD-02**: The same lifecycle hook **invalidates** the Redis entitlement cache (`GRD-01`) on any entitlement change, so a revoked or expired entitlement cannot survive in cache.
+- [x] **AUD-01**: The `tenant-entitlement` (and `product-module`) Strapi content types gain `lifecycles.ts` that write an `entitlement_audit_log` row on create/update/delete (who/what/when/old→new). The currently-dead `entitlement_audit_log` table gets real writers (or is explicitly dropped if descoped — decision recorded).
+- [x] **AUD-02**: The same lifecycle hook **invalidates** the Redis entitlement cache (`GRD-01`) on any entitlement change, so a revoked or expired entitlement cannot survive in cache.
 - [ ] **DB-01**: The `db/migrations/2026-04-06_saas_modules_entitlements.sql` constraints (`uq_tenant_module`, the four entitlement indexes, `uq_product_module_key`, `entitlement_audit_log`) are made **safe to apply on a live table**: a pre-apply duplicate probe + `CREATE UNIQUE INDEX CONCURRENTLY` (no exclusive lock, no failure on existing duplicates). The migration is wired into the existing `db-migrate` mechanism. *(VPS apply: 🔴 deferred.)*
 
 ### Type & Lint Debt Cleanup
