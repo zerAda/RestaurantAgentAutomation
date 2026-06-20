@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: unknown
-stopped_at: Completed 19-01/19-02/19-03-PLAN.md (code/CI; awaiting verifier)
-last_updated: "2026-06-20T18:44:38.377Z"
+stopped_at: Completed 20-01/20-02/20-03-PLAN.md (code/CI; awaiting verifier + VPS deferrals)
+last_updated: "2026-06-20T18:48:06.755Z"
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 18
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -24,8 +24,8 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: 19 — Entitlement Audit + Cache-Invalidation Lifecycle Hook [AUD-01, AUD-02] — all 3 plans executed (code/CI complete; awaiting `/gsd:verify-work`). 19-01 ADR 0003 (strapi-DB placement + raw-Knex writer + locked `ralphe:entitlement:{tenant_id}:{module_key}` cache-key contract + O-1/O-2/O-3) + idempotent uuid-NULL + nullable-FK migration (proven apply-twice on ephemeral PG). 19-02 pure `audit-hook.ts` (deriveAction + zod `z.string().guid()` + raw-Knex insert + exact-key DEL) wired through `tenant-entitlement/lifecycles.ts` (audit + invalidate) + `product-module/lifecycles.ts` (audit-only O-1, tenant_id=NULL); fail-loud; tsc 5/5 unchanged. 19-03 validation infra (seed + DO-block assertions incl. NULL-tenant path + `node --test` + `scripts/test-phase19.sh` + `phase-19-assertions.yml` with redis:7-alpine + **pinned Node 22**); 10/10 node-tests + 4/4 SQL assertions PASS on ephemeral PG+Redis. Phases 15-17 COMPLETE + verified; Phase 18 awaiting verifier.
-Next: verifier for Phase 18 + Phase 19, then Phase 20 — Redis-Cached Fail-Closed Guard + Internal Token Provisioning [GRD-01, ENT-03]
+Phase: 20 — Redis-Cached Fail-Closed Guard + Internal Token Provisioning [GRD-01, ENT-03] — all 3 plans executed (code/CI complete; awaiting `/gsd:verify-work` + 🔴 VPS deferrals). 20-01 (GRD-01): `W0_MODULE_GUARD.json` restructured into a Redis cache-aside topology (GET/SET nodes around a pure `.mjs` seam) on the locked key `ralphe:entitlement:{tenant_id}:{module_key}` — a HIT skips both Strapi round-trips (graph-reachability jq proof: 0 httpRequest reachable on the IF HIT branch) while still failing closed on Strapi error; `scripts/guard/entitlement-decision.mjs` (buildCacheKey + decideFromCache re-eval-expiry-on-read + evaluateLive fail-closed/cacheable/ttl) 20/20 `node --test`; raw-row-not-boolean caching + transient GUARD_ERROR_FAILCLOSED never cached; `scripts/test-phase20.sh` + `phase-20-assertions.yml` (pinned Node 22). 20-02 (ENT-03): `STRAPI_API_TOKEN_INTERNAL` first-class secret — HARD `${VAR:?}` in prod compose (both n8n services), SOFT in base, in `.env.example` + secrets inventory; `scripts/preflight.sh` REQ_VARS fail-fast (negative test exit 1 + `❌ Missing env: STRAPI_API_TOKEN_INTERNAL`); `preflight-prod.sh` STRAPI_KEYS extended (O-5); TTL envs 300/60 declared. 20-03 (GRD-01 crit 4): pure `scripts/guard/classify-deny.mjs` (FAILCLOSED->pageable HIGH vs NO_ENTITLEMENT/EXPIRED/MODULE_NOT_FOUND->non-pageable LOW; unknown->safe-default pageable HIGH) 11/11 `node --test` + `docs/guard-alert-split.md` (security_events.severity + W8_OPS ALERT_WEBHOOK_URL wiring, downstream-only O-3, guard topology unchanged). Integrity gate exit 0 on the restructured workflow. Phases 15-17 COMPLETE + verified; Phase 18 + Phase 19 awaiting verifier.
+Next: verifier for Phase 18 + Phase 19 + Phase 20; then 🔴 VPS deferrals (import restructured W0_MODULE_GUARD wiring REDIS_CREDENTIAL_ID->43SDqJYMGa6RvFqW, provision real STRAPI_API_TOKEN_INTERNAL, wire live alert split, confirm allkeys-lru + shared Redis keyspace), then Phase 21.
 
 ### Phase 19 VPS-deferred (NOT attempted — prod-connected session required)
 
@@ -85,6 +85,7 @@ Next: verifier for Phase 18 + Phase 19, then Phase 20 — Redis-Cached Fail-Clos
 | Phase 19 Pall | ~70m | 8 tasks | 10 files |
 | Phase 20 P01 | 5min | 3 tasks | 5 files |
 | Phase 20 P02 | 3min | 3 tasks | 7 files |
+| Phase 20 P03 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,7 @@ Next: verifier for Phase 18 + Phase 19, then Phase 20 — Redis-Cached Fail-Clos
 - NemoClaw Telegram Bot descoped from v1.0 (intended for its own repository)
 - [Phase 20]: 20-01: W0_MODULE_GUARD restructured into Redis cache-aside (GET/SET nodes around pure .mjs seam); HIT skips both Strapi fetches (graph-proven); cache stores RAW row (expiry re-eval on read); transient GUARD_ERROR_FAILCLOSED never cached
 - [Phase 20]: 20-02: STRAPI_API_TOKEN_INTERNAL first-class secret — HARD ${VAR:?} prod / SOFT base + .env.example + secrets inventory + preflight.sh REQ_VARS fail-fast (ENT-03)
+- [Phase 20]: 20-03: pure downstream classify-deny.mjs maps GUARD_ERROR_FAILCLOSED->pageable HIGH vs NO_ENTITLEMENT->non-pageable LOW (unknown->safe-default HIGH); wiring documented into security_events.severity + W8_OPS ALERT_WEBHOOK_URL; guard topology unchanged (O-3, GRD-01 crit 4)
 
 ### Reconciliation & gap-closure (2026-06-19 → 2026-06-20)
 
@@ -136,8 +138,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-20T17:05:33.133Z
-Stopped at: Completed 19-01/19-02/19-03-PLAN.md (code/CI; awaiting verifier)
+Last session: 2026-06-20T18:48:06.751Z
+Stopped at: Completed 20-01/20-02/20-03-PLAN.md (code/CI; awaiting verifier + VPS deferrals)
 Resume file: None
 
 ### To finish v1.0 (VPS-connected session required)
