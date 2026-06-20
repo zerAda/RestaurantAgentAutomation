@@ -197,7 +197,7 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "json": "={{ { module_key: 'ordering_core', tenant_id: $item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId } }}"
+            "json": "={{ { module_key: 'order_bot_core', tenant_id: $item(0).$node[\"Webhook - Finalize Order\"].json.body.tenantId } }}"
           }
         }
       },

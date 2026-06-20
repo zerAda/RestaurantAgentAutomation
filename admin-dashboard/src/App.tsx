@@ -159,7 +159,7 @@ function App() {
               <div className="space-y-1">
                 <NavItem active={activeTab === 'dashboard'} onClick={() => { navigate('/dashboard'); setIsMobileMenuOpen(false); }} label="Dashboard" icon={LayoutDashboard} lang={lang} />
                 <NavItem active={activeTab === 'stock'} onClick={() => { navigate('/stock'); setIsMobileMenuOpen(false); }} label={t('stock_inventory')} icon={Package} lang={lang} />
-                {hasModule('addon_kitchen_display') && (
+                {hasModule('kiosk_instore') && (
                   <NavItem active={activeTab === 'kitchen'} onClick={() => { navigate('/kitchen'); setIsMobileMenuOpen(false); }} label={t('kitchen_display')} icon={UtensilsCrossed} lang={lang} />
                 )}
               </div>
@@ -168,10 +168,10 @@ function App() {
               <div className="space-y-1">
                 {isFullAdmin && (
                   <>
-                    {hasModule('addon_analytics') && (
+                    {hasModule('admin_ai_intelligence') && (
                       <NavItem active={activeTab === 'analytics'} onClick={() => { navigate('/analytics'); setIsMobileMenuOpen(false); }} label="Intelligence" icon={BarChart3} lang={lang} />
                     )}
-                    {hasModule('experimental_growth_agent') && (
+                    {hasModule('growth_marketing') && (
                       <NavItem active={activeTab === 'growth'} onClick={() => { navigate('/growth'); setIsMobileMenuOpen(false); }} label="Growth AI" icon={TrendingUp} lang={lang} />
                     )}
                     <NavItem active={activeTab === 'marketing'} onClick={() => { navigate('/marketing'); setIsMobileMenuOpen(false); }} label="Creative Hub" icon={Palette} lang={lang} />
