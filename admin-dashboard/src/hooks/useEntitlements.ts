@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { strapi } from '../services/strapiClient';
 import { authService } from '../services/authService';
 
+// INVENTORY-15: default parameter 'default' is a Phase-21 cleanup item (ENT-01/ENT-02).
+// The UI queries entitlements for 'default' when no authenticated context provides the real UUID.
+// This parameter will be removed/replaced once Phase 21 wires authenticated tenant context to the UI.
+// See docs/adr/0002-tenant-id-fallback-inventory.md
 export function useEntitlements(tenantId = 'default') {
   const [modules, setModules] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);

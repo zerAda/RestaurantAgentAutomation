@@ -155,7 +155,8 @@
       "position": [
         -1100,
         -200
-      ]
+      ],
+      "__inventory_15": "INVENTORY-15: defaultTenantId is used for meta_signature and legacy_shared auth modes. This is the Phase-17 resolution gap \u2014 real tenant must come from channel_identities lookup. Not removed in Phase 15 (Phase 17 scope). See docs/adr/0002-tenant-id-fallback-inventory.md"
     },
     {
       "parameters": {
@@ -825,22 +826,48 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "workflow_name", "value": "W1_IN_WA" },
-            { "name": "workflow_id", "value": "W1" },
-            { "name": "execution_id", "value": "={{ $executionId }}" },
-            { "name": "channel", "value": "whatsapp" },
-            { "name": "status", "value": "started" },
-            { "name": "started_at", "value": "={{ $now.toISO() }}" },
-            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+            {
+              "name": "workflow_name",
+              "value": "W1_IN_WA"
+            },
+            {
+              "name": "workflow_id",
+              "value": "W1"
+            },
+            {
+              "name": "execution_id",
+              "value": "={{ $executionId }}"
+            },
+            {
+              "name": "channel",
+              "value": "whatsapp"
+            },
+            {
+              "name": "status",
+              "value": "started"
+            },
+            {
+              "name": "started_at",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "correlation_id",
+              "value": "={{ $json._timing?.correlation_id || '' }}"
+            }
           ]
         },
-        "options": { "timeout": 3000 }
+        "options": {
+          "timeout": 3000
+        }
       },
       "id": "audit-inbound-started-wa",
       "name": "AUDIT - Inbound Started",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [-1750, -300],
+      "position": [
+        -1750,
+        -300
+      ],
       "continueOnFail": true,
       "alwaysOutputData": false
     },
@@ -851,22 +878,48 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "workflow_name", "value": "W1_IN_WA" },
-            { "name": "workflow_id", "value": "W1" },
-            { "name": "execution_id", "value": "={{ $executionId }}" },
-            { "name": "channel", "value": "whatsapp" },
-            { "name": "status", "value": "completed" },
-            { "name": "completed_at", "value": "={{ $now.toISO() }}" },
-            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+            {
+              "name": "workflow_name",
+              "value": "W1_IN_WA"
+            },
+            {
+              "name": "workflow_id",
+              "value": "W1"
+            },
+            {
+              "name": "execution_id",
+              "value": "={{ $executionId }}"
+            },
+            {
+              "name": "channel",
+              "value": "whatsapp"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "completed_at",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "correlation_id",
+              "value": "={{ $json._timing?.correlation_id || '' }}"
+            }
           ]
         },
-        "options": { "timeout": 3000 }
+        "options": {
+          "timeout": 3000
+        }
       },
       "id": "audit-inbound-completed-wa",
       "name": "AUDIT - Inbound Completed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [3800, -550],
+      "position": [
+        3800,
+        -550
+      ],
       "continueOnFail": true,
       "alwaysOutputData": false
     }
