@@ -1,420 +1,221 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-18
+**Analysis Date:** 2026-06-20
 
 ## Directory Layout
 
 ```
-project/
-├── .claude/                           # Local Claude Code skills and memory
-├── .github/
-│   ├── actions/                       # 4 composite GitHub Actions
-│   │   ├── docker-build-scan/         # Multi-arch Docker build + security scan
-│   │   ├── health-check/              # Service health verification
-│   │   ├── notify/                    # Slack/email notifications
-│   │   └── setup-ssh/                 # SSH tunnel setup for VPS access
-│   └── workflows/                     # 13 CI/CD workflows
-│       ├── ci.yml                     # Lint, test, build, security gate (triggers on PR)
-│       ├── cd-deploy.yml              # Deploy to VPS (manual approval)
-│       ├── build-push-artifacts.yml   # Push images to GHCR
-│       ├── security-scan.yml          # Trivy + SBOM generation
-│       ├── workflow-validate.yml      # n8n workflow JSON schema checks
-│       ├── health-monitor.yml         # Periodic VPS health checks (via SSH)
-│       ├── release.yml                # Create releases + tag commits
-│       ├── rollback.yml               # Revert to previous release
-│       ├── scheduled-backup.yml       # Daily DB backups
-│       ├── migration-validate.yml     # Test DB migrations in isolation
-│       ├── env-sync.yml               # Sync .env vars to GitHub secrets
-│       ├── perf-baseline.yml          # Baseline performance metrics
-│       └── debug-vps.yml              # SSH into VPS for manual debugging
-├── admin-dashboard/                   # React/TypeScript admin UI
-│   ├── src/
-│   │   ├── App.tsx                    # Root component; auth check + view router
-│   │   ├── components/                # React components
-│   │   │   ├── layout/                # DashboardLayout (sidebar, nav)
-│   │   │   ├── ui/                    # Reusable UI elements
-│   │   │   ├── LoginView.tsx          # Strapi /api/auth/local login
-│   │   │   ├── StockView.tsx          # Inventory management
-│   │   │   ├── KitchenView.tsx        # Order fulfillment display
-│   │   │   ├── AnalyticsView.tsx      # Metrics + charts
-│   │   │   ├── AIChatBubble.tsx       # AI agent chat interface
-│   │   │   ├── AiObservatoryView.tsx  # LLM behavior monitoring
-│   │   │   ├── GrowthAgentView.tsx    # Growth metrics agent
-│   │   │   ├── BrandView.tsx          # Restaurant configuration
-│   │   │   ├── CustomerView.tsx       # Customer data browser
-│   │   │   ├── MarketingView.tsx      # Campaign management
-│   │   │   ├── AutomationView.tsx     # Workflow management (read-only)
-│   │   │   └── ErrorBoundary.tsx      # Global error catcher
-│   │   ├── pages/
-│   │   │   ├── DashboardHome.tsx      # Main dashboard home
-│   │   │   ├── ControlPlaneView.tsx   # System control (feature flags, configs)
-│   │   │   └── NotificationCenter.tsx # Alert inbox
-│   │   ├── services/
-│   │   │   ├── authService.ts         # Strapi login + JWT management (sessionStorage)
-│   │   │   ├── strapiClient.ts        # Strapi API client with timeout + error handling
-│   │   │   ├── stockService.ts        # Inventory CRUD wrapper
-│   │   │   └── orders.ts              # Order queries + subscriptions
-│   │   ├── utils/
-│   │   │   ├── i18n.ts                # French/Arabic translations + RTL support
-│   │   │   └── format.ts              # Date/number/currency formatting
-│   │   ├── lib/
-│   │   │   └── utils.ts               # Helper functions (cn, classname merge)
-│   │   └── main.tsx                   # React DOM mount
-│   ├── public/                        # Static assets
-│   ├── vite.config.ts                 # Vite build config (React + TypeScript)
-│   ├── tsconfig.json                  # TypeScript config
-│   └── Dockerfile                     # Multi-stage: build → serve with Nginx
-├── kiosk-app/                         # React/TypeScript public kiosk UI
-│   ├── src/
-│   │   ├── App.tsx                    # Root component; load menu + handle routing
-│   │   ├── components/
-│   │   │   ├── MenuGrid.tsx           # Product display with images
-│   │   │   ├── Cart.tsx               # Shopping cart + checkout button
-│   │   │   ├── CustomizerModal.tsx    # Product variant picker
-│   │   │   ├── VerticalVideoFeed.tsx  # Marketing video carousel
-│   │   │   ├── LanguageSelector.tsx   # FR/AR lang toggle
-│   │   │   ├── AppSwitcher.tsx        # Switch between kiosk/admin/cms
-│   │   │   └── ErrorBoundary.tsx      # Error display
-│   │   ├── pages/
-│   │   │   ├── CheckoutView.tsx       # Order submission form
-│   │   │   └── FortuneWheelView.tsx   # Loyalty spin feature
-│   │   ├── services/
-│   │   │   ├── strapiClient.ts        # Strapi API client (public role, no auth)
-│   │   │   ├── menuService.ts         # Fetch products from /api/products
-│   │   │   └── configService.ts       # Load restaurant config from /api/system-config
-│   │   ├── context/
-│   │   │   └── CartContext.tsx        # Global cart state (React Context)
-│   │   ├── utils/
-│   │   │   ├── i18n.ts                # FR/AR translations
-│   │   │   ├── SoundManager.ts        # Audio feedback on interactions
-│   │   │   └── tracking.ts            # Analytics event emission
-│   │   └── main.tsx                   # React DOM mount
-│   ├── public/                        # Static assets (logo, videos)
-│   ├── vite.config.ts                 # Vite config (React + TypeScript)
-│   ├── tsconfig.json                  # TypeScript config
-│   └── Dockerfile                     # Multi-stage: build → serve with Nginx
-├── inventory-cms/                     # Strapi 5 CMS application
-│   ├── src/
-│   │   ├── index.ts                   # Entry point; load plugins, config, types
-│   │   ├── api/                       # 40+ content types
-│   │   │   ├── product/               # Product menu items
-│   │   │   │   ├── routes/product.ts  # GET /api/products, GET /api/products/:id
-│   │   │   │   ├── controllers/       # Request handlers
-│   │   │   │   └── services/          # Business logic
-│   │   │   ├── order/                 # Orders (from kiosk/WhatsApp)
-│   │   │   ├── customer/              # Customer profiles
-│   │   │   ├── driver/                # Delivery drivers
-│   │   │   ├── ingredient/            # Kitchen inventory items
-│   │   │   ├── payment/               # Payment method configs
-│   │   │   ├── delivery-assignment/   # Driver + order assignments
-│   │   │   ├── delivery-zone/         # Geographic service areas
-│   │   │   ├── funnel-event/          # Customer journey events
-│   │   │   ├── inbound-message/       # Stored webhook payloads
-│   │   │   ├── conversation-state/    # Per-customer chat context
-│   │   │   ├── outbound-message/      # Pending/sent messages (outbox)
-│   │   │   ├── quarantine/            # Failed messages for review
-│   │   │   ├── system-config/         # Singleton config (delivery fee, hours)
-│   │   │   ├── restaurant-brand/      # Singleton restaurant metadata
-│   │   │   ├── loyalty-tier/          # Loyalty program tiers
-│   │   │   ├── marketing-campaign/    # Campaign configs
-│   │   │   ├── ai-learning/           # LLM training data
-│   │   │   └── [20 more]              # See inventory-cms/src/api/ for full list
-│   │   ├── admin/                     # Strapi admin panel customization
-│   │   ├── extensions/                # Custom Strapi plugins/hooks
-│   │   ├── plugins/                   # Custom plugins (auth, webhooks)
-│   │   ├── middlewares/               # Custom Koa middlewares
-│   │   └── bootstrap-seeds/           # Seed data for first-run
-│   ├── .strapi/                       # Strapi generated files (do not commit)
-│   ├── public/                        # Media uploads directory
-│   ├── package.json                   # Dependencies (Strapi core + plugins)
-│   └── Dockerfile                     # Multi-stage: build → Node.js runtime
-├── config/                            # Non-Docker configuration files
-│   ├── docker-compose.base.yml        # Base service definitions (shared)
-│   ├── docker-compose.dev.yml         # Development overrides
-│   ├── docker-compose.prod.yml        # Legacy production (old path)
-│   ├── docker-compose.ghcr.yml        # GHCR image references
-│   └── docker-compose.hostinger.prod.yml  # **ACTIVE**: Production VPS stack (12 services)
-├── docker-compose.*.yml               # Compose files (see config/ above)
-├── db/
-│   ├── bootstrap.sql                  # Initial Strapi DB schema + seed data
-│   ├── schema.sql                     # Current DB schema (reference only)
-│   ├── migrations/                    # SQL migration files (applied by db-migrate)
-│   │   ├── 006_separate_strapi_privileges.sql       # Strapi user + privileges
-│   │   ├── 010_add_channels_fix_currency.sql        # Channel types + currency
-│   │   ├── 011_platform_settings_seed.sql           # Initial system config
-│   │   ├── 013_unified_identity_linking.sql         # Customer identity unification
-│   │   ├── 2026-01-22_p1_*.sql                      # P1 priority fixes (indexes, SLOs)
-│   │   ├── 2026-01-23_p0_*.sql                      # P0 security (Meta replay, webhooks)
-│   │   └── [12+ more]                               # By date; applied sequentially
-│   ├── init/                          # Setup scripts
-│   │   ├── 01_create_n8n_db.sh        # n8n database + user
-│   │   ├── 02_create_strapi_db.sh     # Strapi database + user
-│   │   └── wait-for-postgres.sh       # Health check script
-│   ├── seed_delivery_demo.sql         # Demo data: drivers, zones, orders
-│   └── seed_poc_demo.sql              # PoC data: test orders, webhooks
-├── infra/
-│   ├── gateway/
-│   │   └── nginx.conf                 # **CRITICAL**: Public API routes + rate limits
-│   ├── nginx/                         # Nginx container configs (deprecated, use gateway/)
-│   ├── redis/
-│   │   └── redis.conf                 # Redis configuration (AOF enabled, 256MB)
-│   └── [other infra]                  # Additional infrastructure configs
-├── workflows/                         # **CORE LOGIC**: n8n workflow definitions
-│   ├── MANIFEST.md                    # Workflow registry (names, IDs, purposes)
-│   ├── W_IN_*.json                    # Inbound adapters (WhatsApp, Instagram, Messenger)
-│   ├── W_OUT_*.json                   # Outbound dispatchers (send responses via channels)
-│   ├── W_ORDER_*.json                 # Order processing workflows
-│   ├── W_PAYMENT_*.json               # Payment processing (COD, deposit, CIB, Edahabia)
-│   ├── W_AGENT_*.json                 # AI agents (customer service, growth, admin)
-│   ├── W_DRIVER_*.json                # Driver management (assignment, routing, rewards)
-│   ├── W_DELIVERY_*.json              # Delivery orchestration
-│   ├── W_ADMIN_*.json                 # Admin panel callbacks (chat, monitoring, live updates)
-│   ├── W_INVENTORY_*.json             # Stock management
-│   ├── W_COMPLIANCE_*.json            # Fraud, validation, audit
-│   └── [54+ workflows total]          # See MANIFEST.md for complete list
-├── schemas/                           # JSON Schema definitions for validation
-│   ├── order.schema.json              # Order object validation
-│   ├── customer.schema.json           # Customer profile validation
-│   ├── message.schema.json            # Inbound message validation
-│   ├── payment.schema.json            # Payment validation
-│   └── [10+ more]                     # One per major entity
-├── scripts/
-│   ├── ops/                           # Operational utilities
-│   │   ├── backup_postgres.sh         # Dump PostgreSQL database
-│   │   ├── restore_postgres.sh        # Restore from backup
-│   │   ├── backup_redis.sh            # Snapshot Redis
-│   │   └── deep-health-check.sh       # Comprehensive service health
-│   ├── smoke/                         # Integration tests
-│   │   ├── smoke.sh                   # Core smoke tests
-│   │   ├── smoke_meta.sh              # Meta webhook verification
-│   │   └── smoke_security_gateway.sh  # Security rule validation
-│   ├── test_*.sh                      # Feature-specific test scripts
-│   ├── patch_*.js                     # n8n workflow patching utilities
-│   ├── preflight.sh                   # Pre-deployment checks
-│   ├── ci_test_runner.sh              # Run all CI tests locally
-│   ├── validate_*.py                  # Contract/schema validation
-│   └── [60+ operational scripts]      # Deployment, debugging, maintenance
-├── docs/
-│   └── interfaces/                    # API documentation (TypeScript/OpenAPI)
-├── shared/                            # Shared code (empty; for future use)
-├── reports/                           # Test result reports, logs
-├── templates/                         # Configuration templates (docker-compose examples)
-├── test-results/                      # CI test outputs
-├── tests/                             # Test files (integration, e2e)
-├── releases/                          # Release artifacts + notes
-├── patches/                           # Custom patch files (deprecated; use migrations)
-├── .env                               # **SECRET**: Environment variables (not in git)
-├── .env.example                       # Public environment template
-├── docker-compose.base.yml            # Base service definitions
-├── docker-compose.hostinger.prod.yml  # Production compose (ACTIVE)
-├── .gitignore                         # Git ignore rules
-├── CLAUDE.md                          # Claude Code operating contract + architecture
-├── VERSION                            # Current RESTO BOT version (3.4.0)
-└── README.md                          # Project overview (if present)
+RestaurantAgentAutomation/
+├── workflows/                  # 98 n8n workflow definitions (*.json) — the orchestration mesh
+├── infra/                      # Gateway + infra config
+│   ├── gateway/                #   Nginx public API gateway (nginx.conf + variants, proxy_params)
+│   ├── nginx/                  #   Additional nginx assets
+│   ├── redis/                  #   Redis config
+│   └── docker/                 #   Docker helper assets
+├── inventory-cms/              # Strapi 5 CMS — source of truth (content types, seeders, plugins)
+│   ├── src/api/                #   45+ content types (order, product, product-module, tenant-entitlement...)
+│   ├── src/bootstrap-seeds/    #   Menu + SaaS entitlement seeders
+│   ├── src/index.ts            #   register()/bootstrap() — realtime, admin sync, seeding
+│   ├── src/middlewares/        #   Custom Strapi middlewares
+│   ├── src/extensions/         #   Plugin extensions (e.g. agent-chat routes)
+│   └── config/                 #   Strapi config (database, server, plugins, middlewares)
+├── admin-dashboard/            # React + Vite operator console (private)
+│   └── src/                    #   App.tsx, pages/, components/, hooks/, services/, lib/, utils/
+├── kiosk-app/                  # React + Vite public ordering terminal
+│   └── src/                    #   App.tsx, pages/, components/, context/, services/, lib/
+├── db/                         # SQL schema, ordered migrations, seeds, init scripts
+│   ├── migrations/             #   Tracked migrations (incl. SaaS modules/entitlements)
+│   └── init/                   #   docker-entrypoint init shell scripts
+├── schemas/inbound/            # Versioned inbound envelope JSON schemas (v1.json, v2.json)
+├── config/                     # SaaS manifests: product_modules.json, workflow_registry.json
+├── scripts/                    # Ops/deploy/backup/migration shell + node scripts
+│   ├── ops/                    #   Operational scripts
+│   └── smoke/                  #   Smoke-test scripts
+├── tests/                      # Contract, destructive, and fixture test suites
+├── templates/                  # Outbound message templates (whatsapp/, delivery/)
+├── mock-api/                   # Mock upstream for local/dev testing
+├── docs/                       # Architecture/interface docs (docs/interfaces/AGENT_*_INTERFACE.md)
+├── secrets/                    # Mounted Docker secrets (gitignored)
+├── docker-compose.base.yml     # Canonical service + volume/network definitions
+├── docker-compose.dev.yml      # Local dev overrides (dev Dockerfiles, mock-api)
+├── docker-compose.prod.yml     # Prod overrides (resource limits, Traefik labels)
+├── docker-compose.hostinger.prod.yml  # Hostinger deployment topology (full stack + Traefik)
+├── docker-compose.ghcr.yml     # GHCR pre-built image deployment
+├── Makefile                    # Task entrypoints
+├── ENV_REFERENCE.md            # Env var + secrets reference
+└── README.md                   # Project overview
 ```
 
 ## Directory Purposes
 
-**`.github/`:**
-- Purpose: CI/CD orchestration
-- Contains: 13 GitHub Actions workflows for lint, test, build, security, deploy, and monitoring
-- Key files: `ci.yml` (triggers on PR), `cd-deploy.yml` (manual deploy to VPS)
+**workflows/**
+- Purpose: The entire n8n orchestration mesh — every inbound adapter, core engine step, outbound sender, worker, audit, and monitor is one JSON file.
+- Contains: 98 `*.json` n8n workflow exports.
+- Key files: `W0_MODULE_GUARD.json` (entitlement gate), `W1_IN_WA.json`/`W2_IN_IG.json`/`W3_IN_MSG.json`/`W1_IN_TIKTOK.json` (inbound adapters), `W0_META_VERIFY_UNIFIED.json` (webhook verify), `W4_CORE.json` + `W4.1_ROUTER.json`/`W4.2_CART_MANAGER.json`/`W4.3_FAQ_AGENT.json` (engine), `W5_OUT_WA.json`/`W6_OUT_IG.json`/`W7_OUT_MSG.json`/`W5_OUT_TIKTOK.json` (outbound), `W15_OUTBOX_WORKER.json` (outbox/retry), `W8_DLQ_HANDLER.json`/`W8_DLQ_REPLAY.json` (DLQ), `W_AUDIT_WRITE.json`/`W_AUDIT_QUERY.json`/`W_AUDIT_ARCHIVE.json` (audit chain), `W_QUEUE_METRICS.json`/`W_REDIS_MONITOR.json`/`W16_HEALTHZ.json`/`W17_HEALTH_MONITOR.json` (observability).
+- Subdirectories: None (flat).
 
-**`admin-dashboard/`:**
-- Purpose: React TypeScript SPA for restaurant staff
-- Contains: Component library, services (auth, API), utilities (i18n, formatting)
-- Key files: `src/App.tsx` (entry), `src/services/authService.ts` (Strapi login)
+**infra/gateway/**
+- Purpose: Nginx public API gateway that normalizes `/v1/*` paths, rate-limits, and proxies to n8n + Strapi.
+- Contains: `nginx.conf` (production), `nginx.test.conf`, `nginx.smoke.conf`, `proxy_params` (shared proxy headers).
+- Key files: `nginx.conf` — upstreams, rate-limit zones, all `/v1/*` route definitions.
 
-**`kiosk-app/`:**
-- Purpose: React TypeScript SPA for customer self-service
-- Contains: Menu display, shopping cart, checkout form
-- Key files: `src/App.tsx` (entry), `src/services/strapiClient.ts` (public API)
+**inventory-cms/**
+- Purpose: Strapi 5 CMS; single source of truth for content + SaaS registries; serves REST, realtime SSE, and admin panel.
+- Contains: `src/api/` (content types), `src/bootstrap-seeds/`, `src/index.ts`, `src/middlewares/`, `src/extensions/`, `src/plugins/`, `config/`, `database/`, `types/`, `scripts/`.
+- Key files: `src/index.ts` (bootstrap), `src/bootstrap-seeds/saas-entitlements.ts` (module/entitlement seeder), `src/bootstrap-seeds/restaurant-menu.ts` (menu seeder), `src/api/product-module/content-types/product-module/schema.json`, `src/api/tenant-entitlement/content-types/tenant-entitlement/schema.json`, `src/api/order/content-types/order/lifecycles.ts`.
+- Subdirectories: `src/api/<content-type>/{content-types,controllers,routes,services}/` is the per-entity Strapi layout.
 
-**`inventory-cms/`:**
-- Purpose: Strapi 5 application (central config hub)
-- Contains: 40+ content types, API routes, controllers, services, plugins
-- Key files: `src/index.ts` (bootstrap), `src/api/*/routes/*.ts` (HTTP routes)
+**admin-dashboard/src/**
+- Purpose: Operator console (orders, kitchen, audit, control plane).
+- Contains: `App.tsx`, `main.tsx`, `pages/`, `components/`, `hooks/`, `services/`, `lib/`, `utils/`, `assets/`.
+- Key files: `main.tsx` (entry), `App.tsx` (entitlement-gated nav), `hooks/useEntitlements.ts` (module gating), `services/strapiClient.ts`, `services/authService.ts`, `services/orders.ts`, `pages/OrdersKanban.tsx`, `pages/KitchenDisplay.tsx`, `pages/AuditLogView.tsx`, `pages/ControlPlaneView.tsx`.
 
-**`infra/gateway/`:**
-- Purpose: Nginx configuration for public API gateway
-- Contains: Route definitions, rate limiting, security headers
-- Key files: `nginx.conf` (all routes defined here)
+**kiosk-app/src/**
+- Purpose: Public self-service ordering terminal.
+- Contains: `App.tsx`, `main.tsx`, `pages/`, `components/`, `context/`, `services/`, `lib/`, `assets/`.
+- Key files: `main.tsx` (entry), `App.tsx`, `context/CartContext.tsx` (cart state), `services/menuService.ts`, `services/configService.ts`, `services/strapiClient.ts`.
 
-**`db/`:**
-- Purpose: Database setup, schemas, migrations
-- Contains: PostgreSQL DDL, migration files, initialization scripts
-- Key files: `migrations/` (applied sequentially on startup), `bootstrap.sql` (initial schema)
+**db/**
+- Purpose: Database schema, ordered migrations, seeds, and init scripts.
+- Contains: `bootstrap.sql`, `schema.sql`, `migrations/*.sql`, `seed_*.sql`, `init/*.sh`.
+- Key files: `bootstrap.sql` (initial schema), `migrations/2026-04-06_saas_modules_entitlements.sql` (SaaS constraints/indexes/audit log), `migrations/2026-04-06_master_schema_unification.sql`, `migrations/2026-03-23_p3_workflow_audit.sql`, `init/01_apply_migrations.sh`, `init/02_create_strapi_db.sh`.
+- Subdirectories: `migrations/` (date/phase-prefixed), `init/`.
 
-**`workflows/`:**
-- Purpose: n8n workflow definitions (business logic)
-- Contains: 54+ JSON workflow files for messaging, payments, delivery, AI agents
-- Key files: `MANIFEST.md` (registry), `W_IN_*.json` (inbound), `W_OUT_*.json` (outbound)
+**config/**
+- Purpose: Declarative SaaS manifests linking workflows to modules/tenancy.
+- Contains: `product_modules.json` (module catalog: tier, rollout, required env, workflow lists), `workflow_registry.json` (per-workflow metadata: module_key, trigger_kind, exposure, tenant_scoped, depends_on).
 
-**`scripts/`:**
-- Purpose: Operational utilities, testing, deployment
-- Contains: Bash scripts for backup, restore, smoke tests, preflight checks
-- Key files: `smoke/` (integration tests), `ops/` (backup/restore), `patch_*.js` (n8n patching)
+**schemas/inbound/**
+- Purpose: Versioned canonical inbound envelope schemas validated by adapters via AJV.
+- Contains: `v1.json`, `v2.json`. Mounted into n8n at `/opt/resto/schemas`.
 
-**`.github/actions/`:**
-- Purpose: Reusable GitHub Actions composites
-- Contains: 4 actions (docker-build-scan, health-check, notify, setup-ssh)
-
-**`config/`:**
-- Purpose: Alternative location for compose files (deprecated; use root)
-- Contains: Redundant copies of docker-compose files
+**scripts/**
+- Purpose: Ops, deploy, backup, migration, and chaos/health tooling.
+- Key files: `n8n-worker-entrypoint.sh`, `db_migrate.sh`, `git-deploy.sh`, `deep-health-check.sh`, `backup_postgres.sh`, `generate_workflow_ids.sh`, `integrity_gate.sh`.
+- Subdirectories: `ops/`, `smoke/`.
 
 ## Key File Locations
 
 **Entry Points:**
-
-- **Admin Dashboard:** `project/admin-dashboard/src/App.tsx` (React root; auth check)
-- **Kiosk App:** `project/kiosk-app/src/main.tsx` (React DOM mount)
-- **Strapi CMS:** `project/inventory-cms/src/index.ts` (Strapi bootstrap)
-- **Nginx Gateway:** `project/infra/gateway/nginx.conf` (route definitions)
-- **n8n Workflows:** `project/workflows/` (54+ JSON workflow files)
+- `inventory-cms/src/index.ts` — Strapi register/bootstrap (realtime, admin sync, seeding).
+- `admin-dashboard/src/main.tsx` → `admin-dashboard/src/App.tsx` — admin SPA root.
+- `kiosk-app/src/main.tsx` → `kiosk-app/src/App.tsx` — kiosk SPA root.
+- `infra/gateway/nginx.conf` — public API route definitions.
+- `workflows/*.json` — n8n webhook/schedule/sub-workflow triggers.
 
 **Configuration:**
-
-- `project/.env` (environment variables; not in git)
-- `project/.env.example` (public template)
-- `project/docker-compose.hostinger.prod.yml` (production stack; 12 services)
-- `project/VERSION` (current version: 3.4.0)
+- `docker-compose.base.yml` — canonical services, volumes, networks.
+- `docker-compose.{dev,prod,hostinger.prod,ghcr}.yml` — environment-specific overrides + Traefik labels.
+- `config/product_modules.json`, `config/workflow_registry.json` — SaaS module/workflow manifests.
+- `inventory-cms/config/` — Strapi database/server/plugin/middleware config.
+- `ENV_REFERENCE.md`, `SECRETS_INVENTORY.md` — env var + secrets documentation.
+- `infra/gateway/proxy_params` — shared nginx proxy headers.
 
 **Core Logic:**
-
-- `project/admin-dashboard/src/services/strapiClient.ts` (API client with timeout + auth)
-- `project/admin-dashboard/src/services/authService.ts` (JWT token management, sessionStorage)
-- `project/kiosk-app/src/services/strapiClient.ts` (public API client, no auth)
-- `project/inventory-cms/src/api/*/routes/*.ts` (Strapi HTTP routes)
-- `project/infra/gateway/nginx.conf` (rate limits, proxy rules, security checks)
+- `workflows/W0_MODULE_GUARD.json` — multi-tenant entitlement gate.
+- `workflows/W4_CORE.json`, `W4.1_ROUTER.json`, `W4.2_CART_MANAGER.json` — conversational commerce engine.
+- `inventory-cms/src/api/<content-type>/` — Strapi business entities.
+- `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts` — SaaS module + entitlement seed.
+- `admin-dashboard/src/hooks/useEntitlements.ts` — module-aware navigation gating.
 
 **Testing:**
+- `tests/contracts/` — contract tests.
+- `tests/destructive/` — failure/chaos tests.
+- `tests/fixtures/` — shared fixtures.
+- Co-located frontend tests: `admin-dashboard/src/*.test.tsx`, `kiosk-app/src/*.test.ts`.
+- `scripts/smoke/` — smoke tests.
 
-- `project/scripts/smoke/` (integration test suite)
-- `project/scripts/test_*.sh` (feature-specific tests)
-- `project/tests/` (test files, organized by feature)
-
-**Database:**
-
-- `project/db/migrations/` (sequential SQL migrations applied at startup)
-- `project/db/bootstrap.sql` (initial Strapi schema)
-- `project/db/init/` (setup scripts for both n8n and Strapi databases)
+**Documentation:**
+- `README.md`, `COMMANDS.md`, `ENV_REFERENCE.md`, `CLAUDE_OPERATING_CONTRACT.md`.
+- `docs/interfaces/AGENT_*_INTERFACE.md` — per-domain interface contracts.
 
 ## Naming Conventions
 
-**Files:**
+**Workflows (`workflows/*.json`):**
+- `W<n>_<DESCRIPTION>` for numbered pipeline stages: `W1_IN_WA`, `W5_OUT_WA`, `W15_OUTBOX_WORKER`.
+- `W<n>.<m>_<NAME>` for sub-stages of a stage: `W4.1_ROUTER`, `W4.2_CART_MANAGER`, `W4.3_FAQ_AGENT`.
+- `W0_<NAME>` for shared platform primitives invoked by others: `W0_MODULE_GUARD`, `W0_CONFIG_READER`, `W0_REDIS_HELPER`, `W0_META_VERIFY_UNIFIED`.
+- `W_<DOMAIN>_<NAME>` for unnumbered domain workflows: `W_AUDIT_WRITE`, `W_QUEUE_METRICS`, `W_DRIVER_DISPATCH`, `W_KIOSK_ORDER`.
+- Directional infixes: `_IN_` (inbound adapter), `_OUT_` (outbound sender).
+- Internal n8n node names use a step-prefix convention: `B0 -`, `C0 -`, `C1 -`, `RESP -` (block/check/response stages).
 
-- **React components:** PascalCase + `.tsx` extension (e.g., `LoginView.tsx`, `MenuGrid.tsx`)
-- **Services:** camelCase + `Service` suffix + `.ts` (e.g., `authService.ts`, `stockService.ts`)
-- **n8n workflows:** `W_<TYPE>_<NAME>.json` (e.g., `W_IN_WHATSAPP_ADAPTER.json`, `W_OUT_OUTBOUND_DISPATCHER.json`)
-- **Database migrations:** `YYYY-MM-DD_<PRIORITY>_<DESCRIPTION>.sql` (e.g., `2026-01-23_p0_sec02_meta_replay.sql`)
-- **GitHub Actions workflows:** `kebab-case.yml` (e.g., `ci.yml`, `cd-deploy.yml`)
-- **Strapi content types:** kebab-case directories (e.g., `product/`, `delivery-assignment/`)
+**Services (Docker Compose):**
+- lowercase-hyphenated service names: `n8n-main`, `n8n-worker`, `admin-dashboard`, `kiosk-app`, `db-migrate`, `mock-api`.
+- Hostnames in nginx/Strapi env match service names (`cms`, `n8n-main`, `pgbouncer`, `redis`).
 
-**Directories:**
+**Strapi content types:**
+- kebab-case singular directories: `product-module`, `tenant-entitlement`, `conversation-state`, `delivery-zone`.
+- Per-entity layout `<type>/{content-types,controllers,routes,services}/`; `schema.json` defines the model; `lifecycles.ts` for hooks.
 
-- **Feature modules:** lowercase with hyphens (e.g., `delivery-assignment/`, `loyalty-tier/`)
-- **Layer directories:** lowercase (e.g., `routes/`, `controllers/`, `services/`, `content-types/`)
-- **Utilities:** lowercase plural (e.g., `utils/`, `services/`, `hooks/`)
-- **Pages:** PascalCase (e.g., `pages/`, contains `.tsx` files)
+**Frontend files:**
+- `PascalCase.tsx` for React components/pages (`OrdersKanban.tsx`, `CartContext.tsx`).
+- `camelCase.ts` for services/hooks/utils (`strapiClient.ts`, `useEntitlements.ts`, `menuService.ts`).
+- `*.test.ts(x)` co-located with source.
 
-**Functions:**
+**Database migrations:**
+- Date/phase-prefixed: `YYYY-MM-DD_p<phase>_<name>.sql` (e.g. `2026-04-06_saas_modules_entitlements.sql`); legacy numeric prefixes (`006_`, `010_`). Applied in sort order, tracked in `schema_migrations`.
 
-- **React components:** PascalCase (e.g., `LoginView()`, `StockView()`)
-- **Hooks:** camelCase with "use" prefix (e.g., `useAuth()`, `useCart()`)
-- **API methods:** camelCase (e.g., `fetchOrders()`, `createOrder()`)
-- **Strapi services:** camelCase (e.g., `find()`, `findOne()`, `create()`, `update()`, `delete()`)
-
-**Types:**
-
-- **TypeScript interfaces:** PascalCase + "I" prefix or no prefix (e.g., `User`, `Order`, `IAuthService`)
-- **Enums:** PascalCase (e.g., `OrderStatus`, `PaymentMethod`)
+**Config / schemas:**
+- `schemas/inbound/v<n>.json` — versioned envelope contracts.
+- `config/*.json` — SaaS manifests with a `_version` field.
 
 ## Where to Add New Code
 
-**New Feature (End-to-End):**
+**New inbound channel:**
+- Adapter workflow: `workflows/W<n>_IN_<CHANNEL>.json` (follow `W1_IN_WA.json`: parse → verify → AJV validate → seal context → `W0_MODULE_GUARD` → dedupe → `W4_CORE`).
+- Outbound sender: `workflows/W<n>_OUT_<CHANNEL>.json` (write to Redis outbox, then send).
+- Gateway route: add a `location = /v1/inbound/<channel>` block (+ GET/POST named locations) in `infra/gateway/nginx.conf`.
+- Module + entitlement: add a `channel_<x>` entry to `config/product_modules.json`, `config/workflow_registry.json`, and `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts`.
 
-1. **Backend data model:** Add Strapi content type in `project/inventory-cms/src/api/<feature-name>/` with routes/controllers/services
-2. **Database schema:** Add migration file to `project/db/migrations/<date>_<feature>.sql`
-3. **n8n workflow:** Create new workflow JSON in `project/workflows/W_<FEATURE>.json`; register in `MANIFEST.md`
-4. **Admin UI:** Add React component in `project/admin-dashboard/src/components/` + wire up in `App.tsx` routes
-5. **Tests:** Add smoke tests in `project/scripts/smoke/` or `project/tests/`
-6. **Documentation:** Update `CLAUDE.md` and `README.md` with feature description
+**New gated workflow / module:**
+- Workflow: `workflows/W_<DOMAIN>_<NAME>.json`; add a `B0 - Module Guard` node calling `W0_MODULE_GUARD` with the correct `module_key`.
+- Register it in `config/workflow_registry.json` and assign a module in `config/product_modules.json`.
+- Seed the module + default entitlement in `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts` (keys MUST match the manifest).
 
-**New Component/Module (Frontend only):**
+**New Strapi content type:**
+- Implementation: `inventory-cms/src/api/<content-type>/` (`content-types/<type>/schema.json`, `routes/`, `controllers/`, `services/`).
+- Side effects: `inventory-cms/src/api/<content-type>/content-types/<type>/lifecycles.ts`.
+- DB constraints/indexes Strapi won't enforce: add a `db/migrations/<date>_<name>.sql`.
 
-- Reusable UI: `project/admin-dashboard/src/components/ui/` (e.g., Button, Modal)
-- Feature component: `project/admin-dashboard/src/components/<FeatureName>.tsx`
-- Service wrapper: `project/admin-dashboard/src/services/<featureName>.ts`
-- Page view: `project/admin-dashboard/src/pages/<PageName>.tsx`
+**New admin dashboard page/feature:**
+- Page: `admin-dashboard/src/pages/<Name>.tsx`; shared UI in `admin-dashboard/src/components/`.
+- Data access: `admin-dashboard/src/services/`; gate nav with `hasModule(...)` from `admin-dashboard/src/hooks/useEntitlements.ts`.
+- Route admin CMS calls through the gateway `/v1/portal/*`.
 
-**New API Endpoint (Strapi):**
+**New kiosk feature:**
+- UI: `kiosk-app/src/pages/` + `kiosk-app/src/components/`; cart logic in `kiosk-app/src/context/CartContext.tsx`.
+- Data: `kiosk-app/src/services/` (read via `/v1/strapi/*`, order POST via `/v1/strapi/api/orders`).
 
-- Routes: `project/inventory-cms/src/api/<content-type>/routes/<route-name>.ts`
-- Controller: `project/inventory-cms/src/api/<content-type>/controllers/<controller-name>.ts`
-- Service: `project/inventory-cms/src/api/<content-type>/services/<service-name>.ts`
-- Content type schema: `project/inventory-cms/src/api/<content-type>/content-types/<content-type>/schema.json`
+**New scheduled worker:**
+- `workflows/W_<NAME>.json` with a CRON trigger; register in `config/workflow_registry.json` under `platform_runtime` or its owning module.
 
-**Utilities:**
-
-- Shared helpers: `project/admin-dashboard/src/utils/<feature>.ts`
-- i18n strings: `project/admin-dashboard/src/utils/i18n.ts` (add to translations object)
-- API client methods: `project/admin-dashboard/src/services/strapiClient.ts` (add to `strapi` export)
-
-**Operational Script:**
-
-- Bash script: `project/scripts/` (organize by type: `ops/`, `smoke/`, `test_*.sh`)
-- Python script: `project/scripts/<name>.py` (for complex logic)
-- Node.js patch: `project/scripts/patch_*.js` (for n8n workflow modifications)
+**Ops/deploy tooling:**
+- `scripts/` (or `scripts/ops/`, `scripts/smoke/`).
 
 ## Special Directories
 
-**`project/.env`:**
-- Purpose: Runtime environment variables
-- Generated: No (manually created on VPS; not in git)
-- Committed: No (in `.gitignore`)
-- Contains: 580+ variables (Strapi secrets, n8n config, API keys, database credentials)
+**secrets/**
+- Purpose: Docker secrets mounted read-only into containers (`/run/secrets/*`): Postgres/Strapi DB passwords, n8n encryption key, Traefik usersfile.
+- Source: Operator-provisioned per environment.
+- Committed: No (gitignored; see `SECRETS_INVENTORY.md`).
 
-**`project/db/migrations/`:**
-- Purpose: Database schema evolution
-- Generated: No (manually created)
-- Committed: Yes (all migrations tracked in git)
-- Applied: Sequentially by db-migrate init container on Docker Compose startup
+**Docker volumes (external):**
+- `postgres_data`, `redis_data`, `n8n_data`, `cms_uploads`, `ollama_data`, `traefik_data` — declared `external: true` in `docker-compose.base.yml`; created out-of-band, persisted across deploys.
 
-**`project/workflows/`:**
-- Purpose: n8n workflow definitions (serialized JSON)
-- Generated: Partially (workflows created in n8n UI, exported to JSON; can also be created manually)
-- Committed: Yes (all workflows tracked in git for version control)
-- Note: Workflow IDs (UUID) must match both the exported JSON and n8n database
+**inventory-cms/dist & .strapi:**
+- Purpose: Strapi build output / cache.
+- Source: Generated by `strapi build`.
+- Committed: No.
 
-**`project/schemas/`:**
-- Purpose: JSON Schema validation definitions
-- Generated: No
-- Committed: Yes
-- Used by: n8n nodes for input validation, Strapi content types for schema validation
+**Frontend build output (admin-dashboard/dist, kiosk-app/dist):**
+- Purpose: Vite production bundles served by nginx in the container images.
+- Source: `vite build` during Docker build.
+- Committed: No.
 
-**`.github/workflows/`:**
-- Purpose: CI/CD pipeline definitions
-- Generated: No
-- Committed: Yes
-- Triggered: On events (push, PR, schedule, manual dispatch)
-
-**`project/docker-compose.hostinger.prod.yml`:**
-- Purpose: Production stack definition (12 services)
-- Generated: No
-- Committed: Yes (but references .env for secrets)
-- Used: `docker compose -f docker-compose.hostinger.prod.yml up -d`
-
-**`project/node_modules/`, `project/*/node_modules/`:**
-- Purpose: Installed npm dependencies
-- Generated: Yes (via `npm install`)
-- Committed: No (in `.gitignore`)
-
-**`project/admin-dashboard/dist/`, `project/kiosk-app/dist/`:**
-- Purpose: Built frontend bundles
-- Generated: Yes (via `npm run build` or Docker build)
-- Committed: No (in `.gitignore`)
+**mock-api/**
+- Purpose: Stand-in upstream for local/dev (`docker-compose.dev.yml`); not deployed to prod topologies.
+- Committed: Yes.
 
 ---
 
-*Structure analysis: 2026-03-18*
+*Structure analysis: 2026-06-20*
