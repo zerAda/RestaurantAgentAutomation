@@ -1,233 +1,196 @@
-# Roadmap: RESTO BOT — Platform Hardening & Reliability
+# Roadmap: RESTO BOT — SaaS Multi-Tenant Hardening
+
+> v1.0 (Platform Hardening & Reliability, Phases 1–14) is **shipped and archived** to
+> `.planning/milestones/v1.0-ROADMAP.md`. This file is scoped to the current milestone, **v2.0**.
+> Phase numbering continues from v1.0 (next integer is 15).
+
+## 🚧 v2.0 SaaS Multi-Tenant Hardening (In Progress)
+
+**Milestone Goal:** Turn the shipped-but-scaffolding-only SaaS multi-tenant layer into a genuinely
+production-safe one, so a *second* restaurant/tenant can be onboarded without cross-tenant data
+leakage or entitlement bypass.
 
 ## Overview
 
-This milestone transforms RESTO BOT from a platform that works-in-practice into one that is
-provably stable. Phase 1 eliminates the P0 CMS runtime-injection hack and upgrades Node.js to a
-supported LTS. Phases 2-3 add structured observability so operators can see what the platform is
-doing. Phases 4-5 add automated test coverage so regressions are caught before they reach
-production. Phase 6 closes out the original plan with database indexes, Redis safety, and frontend
-bundle optimizations.
+The platform already carries a full relational tenant model and the inbound adapters already parse the
+channel-native tenant signal — but the two are wired wrong: a **UUID data plane** (`orders.tenant_id`)
+and a **VARCHAR entitlement plane** keyed on the literal `'default'` never reconcile, Meta channels
+fall through to an unset `DEFAULT_TENANT_ID`, the admin UI fails *open* while the guard fails *closed*,
+the SaaS DB constraints and `entitlement_audit_log` writers don't exist on the live system, and the
+guard adds two uncached Strapi round-trips per inbound message. This is **hardening existing
+scaffolding, not greenfield** — no new libraries (`ioredis`/`pg`/`zod` + Strapi-5-native
+middleware/policies already present), no major version upgrades, no Postgres RLS (pgBouncer
+transaction-pooling conflict), no schema-per-tenant.
 
-The 2026-04-04 milestone audit (`status: gaps_found`, 27/34 requirements satisfied) then expanded
-the milestone with gap-closure phases 7-14: Phase 7 fixed two fail-gate defects, Phase 8
-re-implemented the n8n E2E tests (superseding the original Phase 5), Phase 9 wired CI and attempted
-VPS workflow activation, and Phase 10 brought every executed phase up to verification/Nyquist
-compliance. Phases 11-14 remain: they close the seven runtime gaps the audit surfaced (W_QUEUE_METRICS
-credentials, the VPS DB migration, the admin audit-log view, and documentation/verification cleanup).
+The work follows a **strict dependency chain (keystone first)**. Phase 15 establishes the single
+canonical tenant key before any code touches the two planes. Phase 16 makes the SaaS migration
+live-safe and adds the `channel_identities` routing table the resolver will need. Phase 17 fixes
+inbound tenant derivation to fail closed on unknown identities. Phase 18 scopes every order/customer
+read and write by tenant and proves isolation in CI. Phase 19 lands the single lifecycle hook that
+both audits entitlement changes and invalidates cache — which **must** exist before Phase 20 turns on
+Redis caching in the guard (a cache without its invalidation hook is a security regression). Phase 20
+also provisions `STRAPI_API_TOKEN_INTERNAL` so the fail-closed guard can't become a total outage.
+Phase 21 tightens the UI to fail-closed parity and clears the type/lint debt **last**, once the
+backend returns correct entitlements.
 
-> **Reconciliation note (2026-06-19):** This roadmap was re-synced to match the 14 phase
-> directories actually on disk. The earlier version described only the original 7 phases and listed
-> a draft "Phase 7: NemoClaw Telegram Bot" that was descoped — the post-audit renumbering assigned
-> the Phase 7 slot to "Fix Critical Defects". NemoClaw is no longer tracked in this milestone (it was
-> always intended to graduate to its own repository). Requirement and phase statuses below reflect
-> the audit's authoritative findings, not earlier optimistic SUMMARY claims.
+**Deploy posture (same as v1.0):** every requirement is implemented and **CI-verified locally**.
+Steps that need the production VPS (applying a migration to live Postgres, provisioning a secret
+value, importing a workflow) are designed here but their *execution* is 🔴 **deferred** to a
+prod-connected session. Success criteria below are locally/CI-verifiable; the 🔴 VPS apply/import
+step is called out as a deferred sub-step where it exists.
 
 ## Phases
 
-- [x] **Phase 1: CMS Stability & Base Upgrade** - Eliminate the docker-cp runtime hack; bake all 15 Strapi API routes into source; upgrade Node.js 18 -> 20 across all services (verified passed 5/6; INFRA-03 partial — pre-existing gateway 403s accepted)
-- [x] **Phase 2: Structured Logging & Correlation** - JSON structured logs with correlation IDs across n8n, Strapi, and Nginx (completed 2026-03-23, verified 6/6)
-- [x] **Phase 3: Metrics, Alerting & Audit Trail** - Export queue/error metrics, add disk/memory alerts, and create a queryable workflow audit table (verified passed 6/6 at code level; VPS-runtime gaps tracked in Phases 11/12/13)
-- [x] **Phase 4: Test Coverage — Routing & Permissions** - Smoke-test all 8 nginx routing zones and validate the Strapi permission matrix (verified passed 5/5)
-- [x] **Phase 5: Test Coverage — n8n Workflow E2E** - SUPERSEDED by Phase 8; requirements TEST-09/10/11 are satisfied there
-- [x] **Phase 6: Performance Tuning** - DB indexes, Redis eviction policy, admin dashboard code splitting, kiosk caching (completed 2026-03-26, verified 9/9)
-- [x] **Phase 7: Fix Critical Defects** - Resolve the two fail-gate defects (W_QUEUE_METRICS disk alert, AuditLogView URL) at code level (verified passed 7/7; live integration deferred to Phase 9)
-- [x] **Phase 8: n8n E2E Test Implementation** - `scripts/test-n8n-e2e.sh` + CI compose-stack lifecycle proving WA inbound DB write and outbox Redis retry (verified passed 6/6)
-- [ ] **Phase 9: Integration Wiring & CI Fixes** - Activate the five Phase-3 workflows on VPS, inject real credential IDs, fix CI — PARTIAL (plan 02 complete; plan 01 has 3 unresolved VPS blockers; VERIFICATION.md missing → Phase 14)
-- [x] **Phase 10: Verification & Nyquist Compliance** - Bring every executed phase to a passing VERIFICATION.md and non-draft VALIDATION.md (verified passed 6/6)
-- [ ] **Phase 11: VPS Ops — Apply DB Migration & Activate Audit Chain** - Apply the Phase-3 migration on VPS, recreate the gateway, re-import/activate W_AUDIT_ARCHIVE — researched, NOT executed (VPS-runtime only; DEFERRED to a prod-connected session)
-- [x] **Phase 12: W_QUEUE_METRICS Runtime Fix** - Hardcode the PG/Redis credential IDs and restore the `df -k /` disk check so METR-01/02/04/05 fire on VPS — CODE COMPLETE (2026-06-20); VPS import deferred
-- [x] **Phase 13: Admin Dashboard Audit-Log Repair** - Add the `VITE_API_URL` build arg and fix W_AUDIT_QUERY count/filter defects so AUDIT-03 works end-to-end — CODE COMPLETE (2026-06-20); VPS rebuild deferred
-- [x] **Phase 14: Nyquist Compliance & Documentation Cleanup** - Create the missing Phase 09 VERIFICATION.md and Phase 03 VALIDATION.md, lift draft VALIDATIONs to compliant, and close stale checkboxes — COMPLETE (2026-06-20)
+**Phase Numbering:**
+- Integer phases (15, 16, …): Planned milestone work
+- Decimal phases (16.1, …): Urgent insertions (marked with INSERTED)
+
+- [ ] **Phase 15: Tenant Identity Model (Canonical Key)** - Establish the UUID `tenants.tenant_id` as the single system of record and reconcile the VARCHAR entitlement plane to it [TEN-01]
+- [ ] **Phase 16: Live-Safe SaaS Migration + Channel Routing Table** - Make the SaaS constraints migration safe to apply on a live table (dup-probe + `CREATE INDEX CONCURRENTLY`), add the `channel_identities` routing table, and wire both into `db-migrate` [TEN-02, DB-01]
+- [ ] **Phase 17: Inbound Tenant Derivation (Fail-Closed)** - Resolve tenant from `channel_identities` in `B0 - Apply Auth Context`; an unknown channel identity fails closed instead of defaulting to `'default'` [TEN-03]
+- [ ] **Phase 18: Per-Tenant Data-Plane Scoping + Isolation CI** - Scope every order/customer read and write by a non-defaultable `tenant_id`, and prove cross-tenant isolation with an automated CI test [TEN-04, TEN-05]
+- [ ] **Phase 19: Entitlement Audit + Cache-Invalidation Lifecycle Hook** - Add the single Strapi `lifecycles.ts` that writes `entitlement_audit_log` rows AND invalidates the Redis entitlement cache on every change [AUD-01, AUD-02]
+- [ ] **Phase 20: Redis-Cached Fail-Closed Guard + Internal Token Provisioning** - Cache guard lookups in Redis (still fail-closed on error) and make `STRAPI_API_TOKEN_INTERNAL` a first-class, preflight-checked secret so a missing secret can't become a total inbound lockout [GRD-01, ENT-03]
+- [ ] **Phase 21: UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup** - Default `useEntitlements.hasModule` to false on loading/error, align `App.tsx` nav keys to the seeder, and replace the `any` debt with typed entitlement DTOs so Frontend Lint goes green [ENT-01, ENT-02, TYP-01]
 
 ## Phase Details
 
-### Phase 1: CMS Stability & Base Upgrade
-**Goal**: The CMS build is self-contained; all 15 Strapi API routes exist in TypeScript source and survive any container rebuild; all frontend Dockerfiles use a supported Node.js LTS
-**Depends on**: Nothing (first phase)
-**Requirements**: CMS-01, CMS-02, CMS-03, INFRA-01, INFRA-02, INFRA-03
-**Status**: Complete — VERIFICATION.md `passed`, 5/6 must-haves (INFRA-03 partial: kiosk/admin gateway 403s pre-existing and accepted)
+### Phase 15: Tenant Identity Model (Canonical Key)
+**Goal**: A single canonical tenant key — the UUID `tenants.tenant_id` — is the documented system of record, and the VARCHAR entitlement plane is reconciled to it so no runtime path silently substitutes the literal `'default'`
+**Depends on**: Nothing (first phase — the keystone)
+**Requirements**: TEN-01
 **Success Criteria** (what must be TRUE):
-  1. Running `docker compose build cms` from a clean state produces an image where all 15 API routes respond correctly — no manual `docker cp` required
-  2. A freshly started CMS container returns expected HTTP status codes on all 15 routes without any post-start injection
-  3. Admin dashboard and kiosk-app Dockerfiles reference `node:20-alpine`; rebuilt images pass login and product-display smoke checks
-  4. CMS Dockerfile references `node:20-alpine`; CMS health endpoint returns 204 after rebuild
-**Plans:** 4 plans
-Plans:
-- [x] 01-01-PLAN.md — Smoke scripts and documentation (PATCHLOG, TEST_REPORT)
-- [x] 01-02-PLAN.md — VPS CMS clean rebuild and route verification
-- [x] 01-03-PLAN.md — Node.js LTS static verification and INFRA-03 functional check
-- [x] 01-04-PLAN.md — Gap closure: VPS rebuild execution and smoke verification (CMS-02, CMS-03, INFRA-03)
+  1. A decision record names `tenants.tenant_id` (UUID) as canonical and documents the 1:1 mapping (or backfill) from the entitlement plane's VARCHAR `tenant_id` to that UUID; the `entitlement_audit_log.tenant_id` type decision (keep `VARCHAR(255)` vs migrate to `uuid` mirroring `admin_audit_log`) is recorded with rationale
+  2. A `tenants`/`restaurants` row exists for the real first restaurant, and `tenant_entitlements` rows that were seeded against `'default'` are backfilled to that canonical UUID (seed/backfill SQL runs green against an ephemeral CI Postgres)
+  3. A repo-wide grep shows every `|| 'default'` / `DEFAULT_TENANT_ID` fallback on a tenant-key path is inventoried and annotated (justified, or marked for removal in a later phase) — no silent substitution remains undocumented
+  4. `inventory-cms/src/bootstrap-seeds/saas-entitlements.ts` seeds entitlements against the canonical UUID, not the literal `'default'`, verified by a unit/seed assertion
+  - 🔴 VPS: backfilling/aligning the live `tenant_entitlements` rows on production Postgres is deferred to a prod-connected session.
+**Plans**: TBD
 
-### Phase 2: Structured Logging & Correlation
-**Goal**: Every request entering the gateway carries a correlation ID that is propagated to all upstream services; n8n, Strapi, and Nginx all emit structured JSON logs that include this ID
-**Depends on**: Phase 1
-**Requirements**: OBS-01, OBS-02, OBS-03, OBS-04
-**Status**: Complete (2026-03-23) — VERIFICATION.md `passed`, 6/6; VALIDATION.md `compliant`
+Plans:
+- [ ] 15-01: Canonical-key decision record + `entitlement_audit_log.tenant_id` type decision
+- [ ] 15-02: First-restaurant `tenants`/`restaurants` seed + entitlement-plane backfill SQL (CI-verified)
+- [ ] 15-03: Seeder reconciliation to canonical UUID + `|| 'default'` fallback inventory
+
+### Phase 16: Live-Safe SaaS Migration + Channel Routing Table
+**Goal**: The SaaS constraints/indexes/audit-log migration is safe to apply on a live, possibly-duplicated table, the new `channel_identities` routing table exists (seeded for the current single tenant), and both are wired into the existing `db-migrate` mechanism
+**Depends on**: Phase 15
+**Requirements**: TEN-02, DB-01
 **Success Criteria** (what must be TRUE):
-  1. Nginx generates an `X-Request-ID` header on every inbound request and includes it in the JSON access log
-  2. n8n workflow execution logs contain `workflow_id`, `execution_id`, `step`, `timestamp`, and `level` fields in JSON format
-  3. Strapi production logs are in JSON format; a single request can be traced from nginx access log to Strapi application log using the correlation ID
-  4. Nginx access log contains `request_id` for every proxied request, enabling end-to-end trace reconstruction
-**Plans:** 5/5 plans complete
-Plans:
-- [x] 02-01-PLAN.md — Nginx: $request_id JSON log + X-Request-ID propagation (OBS-03, OBS-04)
-- [x] 02-02-PLAN.md — n8n: N8N_LOG_FORMAT=json (OBS-01)
-- [x] 02-03-PLAN.md — Strapi: Pino JSON logger + request-id middleware (OBS-02, OBS-04)
-- [x] 02-04-PLAN.md — End-to-end correlation smoke test (OBS-01..04)
-- [x] 02-05-PLAN.md — Gap closure: document OBS-01 limitation, mark OBS-02 complete
+  1. `db/migrations/2026-04-06_saas_modules_entitlements.sql` runs a read-only duplicate probe before adding `uq_tenant_module`, dedupes (keep latest `activated_at`), and creates the unique constraint via `CREATE UNIQUE INDEX CONCURRENTLY` then attaches it — taking no `ACCESS EXCLUSIVE` lock and **not failing on pre-existing duplicate rows**
+  2. The migration sets a `lock_timeout`/`statement_timeout` and is idempotent (re-running is a no-op); a CI run that seeds duplicate entitlement rows proves the migration succeeds rather than erroring
+  3. A new `channel_identities(channel, identity, tenant_id, restaurant_id)` migration exists in the n8n DB with `(channel, identity)` as PK and FKs to `tenants`/`restaurants`, seeded with the live tenant's WhatsApp `phone_number_id`, IG/Messenger page/recipient ids, and kiosk device id
+  4. Both migrations are registered with the existing `db-migrate` service and tracked in `schema_migrations`; a CI schema check asserts the `channel_identities` table, `uq_tenant_module`, the four entitlement indexes, `uq_product_module_key`, and `entitlement_audit_log` all exist after apply
+  - 🔴 VPS: executing both migrations against production Postgres is deferred to a prod-connected session.
+**Plans**: TBD
 
-### Phase 3: Metrics, Alerting & Audit Trail
-**Goal**: Operators can observe queue health and disk pressure in near-real-time; all inbound workflow executions are recorded in a queryable audit table with 90-day retention
-**Depends on**: Phase 2
-**Requirements**: METR-01, METR-02, METR-03, METR-04, METR-05, AUDIT-01, AUDIT-02, AUDIT-03, AUDIT-04
-**Status**: Complete at code level — VERIFICATION.md `passed`, 6/6. **VPS-runtime gaps remain** (METR-01/02/04/05, AUDIT-02/03/04) and are closed by Phases 11, 12, 13. VALIDATION.md was MISSING (→ Phase 14).
+Plans:
+- [ ] 16-01: Rewrite SaaS migration for live-safety (dup-probe + dedupe + CONCURRENTLY + timeouts)
+- [ ] 16-02: `channel_identities` migration + single-tenant seed
+- [ ] 16-03: Wire both into `db-migrate` + CI schema-presence check
+
+### Phase 17: Inbound Tenant Derivation (Fail-Closed)
+**Goal**: Inbound adapters resolve a real `(tenant_id, restaurant_id)` from `channel_identities` using the already-parsed channel-native id, and an unknown identity fails closed (parked/rejected with a log event) instead of defaulting to `'default'`
+**Depends on**: Phase 16
+**Requirements**: TEN-03
 **Success Criteria** (what must be TRUE):
-  1. n8n queue depth and workflow error rate are exported as structured log metrics
-  2. Nginx rate-limit hit events are logged with zone, IP, and endpoint
-  3. An alert fires when queue depth exceeds 50 pending executions for 5+ minutes, and when disk usage crosses 80% of 119GB
-  4. A `workflow_audit` table exists in PostgreSQL; inbound adapters write audit entries on start and completion
-  5. The admin dashboard has an audit log view searchable by date range and workflow name
-  6. Audit entries older than 90 days are archived (not deleted) automatically
-**Plans:** 5 plans
-Plans:
-- [x] 03-01-PLAN.md — DB migration + nginx rate-limit logging + /v1/internal/ proxy (METR-03, AUDIT-01)
-- [x] 03-02-PLAN.md — W_QUEUE_METRICS workflow (METR-01, METR-02, METR-04, METR-05) — code complete; runtime fix in Phase 12
-- [x] 03-03-PLAN.md — W_AUDIT_WRITE/QUERY/ARCHIVE workflows (AUDIT-01..04) — code complete; runtime in Phases 11/13
-- [x] 03-04-PLAN.md — Patch inbound adapters with audit hooks (AUDIT-02)
-- [x] 03-05-PLAN.md — Admin dashboard AuditLogView page (AUDIT-03) — bugs fixed in Phase 13
+  1. `B0 - Apply Auth Context` in `W1_IN_WA.json`, `W2_IN_IG.json`, and `W3_IN_MSG.json` adds a resolution rung that looks up the parsed `phone_number_id`/`recipient_id` in `channel_identities` *before* any default, and seals the resolved real tenant downstream via the existing `tenant_context_seal`
+  2. A message arriving on a **mapped** identity is stamped with that identity's real `tenant_id` (not the env `DEFAULT_TENANT_ID`), verified by a workflow-level test/fixture
+  3. A message arriving on an **unmapped/unknown** identity is failed closed — parked or rejected with a `UNKNOWN_CHANNEL_IDENTITY`/`TENANT_UNRESOLVED` `security_events` row — and is **never** silently routed to tenant `'default'`
+  4. Any legacy single-tenant fallback is gated behind one explicit, documented flag (e.g. `SINGLE_TENANT_MODE`); no bare `|| 'default'` remains on the resolution path
+  - 🔴 VPS: importing/activating the updated inbound workflows on the production n8n is deferred to a prod-connected session.
+**Plans**: TBD
 
-### Phase 4: Test Coverage — Routing & Permissions
-**Goal**: Automated tests guard the two most fragile, zero-coverage surfaces: nginx routing and Strapi permission matrix; both run in CI on relevant PRs
-**Depends on**: Phase 1
-**Requirements**: TEST-01..08
-**Status**: Complete — VERIFICATION.md `passed`, 5/5; VALIDATION.md `compliant`. CI smoke-script mismatch resolved in Phase 9 (09-02).
+Plans:
+- [ ] 17-01: `channel_identities` resolution rung in `B0 - Apply Auth Context` (WA/IG/MSG)
+- [ ] 17-02: Fail-closed `UNKNOWN_CHANNEL_IDENTITY` path + `security_events` write
+- [ ] 17-03: Resolution fixtures/tests (mapped → real tenant, unmapped → rejected)
+
+### Phase 18: Per-Tenant Data-Plane Scoping + Isolation CI
+**Goal**: Every order and customer read and write is scoped by a non-defaultable `tenant_id`, and an automated CI test proves a request resolved to tenant A cannot read or write tenant B's data
+**Depends on**: Phase 17
+**Requirements**: TEN-04, TEN-05
 **Success Criteria** (what must be TRUE):
-  1. A smoke test verifies each of the 8 nginx routing zones returns the expected HTTP status
-  2. `Access-Control-Allow-Origin` appears exactly once on kiosk endpoints
-  3. 25 rapid requests to `/v1/inbound/whatsapp` confirm 429 fires after the burst limit
-  4. Strapi permission matrix (public GET products 200, unauth POST orders 401/403, admin GET orders 200)
-  5. Both suites run in CI on relevant PRs
-**Plans:** 3 plans
-Plans:
-- [x] 04-01-PLAN.md — nginx.smoke.conf + smoke-nginx-routing.sh (TEST-01, TEST-02, TEST-03)
-- [x] 04-02-PLAN.md — smoke-strapi-permissions.sh (TEST-05, TEST-06, TEST-07)
-- [x] 04-03-PLAN.md — CI integration (TEST-04, TEST-08)
+  1. A checklist artifact enumerates every order/customer read AND write path (the ~11 workflows incl. `W4_CORE`/`W4.1_ROUTER`/`W_KIOSK_ORDER`/`W_ORDER_FINALIZER` plus `order/lifecycles.ts` and Strapi controllers); each is annotated scoped/unscoped before any change
+  2. `tenant_id` is **non-defaultable on the write path** — NOT NULL with no `|| 'default'` fallback — so an omitted tenant errors loudly rather than inheriting a default; existing scoped reads (e.g. `W12_ADMIN_ORDERS`) are confirmed and every previously-unscoped path now carries `WHERE tenant_id = $ctx`
+  3. An automated CI test seeds two tenants and asserts that a request resolved to tenant A cannot read or write tenant B's orders/customers (separation proven in both directions)
+  4. The CI isolation test is wired into the pipeline and fails the build if a cross-tenant read or write succeeds
+  - 🔴 VPS: applying any new `tenant_id` column/backfill migration to production Postgres, and importing the updated workflows, is deferred to a prod-connected session.
+**Plans**: TBD
 
-### Phase 5: Test Coverage — n8n Workflow E2E
-**Goal**: (Original) End-to-end tests for inbound adapters and outbox retry, run in CI
-**Depends on**: Phase 4
-**Requirements**: TEST-09, TEST-10, TEST-11
-**Status**: SUPERSEDED by Phase 8 (`08-n8n-e2e-test-implementation`). Two plans (05-01, 05-02) were written but never executed; the work was redesigned and delivered in Phase 8, where TEST-09/10/11 are verified satisfied. This phase directory is retained for history only.
-**Plans:** 2 plans (not executed — superseded)
 Plans:
-- [ ] 05-01-PLAN.md — (superseded by 08-01)
-- [ ] 05-02-PLAN.md — (superseded by 08-02)
+- [ ] 18-01: Order/customer read+write inventory checklist (phase-research pass)
+- [ ] 18-02: Apply `WHERE tenant_id` scoping + non-defaultable write paths across workflows + lifecycles
+- [ ] 18-03: Cross-tenant isolation CI test (two-tenant seed, both-direction assertions)
 
-### Phase 6: Performance Tuning
-**Goal**: Known performance ceilings are removed: order query latency drops via new indexes, Redis cannot OOM-kill the platform, and the admin dashboard loads faster via code splitting
-**Depends on**: Phase 3
-**Requirements**: PERF-01..09
-**Status**: Complete (2026-03-26) — VERIFICATION.md `passed`, 9/9; VALIDATION.md `compliant`
+### Phase 19: Entitlement Audit + Cache-Invalidation Lifecycle Hook
+**Goal**: A single Strapi lifecycle hook on the SaaS content types writes an `entitlement_audit_log` row on every entitlement change AND invalidates the Redis entitlement cache — so audit coverage exists and a revoked/expired entitlement cannot survive in cache
+**Depends on**: Phase 16 (audit table + constraints exist), Phase 15 (canonical key for validation)
+**Requirements**: AUD-01, AUD-02
 **Success Criteria** (what must be TRUE):
-  1. New migration adds `idx_orders_status_created` and `idx_orders_customer_status`; EXPLAIN ANALYZE confirms index usage
-  2. Redis `maxmemory-policy` = `allkeys-lru`; memory logged every 15 min with a 200MB alert; documented in ENV_REFERENCE.md
-  3. Admin dashboard uses React Router `lazy()` for all views; initial bundle ≥30% smaller
-  4. Kiosk menu data uses ETag/5-min TTL caching
-**Plans:** 2 plans
+  1. `tenant-entitlement` (and, where applicable, `product-module`) gains a `lifecycles.ts` that on `afterCreate`/`afterUpdate`/`afterDelete` writes an `entitlement_audit_log` row capturing who/what/when/old→new; a test asserts a row is written on each operation
+  2. The cross-DB write question is resolved and documented (move the table to the strapi DB, or give the writer an explicit n8n-DB connection) and the chosen path is implemented so the writer targets a table that actually exists
+  3. The same hook issues an explicit Redis `DEL` of the entitlement cache key on every change, and a test proves a key present before an entitlement mutation is gone after it (no stale grant survives revocation)
+  4. The audit write is **not** silent fire-and-forget — any write failure routes to a counter/alert (no bare `continueOnFail` swallowing), and `tenant_id` is validated to the canonical UUID before insert
+**Plans**: TBD
+
 Plans:
-- [x] 06-01-PLAN.md — DB indexes migration + Redis monitor + ENV_REFERENCE update (PERF-01/02/04/05/06)
-- [x] 06-02-PLAN.md — Admin dashboard React lazy loading + kiosk menu caching (PERF-07, PERF-09)
+- [ ] 19-01: Resolve `entitlement_audit_log` placement (cross-DB) + writer connection
+- [ ] 19-02: `tenant-entitlement` lifecycles.ts — audit-row write (typed, validated, alert-on-failure)
+- [ ] 19-03: Redis cache-key `DEL` in the same hook + invalidation test
 
-### Phase 7: Fix Critical Defects
-**Goal**: The two milestone fail-gate defects are resolved: W_QUEUE_METRICS disk alert fires correctly, and AuditLogView can reach W_AUDIT_QUERY via the correct URL
-**Depends on**: Phase 3
-**Requirements**: METR-05 (disk alert), AUDIT-03 (audit-log URL)
-**Status**: Complete at code level — VERIFICATION.md `passed`, 7/7. Live integration deferred to Phase 9; subsequent audit found a regression (disk check reverted to `stat -f -c`) and residual AuditLogView defects, now tracked in Phases 12 and 13. VALIDATION.md was draft (→ Phase 14).
-**Plans:** 2 plans
+### Phase 20: Redis-Cached Fail-Closed Guard + Internal Token Provisioning
+**Goal**: `W0_MODULE_GUARD` caches module/entitlement lookups in Redis so a cache hit skips both Strapi round-trips per inbound message (still fail-closed on error), and `STRAPI_API_TOKEN_INTERNAL` is a first-class, preflight-checked secret so a missing secret can no longer become a total inbound/operator lockout
+**Depends on**: Phase 19 (invalidation hook must exist before caching is turned on), Phase 15 (canonical cache key)
+**Requirements**: GRD-01, ENT-03
+**Success Criteria** (what must be TRUE):
+  1. `W0_MODULE_GUARD.json` is cache-aside keyed `ralphe:entitlement:<tenant_id>:<module_key>` (~5-min positive / shorter negative TTL); a cache **hit** skips both synchronous Strapi `fetch()` calls, verified by a guard test asserting zero Strapi round-trips on hit
+  2. On Redis error the guard falls through to Strapi; on Strapi error it **denies** (fail-closed); transient guard errors are never cached; the cached raw row's expiry is re-evaluated on read; an `allkeys-lru` eviction (cache miss) produces a live query and never a spurious deny
+  3. `STRAPI_API_TOKEN_INTERNAL` is declared in `docker-compose.hostinger.prod.yml`/`base`, `config/.env.example`, and the secrets inventory; a startup/preflight check fails fast with a clear message if it is unset (the fail-closed flip is not made before the secret exists)
+  4. A `GUARD_ERROR_FAILCLOSED` condition (cannot-determine) is distinguishable from a legitimate `NO_ENTITLEMENT` denial in logs/alerting, so a missing/expired token is pageable rather than a silent total outage
+  - 🔴 VPS: importing the updated `W0_MODULE_GUARD` and provisioning the real `STRAPI_API_TOKEN_INTERNAL` value on the VPS is deferred to a prod-connected session.
+**Plans**: TBD
+
 Plans:
-- [x] 07-01-PLAN.md — W_QUEUE_METRICS disk-alert fix (METR-05)
-- [x] 07-02-PLAN.md — AuditLogView URL fix (AUDIT-03)
+- [ ] 20-01: Redis cache-aside in `W0_MODULE_GUARD` (keying, TTLs, fail-closed-on-error)
+- [ ] 20-02: `STRAPI_API_TOKEN_INTERNAL` declared in compose/env/secrets-inventory + startup preflight
+- [ ] 20-03: `GUARD_ERROR_FAILCLOSED` vs `NO_ENTITLEMENT` alert split
 
-### Phase 8: n8n E2E Test Implementation
-**Goal**: `scripts/test-n8n-e2e.sh` verifies the WA inbound adapter creates an `inbound_messages` DB row (direct Postgres write) and that outbound failures produce a Redis retry entry; CI executes these tests via a full compose-stack lifecycle
-**Depends on**: Phase 4
-**Requirements**: TEST-09, TEST-10, TEST-11
-**Status**: Complete — VERIFICATION.md `passed`, 6/6; VALIDATION.md `complete`. (Supersedes Phase 5.)
-**Plans:** 2 plans
+### Phase 21: UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup
+**Goal**: The admin UI fails closed in parity with the guard, every gated nav item maps to a real entitlement key, and the entitlement `any` debt is replaced with typed DTOs so the standing Frontend Lint CI failure goes green — done last, after the backend returns correct entitlements
+**Depends on**: Phase 20 (backend returns correct, cached, fail-closed entitlements)
+**Requirements**: ENT-01, ENT-02, TYP-01
+**Success Criteria** (what must be TRUE):
+  1. `useEntitlements.hasModule` defaults to **false** (or a known `shared_core` allowlist) while `loading` and on fetch error, and the UI surfaces an explicit error/locked state instead of silently rendering all modules — parity with `W0_MODULE_GUARD`'s fail-closed posture, asserted by a Vitest test
+  2. Every gated nav module-key in `admin-dashboard/src/App.tsx` maps to a real key in `config/product_modules.json` / `saas-entitlements.ts` (no ghost `addon_kitchen_display`-style keys); a CI check asserts every `module_key` referenced in `workflows/` and `App.tsx` exists in the seeder
+  3. Typed `ProductModule` and `TenantEntitlement` interfaces (tolerant of v4/v5 response shapes) replace the `any` usages in `useEntitlements.ts` and the five flagged components (`NotificationCenter.tsx`, `ToastProvider.tsx`, `AnalyticsView.tsx`, `AutomationView.tsx`, `AIChatBubble.tsx`)
+  4. `npm run lint` passes for `admin-dashboard` — the standing Frontend Lint CI job goes green
+**Plans**: TBD
+
 Plans:
-- [x] 08-01-PLAN.md — test-n8n-e2e.sh: WA inbound DB assertion + outbox Redis retry (TEST-09, TEST-10)
-- [x] 08-02-PLAN.md — CI n8n-workflow-e2e job via compose stack (TEST-11)
-
-### Phase 9: Integration Wiring & CI Fixes
-**Goal**: Activate all five Phase-3 workflows on VPS n8n so the audit chain, queue metrics, and Redis monitoring are live; inject real VPS credential IDs; fix CI smoke wiring
-**Depends on**: Phases 3, 4, 7, 8
-**Requirements**: AUDIT-01 (CI schema check), TEST-03, TEST-04 (CI wiring); attempted AUDIT-02/04, METR-01/02/04
-**Status**: PARTIAL. Plan 02 (CI fixes) complete. Plan 01 (VPS workflow activation) `status: partial` with 3 unresolved blockers: (1) ops.workflow_audit table not applied to VPS, (2) W_AUDIT_ARCHIVE cron incompatible with n8n 2.x, (3) credential injection unverified at runtime. VERIFICATION.md is MISSING and VALIDATION.md is draft — both addressed by Phase 14. Runtime activation moves to Phase 11.
-**Plans:** 2 plans
-Plans:
-- [x] 09-01-PLAN.md — Activate 5 Phase-3 workflows on VPS + credential injection (PARTIAL — 3 VPS blockers)
-- [x] 09-02-PLAN.md — CI: smoke-nginx-routing job + ops.workflow_audit schema check (TEST-03, TEST-04, AUDIT-01)
-
-### Phase 10: Verification & Nyquist Compliance
-**Goal**: Every executed phase has a passing VERIFICATION.md and a non-draft VALIDATION.md so the milestone audit can complete with full coverage
-**Depends on**: Phases 1-9
-**Requirements**: (process/quality — no new product requirements)
-**Status**: Complete (2026-03-30) — VERIFICATION.md `passed`, 6/6. Note: this phase backfilled VERIFICATION.md for phases 01/03/04 and VALIDATION.md for 02/04/06; the later milestone audit identified that Phase 09 VERIFICATION.md and Phase 03 VALIDATION.md still need to be created (→ Phase 14).
-**Plans:** 2 plans
-Plans:
-- [x] 10-01-PLAN.md — Backfill VERIFICATION.md for executed phases
-- [x] 10-02-PLAN.md — Lift VALIDATION.md drafts toward compliance
-
-### Phase 11: VPS Ops — Apply DB Migration & Activate Audit Chain
-**Goal**: Close the three runtime integration gaps that require live VPS access: apply the Phase-3 DB migration (`2026-03-23_p3_workflow_audit.sql`) into the n8n Postgres database, recreate the gateway container to pick up the `/v1/internal/` nginx route, and re-import + activate W_AUDIT_ARCHIVE with the n8n 2.x-compatible cron node
-**Depends on**: Phase 9
-**Requirements**: AUDIT-02, AUDIT-04 (and unblocks AUDIT-03 alongside Phase 13)
-**Status**: RESEARCHED, NOT EXECUTED. RESEARCH.md exists; no PLAN.md. **DEFERRED** — every step requires SSH to the production VPS (`deploy@72.60.190.192`), which is unavailable from the planning/sandbox environment. See `.planning/REMAINING-WORK.md` for the runtime checklist.
-**Plans:** 0 plans (deferred)
-
-### Phase 12: W_QUEUE_METRICS Runtime Fix
-**Goal**: Make METR-01, METR-02, METR-04, and METR-05 fire on VPS by replacing the empty `$env.*` credential-ID expressions in `W_QUEUE_METRICS.json` with the real hardcoded ID (`1mZZJEscADgQ8InR`) and restoring the `df -k /` disk check (Alpine-compatible) in place of the regressed `stat -f -c`
-**Depends on**: Phase 3
-**Requirements**: METR-01, METR-02, METR-04, METR-05
-**Status**: CODE COMPLETE (2026-06-20, plan 12-01). W_QUEUE_METRICS.json PG/Redis credential IDs hardcoded and disk check switched to `df -k /`. VPS import + live alert verification deferred per `.planning/REMAINING-WORK.md`.
-**Plans:** 0 plans
-
-### Phase 13: Admin Dashboard Audit-Log Repair
-**Goal**: Make AUDIT-03 work end-to-end by adding `VITE_API_URL: https://api.${DOMAIN_NAME}` to the admin-dashboard compose build args, and fixing the W_AUDIT_QUERY defects (count query never executes, `limit` vs `page_size` mismatch, status/channel filters ignored in SQL)
-**Depends on**: Phases 3, 7, 11 (ops.workflow_audit table)
-**Requirements**: AUDIT-03
-**Status**: CODE COMPLETE (2026-06-20, plan 13-01). VITE_API_URL build arg added (prod+base); AuditLogView dead var removed; W_AUDIT_QUERY count/limit/filter defects fixed. VPS rebuild + e2e verification deferred per `.planning/REMAINING-WORK.md`.
-**Plans:** 0 plans
-
-### Phase 14: Nyquist Compliance & Documentation Cleanup
-**Goal**: Bring the planning artifacts to full audit coverage: create the missing Phase 09 VERIFICATION.md and Phase 03 VALIDATION.md, lift Phases 01/07/09/10 VALIDATION.md from draft to compliant, and close stale ROADMAP/REQUIREMENTS checkboxes
-**Depends on**: Phases 9, 11, 12, 13 (so verification reflects the real runtime state)
-**Requirements**: (process/quality)
-**Status**: COMPLETE (2026-06-20, plan 14-01). Created 09-VERIFICATION.md (partial) and 03-VALIDATION.md; lifted 01/07/09/10 VALIDATIONs to compliant. ROADMAP/REQUIREMENTS/STATE reconciled 2026-06-19.
-**Plans:** 0 plans
+- [ ] 21-01: `useEntitlements.hasModule` fail-closed default + explicit error/locked UI state
+- [ ] 21-02: `App.tsx` module-key alignment + CI module-key consistency check
+- [ ] 21-03: Typed `ProductModule`/`TenantEntitlement` DTOs replacing `any` (lint green)
 
 ## Progress
 
+**Execution Order:**
+Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
+
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. CMS Stability & Base Upgrade | 4/4 | Complete (5/6, INFRA-03 partial) | - |
-| 2. Structured Logging & Correlation | 5/5 | Complete | 2026-03-23 |
-| 3. Metrics, Alerting & Audit Trail | 5/5 | Complete at code (VPS gaps → 11/12/13) | 2026-03-26 |
-| 4. Test Coverage — Routing & Permissions | 3/3 | Complete | - |
-| 5. Test Coverage — n8n Workflow E2E | 0/2 | Superseded by Phase 8 | - |
-| 6. Performance Tuning | 2/2 | Complete | 2026-03-26 |
-| 7. Fix Critical Defects | 2/2 | Complete at code (regression → 12/13) | - |
-| 8. n8n E2E Test Implementation | 2/2 | Complete | - |
-| 9. Integration Wiring & CI Fixes | 2/2 | Partial (VPS blockers; no VERIFICATION) | - |
-| 10. Verification & Nyquist Compliance | 2/2 | Complete | 2026-03-30 |
-| 11. VPS Ops — Migration & Audit Chain | 0/0 | Researched, deferred (VPS-only) | - |
-| 12. W_QUEUE_METRICS Runtime Fix | 1/1 | Code complete (VPS import deferred) | 2026-06-20 |
-| 13. Admin Dashboard Audit-Log Repair | 1/1 | Code complete (VPS rebuild deferred) | 2026-06-20 |
-| 14. Nyquist Compliance & Doc Cleanup | 1/1 | Complete | 2026-06-20 |
+| 15. Tenant Identity Model (Canonical Key) | 0/3 | Not started | - |
+| 16. Live-Safe SaaS Migration + Channel Routing Table | 0/3 | Not started | - |
+| 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Not started | - |
+| 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Not started | - |
+| 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 0/3 | Not started | - |
+| 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 0/3 | Not started | - |
+| 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 0/3 | Not started | - |
 
-**Milestone status:** 27/34 requirements satisfied at code level (per 2026-04-04 audit). The 7 runtime
-requirements (METR-01/02/04/05, AUDIT-02/03/04) are now **code-complete** via Phases 12 (METR) and 13
-(AUDIT-03), with Phase 14 closing the documentation/verification debt. What remains is purely VPS
-deployment: Phase 11 (apply migration, recreate gateway, activate W_AUDIT_ARCHIVE) and the import/
-rebuild/verify steps of Phases 12-13. See `.planning/REMAINING-WORK.md` for the deploy-aware checklist.
+**Coverage:** All 13 v2.0 requirements mapped to exactly one phase — TEN-01 → P15; TEN-02, DB-01 → P16;
+TEN-03 → P17; TEN-04, TEN-05 → P18; AUD-01, AUD-02 → P19; GRD-01, ENT-03 → P20; ENT-01, ENT-02,
+TYP-01 → P21. No orphans, no duplicates.
+
+**Deploy posture:** Phases 15, 16, 17, 18, and 20 each carry a 🔴 VPS execution sub-step (live
+migration apply / workflow import / secret provisioning) deferred to a prod-connected session; every
+phase's success criteria are locally/CI-verifiable without VPS access.

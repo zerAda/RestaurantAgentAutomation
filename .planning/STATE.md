@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: active
-stopped_at: v2.0 milestone started — defining requirements (research first). v1.0 archived to .planning/milestones/; PRs #26/#27/#28 merged to main.
-last_updated: "2026-06-20T12:00:00.000Z"
+stopped_at: v2.0 roadmap created (7 phases, 15–21); requirements + research complete. Ready for /gsd:plan-phase 15.
+last_updated: "2026-06-20T13:00:00.000Z"
 previous_milestone: v1.0
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** v2.0 — SaaS Multi-Tenant Hardening. Status: defining requirements (research in progress). Scope seeded by `.planning/codebase/CONCERNS.md` (tenant isolation scaffolding-only, fail-open/closed mismatch, module-key drift, unapplied SaaS migration, dead entitlement_audit_log, uncached guard).
+**Current focus:** v2.0 — SaaS Multi-Tenant Hardening. Roadmap complete: 7 phases (15–21) sequencing the research's keystone-first dependency chain. Next: `/gsd:plan-phase 15` (Tenant Identity Model). Scope/research in `.planning/research/SUMMARY.md`; requirements in REQUIREMENTS.md.
 
 ## Current Position
 
 Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: Not started (defining requirements)
-Status: Research → requirements → roadmap
+Phase: Not started — roadmap ready (Phases 15–21)
+Next: /gsd:plan-phase 15 — Tenant Identity Model (Canonical Key)
 
 ### Previous milestone — v1.0 Platform Hardening & Reliability (archived)
 
