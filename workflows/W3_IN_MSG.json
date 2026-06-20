@@ -320,7 +320,7 @@
     {
       "parameters": {
         "language": "javascript",
-        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\nconst legacyAllowed = (($env.LEGACY_SHARED_ALLOWED || 'false').toString().toLowerCase() === 'true');\n\nlet tenantId = '';\nlet restaurantId = '';\n// P0-04: Meta signature auth for MSG (Meta doesn't send x-api-token)\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'off').toString().toLowerCase();\nconst metaSigValid = (e._auth?.metaSigValid === true);\nconst metaAuthEnabled = (metaSigMode === 'warn' || metaSigMode === 'enforce');\n\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  // scopes may be returned as array or string\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (metaAuthEnabled && metaSigValid) {\n  // P0-04: Meta signature auth - valid signature = authenticated\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'meta_signature';\n  scopes = ['inbound:write'];\n} else if (legacyOk && legacyAllowed) {\n  // Legacy fallback to keep backward compatibility (MVP)\n  tenantId = '00000000-0000-0000-0000-000000000001';\n  restaurantId = '00000000-0000-0000-0000-000000000000';\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nlet authOk = authMode !== 'deny';\n\n// ---- Scopes enforcement (Release-grade)\n// Required scopes are per-endpoint (here: inbound).\nconst requiredScopes = ['inbound:write'];\n\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\n// Legacy token can keep inbound compatibility, but MUST NOT be used for admin/internal.\nconst legacyBypass = (authMode === 'legacy_shared') && requiredScopes.some(s => s.startsWith('inbound:'));\nconst scopeOk = authOk && (legacyBypass || requiredScopes.length === 0 || requiredScopes.some(r => hasScope(r, scopes)));\n\nconst endpoint_group = 'inbound';\nconst endpoint_path = '/v1/inbound/messenger';\n\nlet denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\n// Meta signature enforcement (fail-close only if META_SIGNATURE_REQUIRED=enforce)\nconst metaSigRequired = !!e._auth?.metaSigRequired;\nconst metaSigValid = (e._auth?.metaSigValid === true);\nconst metaSigPresent = !!e._auth?.metaSigPresent;\nconst metaSigReason = (e._auth?.metaSigReason || '').toString();\n\n// P0-08: Anti-replay timestamp validation\nconst replayWindowMs = parseInt($env.REPLAY_WINDOW_SECONDS || '300', 10) * 1000;\nconst replayCheckEnabled = (($env.REPLAY_CHECK_ENABLED || 'true').toString().toLowerCase() === 'true');\nlet timestampValid = true;\nlet timestampReason = '';\n\nif (replayCheckEnabled && e.metadata?.timestamp) {\n  const msgTs = e.metadata.timestamp;\n  let msgTime = 0;\n  if (typeof msgTs === 'string' && msgTs.includes('T')) {\n    msgTime = new Date(msgTs).getTime();\n  } else if (typeof msgTs === 'number' || /^\\\\d+$/.test(msgTs)) {\n    const num = Number(msgTs);\n    msgTime = num > 9999999999 ? num : num * 1000;\n  } else {\n    msgTime = new Date(msgTs).getTime();\n  }\n  const now = Date.now();\n  const age = now - msgTime;\n  if (isNaN(msgTime) || msgTime <= 0) {\n    timestampValid = true;\n    timestampReason = 'unparseable';\n  } else if (age > replayWindowMs) {\n    timestampValid = false;\n    timestampReason = 'too_old';\n  } else if (age < -60000) {\n    timestampValid = false;\n    timestampReason = 'future_timestamp';\n  } else {\n    timestampReason = 'ok';\n  }\n}\n\n// hard deny when meta signature is required and invalid/missing\nif (metaSigRequired && !metaSigValid) {\n  denyReason = metaSigPresent ? 'MSG_SIGNATURE_INVALID' : 'MSG_SIGNATURE_MISSING';\n}\n// deny on replay attack\nif (replayCheckEnabled && !timestampValid && timestampReason !== 'unparseable') {\n  denyReason = 'REPLAY_ATTACK_' + timestampReason.toUpperCase();\n}\n// deny legacy token if presented but legacy is not allowed\nif (legacyOk && !legacyAllowed) {\n  denyReason = 'LEGACY_TOKEN_BLOCKED';\n}\n\nconst tenant_context = {\n  tenant_id: tenantId || null,\n  restaurant_id: restaurantId || null,\n  source: authMode === 'api_client' ? 'auth_db' : (authMode === 'meta_signature' ? 'meta_signature' : (authMode === 'legacy_shared' ? 'legacy_shared' : 'untrusted_payload')),\n  client_id: matched ? (e.client_id || null) : null,\n  client_name: matched ? (e.client_name || null) : null,\n  scopes\n};\n\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    tenant_context,\n      _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      scopeOk,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
+        "jsCode": "const e = $json;\nconst matched = !!e.matched;\nconst legacyOk = !!e._auth?.legacySharedValid;\nconst legacyAllowed = (($env.LEGACY_SHARED_ALLOWED || 'false').toString().toLowerCase() === 'true');\n\n// P17: channel_identities resolver result (namespaced by B0 - Map Channel Identity Result)\nconst ciTenantId     = ($json.ci_tenant_id || '').toString().trim();\nconst ciRestaurantId = ($json.ci_restaurant_id || '').toString().trim();\nconst ciResolved     = !!(ciTenantId && ciRestaurantId);\n\nlet tenantId = '';\nlet restaurantId = '';\n// P0-04: Meta signature auth for MSG (Meta doesn't send x-api-token)\nconst metaSigMode = ($env.META_SIGNATURE_REQUIRED || 'off').toString().toLowerCase();\nconst metaSigValid = (e._auth?.metaSigValid === true);\nconst metaAuthEnabled = (metaSigMode === 'warn' || metaSigMode === 'enforce');\n\nlet authMode = 'deny';\nlet scopes = [];\n\nif (matched && e.tenant_id && e.restaurant_id) {\n  tenantId = e.tenant_id.toString();\n  restaurantId = e.restaurant_id.toString();\n  authMode = 'api_client';\n  try { scopes = Array.isArray(e.scopes) ? e.scopes : (typeof e.scopes === 'string' ? JSON.parse(e.scopes) : (e.scopes?.scopes || [])); } catch { scopes = []; }\n} else if (ciResolved && metaAuthEnabled && metaSigValid) {\n  tenantId = ciTenantId;\n  restaurantId = ciRestaurantId;\n  authMode = 'meta_signature';\n  scopes = ['inbound:write'];\n} else if (ciResolved && legacyOk && legacyAllowed) {\n  tenantId = ciTenantId;\n  restaurantId = ciRestaurantId;\n  authMode = 'legacy_shared';\n  scopes = ['legacy_shared'];\n} else {\n  authMode = 'deny';\n}\n\nconst conversationKey = tenantId ? (tenantId + ':' + restaurantId + ':' + e.channel + ':' + e.userId) : '';\nlet authOk = authMode !== 'deny';\n\nconst requiredScopes = ['inbound:write'];\n\nfunction hasScope(required, granted) {\n  if (!required) return true;\n  const g = new Set((granted || []).map(s => String(s || '').trim()).filter(Boolean));\n  if (g.has(required)) return true;\n  if (g.has('*')) return true;\n  const parts = String(required).split(':');\n  if (parts.length === 2 && g.has(`${parts[0]}:*`)) return true;\n  return false;\n}\n\nconst legacyBypass = (authMode === 'legacy_shared') && requiredScopes.some(s => s.startsWith('inbound:'));\nconst scopeOk = authOk && (legacyBypass || requiredScopes.length === 0 || requiredScopes.some(r => hasScope(r, scopes)));\n\nconst endpoint_group = 'inbound';\nconst endpoint_path = '/v1/inbound/messenger';\n\nlet denyReason = authOk ? (scopeOk ? '' : 'SCOPE_DENY') : 'AUTH_DENY';\n\n// Meta signature enforcement (fail-close only if META_SIGNATURE_REQUIRED=enforce)\nconst metaSigRequired = !!e._auth?.metaSigRequired;\nconst metaSigPresent = !!e._auth?.metaSigPresent;\nconst metaSigReason = (e._auth?.metaSigReason || '').toString();\n\n// P0-08: Anti-replay timestamp validation\nconst replayWindowMs = parseInt($env.REPLAY_WINDOW_SECONDS || '300', 10) * 1000;\nconst replayCheckEnabled = (($env.REPLAY_CHECK_ENABLED || 'true').toString().toLowerCase() === 'true');\nlet timestampValid = true;\nlet timestampReason = '';\n\nif (replayCheckEnabled && e.metadata?.timestamp) {\n  const msgTs = e.metadata.timestamp;\n  let msgTime = 0;\n  if (typeof msgTs === 'string' && msgTs.includes('T')) {\n    msgTime = new Date(msgTs).getTime();\n  } else if (typeof msgTs === 'number' || /^\\d+$/.test(msgTs)) {\n    const num = Number(msgTs);\n    msgTime = num > 9999999999 ? num : num * 1000;\n  } else {\n    msgTime = new Date(msgTs).getTime();\n  }\n  const now = Date.now();\n  const age = now - msgTime;\n  if (isNaN(msgTime) || msgTime <= 0) {\n    timestampValid = true;\n    timestampReason = 'unparseable';\n  } else if (age > replayWindowMs) {\n    timestampValid = false;\n    timestampReason = 'too_old';\n  } else if (age < -60000) {\n    timestampValid = false;\n    timestampReason = 'future_timestamp';\n  } else {\n    timestampReason = 'ok';\n  }\n}\n\nif (metaSigRequired && !metaSigValid) {\n  denyReason = metaSigPresent ? 'MSG_SIGNATURE_INVALID' : 'MSG_SIGNATURE_MISSING';\n}\nif (replayCheckEnabled && !timestampValid && timestampReason !== 'unparseable') {\n  denyReason = 'REPLAY_ATTACK_' + timestampReason.toUpperCase();\n}\nif (legacyOk && !legacyAllowed) {\n  denyReason = 'LEGACY_TOKEN_BLOCKED';\n}\nif (authMode === 'deny' && !matched && !ciResolved && denyReason === 'AUTH_DENY') {\n  denyReason = 'UNKNOWN_CHANNEL_IDENTITY';\n}\n\nconst tenant_context = {\n  tenant_id: tenantId || null,\n  restaurant_id: restaurantId || null,\n  source: authMode === 'api_client' ? 'auth_db' : (authMode === 'meta_signature' ? 'meta_signature' : (authMode === 'legacy_shared' ? 'legacy_shared' : 'untrusted_payload')),\n  client_id: matched ? (e.client_id || null) : null,\n  client_name: matched ? (e.client_name || null) : null,\n  scopes\n};\n\nreturn [{\n  json: {\n    ...e,\n    tenantId,\n    restaurantId,\n    conversationKey,\n    tenant_context,\n    _auth: {\n      ...e._auth,\n      authOk,\n      authMode,\n      scopes,\n      requiredScopes,\n      scopeOk,\n      endpoint_group,\n      endpoint_path,\n      denyReason,\n      clientId: matched ? (e.client_id || null) : null,\n      clientName: matched ? (e.client_name || null) : null\n    }\n  }\n}];"
       },
       "id": "0aba4d61-8e1b-4f65-b17b-a02515c8685f",
       "name": "B0 - Apply Auth Context",
@@ -450,22 +450,48 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "workflow_name", "value": "W3_IN_MSG" },
-            { "name": "workflow_id", "value": "W3" },
-            { "name": "execution_id", "value": "={{ $executionId }}" },
-            { "name": "channel", "value": "messenger" },
-            { "name": "status", "value": "started" },
-            { "name": "started_at", "value": "={{ $now.toISO() }}" },
-            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+            {
+              "name": "workflow_name",
+              "value": "W3_IN_MSG"
+            },
+            {
+              "name": "workflow_id",
+              "value": "W3"
+            },
+            {
+              "name": "execution_id",
+              "value": "={{ $executionId }}"
+            },
+            {
+              "name": "channel",
+              "value": "messenger"
+            },
+            {
+              "name": "status",
+              "value": "started"
+            },
+            {
+              "name": "started_at",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "correlation_id",
+              "value": "={{ $json._timing?.correlation_id || '' }}"
+            }
           ]
         },
-        "options": { "timeout": 3000 }
+        "options": {
+          "timeout": 3000
+        }
       },
       "id": "audit-inbound-started-msg",
       "name": "AUDIT - Inbound Started",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [-1700, -300],
+      "position": [
+        -1700,
+        -300
+      ],
       "continueOnFail": true,
       "alwaysOutputData": false
     },
@@ -476,24 +502,87 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "workflow_name", "value": "W3_IN_MSG" },
-            { "name": "workflow_id", "value": "W3" },
-            { "name": "execution_id", "value": "={{ $executionId }}" },
-            { "name": "channel", "value": "messenger" },
-            { "name": "status", "value": "completed" },
-            { "name": "completed_at", "value": "={{ $now.toISO() }}" },
-            { "name": "correlation_id", "value": "={{ $json._timing?.correlation_id || '' }}" }
+            {
+              "name": "workflow_name",
+              "value": "W3_IN_MSG"
+            },
+            {
+              "name": "workflow_id",
+              "value": "W3"
+            },
+            {
+              "name": "execution_id",
+              "value": "={{ $executionId }}"
+            },
+            {
+              "name": "channel",
+              "value": "messenger"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "completed_at",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "correlation_id",
+              "value": "={{ $json._timing?.correlation_id || '' }}"
+            }
           ]
         },
-        "options": { "timeout": 3000 }
+        "options": {
+          "timeout": 3000
+        }
       },
       "id": "audit-inbound-completed-msg",
       "name": "AUDIT - Inbound Completed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [520, -360],
+      "position": [
+        520,
+        -360
+      ],
       "continueOnFail": true,
       "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT tenant_id::text, restaurant_id::text FROM channel_identities WHERE channel = $1 AND identity = $2 AND is_active = true LIMIT 1",
+        "additionalFields": {
+          "queryParams": "={{[$json.channel, $json.inbound_envelope?.meta?.recipient_id || '']}}"
+        }
+      },
+      "id": "b0-resolve-ci-msg-55555555",
+      "name": "B0 - Resolve Channel Identity (DB)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        380,
+        -120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-main",
+          "name": "postgres-main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "const row = $json;\nreturn [{ json: { ...row,\n  ci_tenant_id:     row.tenant_id     || null,\n  ci_restaurant_id: row.restaurant_id || null,\n  ci_resolved:      !!(row.tenant_id && row.restaurant_id)\n} }];"
+      },
+      "id": "b0-map-ci-msg-66666666",
+      "name": "B0 - Map Channel Identity Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        430,
+        -120
+      ]
     }
   ],
   "connections": {
@@ -712,7 +801,7 @@
       "main": [
         [
           {
-            "node": "B0 - Apply Auth Context",
+            "node": "B0 - Resolve Channel Identity (DB)",
             "type": "main",
             "index": 0
           }
@@ -812,6 +901,28 @@
         [
           {
             "node": "B1 - Execute CORE_AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Resolve Channel Identity (DB)": {
+      "main": [
+        [
+          {
+            "node": "B0 - Map Channel Identity Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B0 - Map Channel Identity Result": {
+      "main": [
+        [
+          {
+            "node": "B0 - Apply Auth Context",
             "type": "main",
             "index": 0
           }
