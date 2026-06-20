@@ -8,6 +8,7 @@
  */
 
 import type { Core } from '@strapi/strapi';
+import Redis from 'ioredis';
 
 // ── In-memory fallback stores ──
 const authHits = new Map<string, { count: number; firstHit: number }>();
@@ -32,7 +33,6 @@ async function getRedisClient() {
     if (redisClient) return redisClient;
     if (!USE_REDIS) return null;
     try {
-        const Redis = (await import('ioredis')).default;
         const url = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`;
         redisClient = new Redis(url, { maxRetriesPerRequest: 1, lazyConnect: true });
         await redisClient.connect();
