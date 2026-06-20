@@ -1,0 +1,112 @@
+name: Phase 21 UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup Assertions
+
+on:
+  pull_request:
+    paths:
+      # 21-01 (ENT-01 fail-closed hook + banner + test) / 21-03 (TYP-01 DTOs + AIChatBubble)
+      - 'admin-dashboard/**'
+      # 21-02 (ENT-02 module-key consistency)
+      - 'config/product_modules.json'
+      - 'inventory-cms/src/bootstrap-seeds/saas-entitlements.ts'
+      - 'workflows/**'
+      - 'scripts/check-module-keys.mjs'
+      - 'scripts/__tests__/check-module-keys.test.mjs'
+      # 21-04 (CMS TS green — cms-ts-compile job appended by 21-04)
+      - 'inventory-cms/src/api/product-module/**'
+      - 'inventory-cms/src/api/tenant-entitlement/**'
+      - 'inventory-cms/src/middlewares/auth-ratelimit.ts'
+      # the gate itself
+      - '.github/workflows/phase-21-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  admin-dashboard-lint:
+    name: Phase 21 Admin Dashboard Lint (0 errors — TYP-01 gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # Node 20 — parity with the real frontend-lint gate (ci.yml NODE_VERSION=20.20.0).
+      - name: Setup Node 20
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (ERESOLVE fallback — lucide-react react-19 peer)
+        working-directory: admin-dashboard
+        run: |
+          echo "::group::npm ci || npm install --legacy-peer-deps"
+          npm ci || npm install --legacy-peer-deps
+          echo "::endgroup::"
+
+      - name: Lint (npm run lint = eslint . — MUST be 0 errors)
+        working-directory: admin-dashboard
+        run: |
+          echo "::group::npm run lint"
+          npm run lint
+          echo "::endgroup::"
+
+  admin-dashboard-vitest:
+    name: Phase 21 Admin Dashboard Vitest (ENT-01 + existing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node 20
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (ERESOLVE fallback)
+        working-directory: admin-dashboard
+        run: |
+          echo "::group::npm ci || npm install --legacy-peer-deps"
+          npm ci || npm install --legacy-peer-deps
+          echo "::endgroup::"
+
+      - name: Vitest run (useEntitlements.test.tsx + setup.test.ts + App.lazy.test.tsx)
+        working-directory: admin-dashboard
+        run: |
+          echo "::group::npx vitest run"
+          npx vitest run
+          echo "::endgroup::"
+
+  module-key-consistency:
+    name: Phase 21 Module-Key Consistency (ENT-02 — no ghost keys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # Node 22 — parity with the scripts/ .mjs convention (phase-19/20 pins).
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Module-key consistency check (App.tsx + workflows ⊆ manifest; manifest == seeder)
+        run: |
+          echo "::group::node scripts/check-module-keys.mjs"
+          node --version
+          node scripts/check-module-keys.mjs
+          echo "::endgroup::"
+
+      - name: Module-key checker node --test (pure helpers + ghost fixture + live invariant)
+        run: |
+          echo "::group::node --test scripts/__tests__/check-module-keys.test.mjs"
+          node --test scripts/__tests__/check-module-keys.test.mjs
+          echo "::endgroup::"
+
+  # NOTE: 21-04 appends a `cms-ts-compile` job below this line
+  # (Node 20, `cd inventory-cms && npm ci --legacy-peer-deps && npx tsc --noEmit` → 0 errors).
