@@ -1,15 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v2.0
+milestone_name: SaaS Multi-Tenant Hardening
 status: active
-stopped_at: Local gap-closure phases 12/13/14 code-complete on branch claude/gap-closure-phases-12-14; only Phase 11 (VPS-only) and the deploy steps of 12/13 remain, all deferred per REMAINING-WORK.md
-last_updated: "2026-06-20T00:00:00.000Z"
+stopped_at: v2.0 milestone started — defining requirements (research first). v1.0 archived to .planning/milestones/; PRs #26/#27/#28 merged to main.
+last_updated: "2026-06-20T12:00:00.000Z"
+previous_milestone: v1.0
 progress:
-  total_phases: 14
-  completed_phases: 13
-  total_plans: 32
-  completed_plans: 30
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -19,12 +20,20 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** v1.0 — all 7 runtime requirement gaps are now CODE-COMPLETE (Phases 12/13) and the documentation/verification debt is closed (Phase 14). The only remaining work is VPS deployment: Phase 11 plus the import/rebuild/verify steps of Phases 12-13. All deferred (no prod SSH).
+**Current focus:** v2.0 — SaaS Multi-Tenant Hardening. Status: defining requirements (research in progress). Scope seeded by `.planning/codebase/CONCERNS.md` (tenant isolation scaffolding-only, fail-open/closed mismatch, module-key drift, unapplied SaaS migration, dead entitlement_audit_log, uncached guard).
 
 ## Current Position
 
-Phase: 14 (nyquist-compliance-and-documentation-cleanup) — COMPLETE (local)
-Next actionable: Phase 11 (VPS ops) + the 🔴 deploy steps of Phases 12/13 — all require prod SSH, deferred.
+Milestone: v2.0 — SaaS Multi-Tenant Hardening
+Phase: Not started (defining requirements)
+Status: Research → requirements → roadmap
+
+### Previous milestone — v1.0 Platform Hardening & Reliability (archived)
+
+13/14 phases complete; ROADMAP/REQUIREMENTS archived to `.planning/milestones/v1.0-*.md`. Phases 12/13/14 code-complete (merged to main via PRs #26/#27/#28). Only VPS-runtime deploy steps remain (Phase 11 + 12/13 deploy), tracked in `.planning/REMAINING-WORK.md`.
+
+**v1.0 status by remaining phase:**
+- Phase 09 — PARTIAL: CI goals verified; 2 VPS activation items deferred to Phase 11. 09-VERIFICATION.md now exists (status: partial).
 
 **Status by remaining phase:**
 - Phase 09 — PARTIAL: CI goals verified; 2 VPS activation items deferred to Phase 11. 09-VERIFICATION.md now exists (status: partial).
