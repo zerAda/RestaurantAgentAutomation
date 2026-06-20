@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
 status: active
-stopped_at: Phases 15-17 COMPLETE + verified (code/CI; VPS apply/import deferred). Next: plan+execute Phase 18.
-last_updated: "2026-06-20T13:00:00.000Z"
+stopped_at: Completed 18-01/18-02/18-03-PLAN.md (code/CI; awaiting verifier). Phases 15-17 COMPLETE + verified. VPS apply/import deferred.
+last_updated: "2026-06-20T16:30:00.000Z"
 previous_milestone: v1.0
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -25,8 +25,13 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Milestone: v2.0 — SaaS Multi-Tenant Hardening
-Phase: 17 COMPLETE (Inbound Tenant Derivation Fail-Closed) — verified passed (TEN-03, code/CI; prod workflow import deferred). Phases 15-16 also complete.
-Next: Phase 18 — Per-Tenant Data-Plane Scoping + Isolation CI [TEN-04, TEN-05]
+Phase: 18 — Per-Tenant Data-Plane Scoping + Isolation CI [TEN-04, TEN-05] — all 3 plans executed (code/CI complete; awaiting `/gsd:verify-work`). 18-01 scoping checklist + O-1 resolved (two DBs), 18-02 scoped 7 workflows + Strapi schemas/lifecycles + strapi-DB migration (idempotent, proven on ephemeral PG), 18-03 cross-tenant isolation CI gate (both-direction assertions PASS twice + negative control fires). Phases 15-17 COMPLETE + verified.
+Next: verifier for Phase 18, then Phase 19 — Entitlement Audit + Cache-Invalidation Lifecycle Hook [AUD-01, AUD-02]
+
+### Phase 18 VPS-deferred (NOT attempted — prod-connected session required)
+- Apply `db/migrations-strapi/2026-06-20_strapi_order_customer_tenant.sql` to the live strapi DB (column add + backfill + NOT NULL + `CREATE UNIQUE INDEX CONCURRENTLY (tenant_id, phone)` direct to postgres:5432, not pgbouncer:6432).
+- Rebuild the CMS so the new order/customer `tenant_id` attributes + lifecycles take effect.
+- Import the updated scoped workflows (W_ORDER_FINALIZER, W51, W53, W_THE_USUAL, W_ADMIN_PROACTIVE, W14, W4_CORE) on prod n8n.
 
 ### Previous milestone — v1.0 Platform Hardening & Reliability (archived)
 

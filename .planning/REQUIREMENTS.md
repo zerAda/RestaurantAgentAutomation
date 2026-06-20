@@ -15,8 +15,8 @@
 - [ ] **TEN-01**: A single canonical tenant key is established — the UUID `tenants.tenant_id` is the system of record. The entitlement plane's VARCHAR `tenant_id` (`tenant_entitlements`, `saas-entitlements.ts`) is reconciled to the canonical UUID (or a documented, enforced 1:1 mapping). No runtime path silently substitutes the literal `'default'`.
 - [ ] **TEN-02**: A `channel_identities` routing table (migration) maps channel-native identifiers — WhatsApp `phone_number_id`, Instagram/Messenger `recipient_id`/page id, kiosk device id — to `(tenant_id, restaurant_id)`. Seeded for the current single tenant.
 - [ ] **TEN-03**: Inbound adapters resolve tenant from `channel_identities`: `B0 - Apply Auth Context` (in `W1_IN_WA.json`, `W2_IN_IG.json`, `W3_IN_MSG.json`) uses the already-parsed `phone_number_id`/`recipient_id` instead of falling through to `DEFAULT_TENANT_ID`. An **unknown** channel identity fails closed (message parked/rejected with a log event) — it does **not** default to `'default'`.
-- [ ] **TEN-04**: Order and customer **reads and writes** are scoped by `tenant_id`. `tenant_id` is non-defaultable on the write path (NOT NULL, no `|| 'default'` fallback). Existing scoped reads (e.g. `W12_ADMIN_ORDERS.json`) are confirmed; unscoped paths are closed.
-- [ ] **TEN-05**: An automated CI test proves cross-tenant isolation — a request resolved to tenant A cannot read or write tenant B's orders/customers (seeds two tenants, asserts separation).
+- [x] **TEN-04**: Order and customer **reads and writes** are scoped by `tenant_id`. `tenant_id` is non-defaultable on the write path (NOT NULL, no `|| 'default'` fallback). Existing scoped reads (e.g. `W12_ADMIN_ORDERS.json`) are confirmed; unscoped paths are closed. — DONE (Phase 18, code/CI): 7 n8n order workflows scoped + W_ORDER_FINALIZER write fixed; Strapi order/customer content types gain required `tenant_id`/`restaurant_id` + fail-loud `beforeCreate` + `db/migrations-strapi/` migration. 🔴 strapi-DB apply + CMS rebuild + prod n8n import deferred.
+- [x] **TEN-05**: An automated CI test proves cross-tenant isolation — a request resolved to tenant A cannot read or write tenant B's orders/customers (seeds two tenants, asserts separation). — DONE (Phase 18): `.github/workflows/phase-18-assertions.yml` + `db/ci-fixtures/18-two-tenant-seed.sql` + `db/ci-assertions/18-cross-tenant-isolation.sql` (both-direction read/write + non-defaultable-write + FK; proven on ephemeral PG twice + negative control fires).
 
 ### Fail-Closed Entitlement Consistency
 
@@ -60,7 +60,7 @@
 | TEN-01 | Resolution & Isolation | Yes | — |
 | TEN-02 | Resolution & Isolation | Yes (migration + seed) | apply on VPS |
 | TEN-03 | Resolution & Isolation | Yes (workflow JSON) | import on VPS |
-| TEN-04 | Resolution & Isolation | Yes | — |
+| TEN-04 | Resolution & Isolation | Yes (workflows + Strapi schemas/lifecycles + migration) | apply strapi-DB migration + rebuild CMS + import workflows on VPS |
 | TEN-05 | Resolution & Isolation | Yes (CI test) | — |
 | ENT-01 | Fail-Closed Entitlements | Yes | — |
 | ENT-02 | Fail-Closed Entitlements | Yes | — |
