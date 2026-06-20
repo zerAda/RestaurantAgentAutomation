@@ -27,6 +27,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ApiErrorListener } from './components/ApiErrorListener';
 import { authService } from './services/authService';
 import { useEntitlements } from './hooks/useEntitlements';
+import { EntitlementErrorBanner } from './components/EntitlementErrorBanner';
 import { getTranslation, setPageDirection, type Language } from './utils/i18n';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -240,6 +241,9 @@ function App() {
                 <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse shadow-[0_0_10px_var(--color-brand-primary)]" />
               </div>
             </div>
+
+            {/* ENT-01: explicit entitlement error/locked surface (renders null on the happy path) */}
+            <EntitlementErrorBanner />
 
             <header className="mb-12 flex flex-col sm:flex-row sm:justify-between items-start sm:items-end gap-6">
               <div>
