@@ -1,0 +1,121 @@
+name: Phase 20 Redis-Cached Fail-Closed Guard + Internal Token Assertions
+
+on:
+  pull_request:
+    paths:
+      - 'workflows/W0_MODULE_GUARD.json'
+      - 'scripts/guard/entitlement-decision.mjs'
+      - 'scripts/guard/__tests__/entitlement-decision.test.mjs'
+      - 'scripts/test-phase20.sh'
+      - '.github/workflows/phase-20-assertions.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard-decision-node-test:
+    name: Phase 20 Guard Decision Seam (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # Pin Node 22 even though the seam is .mjs (no --experimental-strip-types
+      # needed) — determinism / parity with phase-19's BLOCKER-A pin.
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: Run the entitlement-decision node-test (HIT->0 fetches, Redis-err->fallthrough, Strapi-err->DENY, expired re-eval, key byte-for-byte)
+        run: |
+          echo "::group::node --test scripts/guard/__tests__/entitlement-decision.test.mjs"
+          node --version
+          node --test scripts/guard/__tests__/entitlement-decision.test.mjs
+          echo "::endgroup::"
+
+  guard-structural:
+    name: Phase 20 Guard Cache-Aside Structural Assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+
+      - name: node --check the seam + its test (valid ESM)
+        run: |
+          echo "::group::node --check seam + test"
+          node --version
+          node --check scripts/guard/entitlement-decision.mjs
+          node --check scripts/guard/__tests__/entitlement-decision.test.mjs
+          echo "::endgroup::"
+
+      - name: Guard JSON is valid
+        run: |
+          echo "::group::python3 json.load W0_MODULE_GUARD.json"
+          python3 -c "import json; json.load(open('workflows/W0_MODULE_GUARD.json'))"
+          echo "PASS: valid JSON"
+          echo "::endgroup::"
+
+      - name: "Redis GET + SET nodes keyed ralphe:entitlement: with a ttl on SET"
+        run: |
+          echo "::group::Assert: Redis GET/SET keyed to the canonical key"
+          F=workflows/W0_MODULE_GUARD.json
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.redis")|select(.parameters.operation=="get")|select(.parameters.key|test("ralphe:entitlement:"))]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: Redis GET not keyed ralphe:entitlement:"; exit 1; }
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.redis")|select(.parameters.operation=="set")|select(.parameters.key|test("ralphe:entitlement:"))|select(.parameters.ttl!=null)]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: Redis SET not keyed ralphe:entitlement: with a ttl"; exit 1; }
+          grep -q "REDIS_CREDENTIAL_ID" "$F" || { echo "FAIL: Redis credential placeholder missing"; exit 1; }
+          echo "PASS: Redis GET/SET keyed + SET has ttl + credential placeholder"
+          echo "::endgroup::"
+
+      - name: Exactly 2 Strapi httpRequest nodes (product-modules + tenant-entitlements)
+        run: |
+          echo "::group::Assert: exactly 2 Strapi httpRequest nodes on the miss path"
+          F=workflows/W0_MODULE_GUARD.json
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.httpRequest")]|length==2' "$F" >/dev/null \
+            || { echo "FAIL: expected exactly 2 Strapi httpRequest nodes"; exit 1; }
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.httpRequest")|select(.parameters.url|test("product-modules"))]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: product-modules fetch missing"; exit 1; }
+          jq -e '[.nodes[]|select(.type=="n8n-nodes-base.httpRequest")|select(.parameters.url|test("tenant-entitlements"))]|length>=1' "$F" >/dev/null \
+            || { echo "FAIL: tenant-entitlements fetch missing"; exit 1; }
+          echo "PASS: 2 Strapi httpRequest nodes (product-modules + tenant-entitlements)"
+          echo "::endgroup::"
+
+      - name: Graph-reachability — ZERO Strapi httpRequest reachable on the HIT path (0 round-trips on hit)
+        run: |
+          echo "::group::Assert: walk connections from IF HIT branch (main[0]); 0 httpRequest reachable"
+          F=workflows/W0_MODULE_GUARD.json
+          jq -e '
+            (reduce .nodes[] as $n ({}; .[$n.name] = $n.type)) as $types |
+            .connections as $conn |
+            ($conn["IF - Cache Usable?"].main[0] | map(.node)) as $seed |
+            (reduce range(0;50) as $i ($seed;
+               . + ([.[] | $conn[.].main // [] | .[] | .[] | .node]) | unique)) as $reachable |
+            ([$reachable[] | select($types[.]=="n8n-nodes-base.httpRequest")] | length) == 0
+          ' "$F" >/dev/null \
+            || { echo "FAIL: a Strapi httpRequest node is reachable on the HIT path (0-round-trips-on-hit violated)"; exit 1; }
+          echo "PASS: 0 Strapi httpRequest reachable from the HIT branch"
+          echo "::endgroup::"
+
+      - name: Fail-closed reason + TTL envs present; no ioredis/SCAN/KEYS
+        run: |
+          echo "::group::Assert: GUARD_ERROR_FAILCLOSED + TTL envs; no forbidden patterns"
+          F=workflows/W0_MODULE_GUARD.json
+          grep -q "GUARD_ERROR_FAILCLOSED" "$F" || { echo "FAIL: fail-closed reason missing"; exit 1; }
+          grep -q "ENTITLEMENT_CACHE_TTL_SEC" "$F" || { echo "FAIL: positive TTL env not read"; exit 1; }
+          grep -q "ENTITLEMENT_NEG_CACHE_TTL_SEC" "$F" || { echo "FAIL: negative TTL env not read"; exit 1; }
+          if grep -qiE "NODE_FUNCTION_ALLOW_EXTERNAL|require\('ioredis'\)|require\(\"ioredis\"\)|\.scan\(|KEYS " "$F"; then
+            echo "FAIL: forbidden ioredis/SCAN/KEYS/NODE_FUNCTION_ALLOW_EXTERNAL pattern"; exit 1
+          fi
+          echo "PASS: fail-closed reason + TTL envs present; no ioredis/SCAN/KEYS"
+          echo "::endgroup::"
