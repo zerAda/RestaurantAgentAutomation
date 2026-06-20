@@ -64,11 +64,12 @@ BEGIN
 END $$;
 
 -- Assertion 4: is_active = false row does NOT resolve (inactive identity is fail-closed)
+-- NOTE: SAVEPOINT / ROLLBACK TO SAVEPOINT are transaction-control statements and are
+-- NOT permitted inside a PL/pgSQL DO block. We instead deactivate the seeded row,
+-- measure, then restore it (mutate-then-restore) so the assertion is idempotent.
 DO $$
 DECLARE v_count integer;
 BEGIN
-  -- Use a savepoint so we can rollback the test row without aborting the transaction
-  SAVEPOINT inactive_test;
   UPDATE channel_identities SET is_active = false
   WHERE channel = 'whatsapp' AND identity = 'CI_WA_PHONE_NUMBER_ID';
 
@@ -76,11 +77,13 @@ BEGIN
   FROM channel_identities
   WHERE channel = 'whatsapp' AND identity = 'CI_WA_PHONE_NUMBER_ID' AND is_active = true;
 
+  -- Restore the seeded row before any further work so the file is re-runnable.
+  UPDATE channel_identities SET is_active = true
+  WHERE channel = 'whatsapp' AND identity = 'CI_WA_PHONE_NUMBER_ID';
+
   IF v_count <> 0 THEN
-    ROLLBACK TO SAVEPOINT inactive_test;
     RAISE EXCEPTION 'FAIL: inactive identity still resolves — expected 0 rows, got %', v_count;
   END IF;
 
-  ROLLBACK TO SAVEPOINT inactive_test;
   RAISE NOTICE 'PASS: inactive identity (is_active=false) returns 0 rows (fail-closed on deactivated identity)';
 END $$;
