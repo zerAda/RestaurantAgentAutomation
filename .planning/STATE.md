@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: SaaS Multi-Tenant Hardening
-status: active
-stopped_at: Completed 19-01/19-02/19-03-PLAN.md (code/CI; awaiting verifier). Phases 15-18 prior; 18 awaiting verifier. VPS apply/rebuild deferred.
-last_updated: "2026-06-20T17:05:33.136Z"
+status: unknown
+stopped_at: Completed 19-01/19-02/19-03-PLAN.md (code/CI; awaiting verifier)
+last_updated: "2026-06-20T18:40:23.101Z"
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 15
-  completed_plans: 12
+  total_plans: 18
+  completed_plans: 13
 ---
 
 # Project State
@@ -83,6 +83,7 @@ Next: verifier for Phase 18 + Phase 19, then Phase 20 — Redis-Cached Fail-Clos
 | 13-admin-dashboard-audit-log-repair | 1/1 | Code complete (VPS rebuild deferred) |
 | 14-nyquist-compliance-and-documentation-cleanup | 1/1 | Complete |
 | Phase 19 Pall | ~70m | 8 tasks | 10 files |
+| Phase 20 P01 | 5min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,7 @@ Next: verifier for Phase 18 + Phase 19, then Phase 20 — Redis-Cached Fail-Clos
 - Vite build args must be passed through docker-compose (not just declared as ARG in Dockerfile) — root cause of AUDIT-03 URL bug
 - ops.workflow_audit migration targets the n8n database (user=n8n, db=n8n), NOT strapi
 - NemoClaw Telegram Bot descoped from v1.0 (intended for its own repository)
+- [Phase 20]: 20-01: W0_MODULE_GUARD restructured into Redis cache-aside (GET/SET nodes around pure .mjs seam); HIT skips both Strapi fetches (graph-proven); cache stores RAW row (expiry re-eval on read); transient GUARD_ERROR_FAILCLOSED never cached
 
 ### Reconciliation & gap-closure (2026-06-19 → 2026-06-20)
 

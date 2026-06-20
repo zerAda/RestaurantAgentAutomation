@@ -184,7 +184,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19 → 20 → 21
 | 17. Inbound Tenant Derivation (Fail-Closed) | 0/3 | Planned | - |
 | 18. Per-Tenant Data-Plane Scoping + Isolation CI | 0/3 | Planned | - |
 | 19. Entitlement Audit + Cache-Invalidation Lifecycle Hook | 3/3 | Complete   | 2026-06-20 |
-| 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 0/3 | Not started | - |
+| 20. Redis-Cached Fail-Closed Guard + Internal Token Provisioning | 1/3 | In Progress|  |
 | 21. UI Fail-Closed Parity + Module-Key Alignment + Type Cleanup | 0/3 | Not started | - |
 
 **Coverage:** All 13 v2.0 requirements mapped to exactly one phase — TEN-01 → P15; TEN-02, DB-01 → P16;
