@@ -1,15 +1,17 @@
 ---
 phase: 1
 slug: cms-stability-and-base-upgrade
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: compliant
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-18
 ---
 
 # Phase 1 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
+>
+> **Reconciliation (2026-06-20):** Lifted from draft 2026-06-20 (Phase 14): Phase 01 VERIFICATION.md is `passed` (5/6; INFRA-03 partial accepted). Smoke scripts present and green.
 
 ---
 

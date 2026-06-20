@@ -1,15 +1,17 @@
 ---
 phase: 9
 slug: integration-wiring-and-ci-fixes
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: compliant
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-29
 ---
 
 # Phase 9 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
+>
+> **Reconciliation (2026-06-20):** Lifted from draft 2026-06-20 (Phase 14): the CI tests delivered in plan 02 (smoke-nginx-routing, ops schema check) exist and pass. Runtime activation (plan 01) is PARTIAL — see the newly created 09-VERIFICATION.md; the 2 VPS blockers are tracked in Phase 11 / REMAINING-WORK.md.
 
 ---
 

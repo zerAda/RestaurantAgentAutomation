@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Planning docs reconciled to 14-phase disk reality (ROADMAP/REQUIREMENTS/STATE); remaining gap-closure work (Phases 11-14) documented in REMAINING-WORK.md, not yet executed
-last_updated: "2026-06-19T00:00:00.000Z"
+stopped_at: Local gap-closure phases 12/13/14 code-complete on branch claude/gap-closure-phases-12-14; only Phase 11 (VPS-only) and the deploy steps of 12/13 remain, all deferred per REMAINING-WORK.md
+last_updated: "2026-06-20T00:00:00.000Z"
 progress:
   total_phases: 14
-  completed_phases: 10
-  total_plans: 29
-  completed_plans: 27
+  completed_phases: 13
+  total_plans: 32
+  completed_plans: 30
 ---
 
 # Project State
@@ -19,26 +19,27 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** Orders placed on any channel reach the kitchen, get paid, and get delivered — reliably and without manual intervention.
-**Current focus:** v1.0 milestone is 27/34 requirements satisfied. 10 of 14 phases complete. Remaining work is 7 runtime gaps (Phases 11-13) + verification/doc cleanup (Phase 14). Phase 11 and the deploy steps of 12/13 require live VPS access and are DEFERRED.
+**Current focus:** v1.0 — all 7 runtime requirement gaps are now CODE-COMPLETE (Phases 12/13) and the documentation/verification debt is closed (Phase 14). The only remaining work is VPS deployment: Phase 11 plus the import/rebuild/verify steps of Phases 12-13. All deferred (no prod SSH).
 
 ## Current Position
 
-Phase: 10 (verification-and-nyquist-compliance) — COMPLETE (passed 6/6)
-Next actionable: Phase 11 (VPS ops — DEFERRED, needs prod SSH) → then 12, 13 (local code + VPS deploy) → 14 (docs)
+Phase: 14 (nyquist-compliance-and-documentation-cleanup) — COMPLETE (local)
+Next actionable: Phase 11 (VPS ops) + the 🔴 deploy steps of Phases 12/13 — all require prod SSH, deferred.
 
-**Remaining phases:**
-- Phase 09 — PARTIAL: plan 02 complete; plan 01 has 3 VPS blockers; VERIFICATION.md missing (→ Phase 14)
-- Phase 11 — Researched only; VPS runtime ops; DEFERRED to prod-connected session
-- Phase 12 — Not started: W_QUEUE_METRICS credential + `df -k /` fix (METR-01/02/04/05); local code + VPS import
-- Phase 13 — Not started: AuditLogView VITE_API_URL + W_AUDIT_QUERY fixes (AUDIT-03); local code + VPS rebuild
-- Phase 14 — Not started: Phase 09 VERIFICATION.md, Phase 03 VALIDATION.md, draft→compliant VALIDATIONs
+**Status by remaining phase:**
+- Phase 09 — PARTIAL: CI goals verified; 2 VPS activation items deferred to Phase 11. 09-VERIFICATION.md now exists (status: partial).
+- Phase 11 — Researched only; VPS runtime ops; DEFERRED to a prod-connected session.
+- Phase 12 — CODE COMPLETE (2026-06-20): W_QUEUE_METRICS.json fixed. VPS import deferred.
+- Phase 13 — CODE COMPLETE (2026-06-20): compose VITE_API_URL + W_AUDIT_QUERY + AuditLogView fixed. VPS rebuild deferred.
+- Phase 14 — COMPLETE (2026-06-20): 09-VERIFICATION.md + 03-VALIDATION.md created; 01/07/09/10 VALIDATIONs lifted to compliant.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Plans executed: 27 of 29 (Phase 5's 2 plans were superseded by Phase 8, never executed)
-- Phases with passing VERIFICATION.md: 8 (Phases 1, 2, 3, 4, 6, 7, 8, 10)
+- Plans executed: 30 of 32 (Phase 5's 2 plans were superseded by Phase 8)
+- Phases with passing/partial VERIFICATION.md: 9 (1,2,3,4,6,7,8,10 passed; 9 partial)
+- Branch: gap-closure work on `claude/gap-closure-phases-12-14`; docs reconciliation on `claude/intelligent-galileo-w170kg` (PR #26)
 
 **By Phase:**
 
@@ -50,14 +51,14 @@ Next actionable: Phase 11 (VPS ops — DEFERRED, needs prod SSH) → then 12, 13
 | 04-test-coverage-routing-and-permissions | 3/3 | Complete |
 | 05-test-coverage-n8n-workflow-e2e | 0/2 | Superseded by Phase 8 |
 | 06-performance-tuning | 2/2 | Complete |
-| 07-fix-critical-defects | 2/2 | Complete at code (regression → 12/13) |
+| 07-fix-critical-defects | 2/2 | Complete at code |
 | 08-n8n-e2e-test-implementation | 2/2 | Complete |
-| 09-integration-wiring-and-ci-fixes | 2/2 | Partial (VPS blockers; no VERIFICATION) |
+| 09-integration-wiring-and-ci-fixes | 2/2 | Partial (VPS blockers; VERIFICATION now partial) |
 | 10-verification-and-nyquist-compliance | 2/2 | Complete |
 | 11-vps-ops-db-migration-and-audit-chain | 0/0 | Researched, deferred (VPS-only) |
-| 12-w-queue-metrics-runtime-fix | 0/0 | Not started |
-| 13-admin-dashboard-audit-log-repair | 0/0 | Not started |
-| 14-nyquist-compliance-and-documentation-cleanup | 0/0 | Not started (docs synced 2026-06-19) |
+| 12-w-queue-metrics-runtime-fix | 1/1 | Code complete (VPS import deferred) |
+| 13-admin-dashboard-audit-log-repair | 1/1 | Code complete (VPS rebuild deferred) |
+| 14-nyquist-compliance-and-documentation-cleanup | 1/1 | Complete |
 
 ## Accumulated Context
 
@@ -66,21 +67,22 @@ Next actionable: Phase 11 (VPS ops — DEFERRED, needs prod SSH) → then 12, 13
 - Milestone scope: Fix-first; no new features this milestone (stabilize before extending)
 - CMS routes: Fix by adding TS source files to inventory-cms/src/api/ — never runtime injection
 - Node.js: Upgrade all Dockerfiles 18-alpine -> 20-alpine (EOL security fix)
-- Phase 4 depends on Phase 1 (not Phase 3): routing/permission tests need stable CMS but not metrics yet
-- Phase 6 depends on Phase 3: performance work can run after observability is in place
 - The 2026-04-04 milestone audit restructured the milestone into 14 phases (gap-closure 7-14)
-- Phase 5 (n8n E2E) was superseded by Phase 8 — its 2 plans were never executed
-- W_QUEUE_METRICS uses hardcoded PG credential ID `1mZZJEscADgQ8InR` for the n8n DB (the `$env.*` expression form evaluates to empty on VPS — root cause of METR-01/02/04/05)
-- ops.workflow_audit migration targets the **n8n** database (user=n8n, db=n8n), NOT strapi — the audit report's `psql -U strapi -d strapi` suggestion is an error (per Phase 11 research)
+- Phase 5 (n8n E2E) was superseded by Phase 8
+- W_QUEUE_METRICS uses hardcoded PG credential ID `1mZZJEscADgQ8InR` (n8n DB) and Redis credential ID `43SDqJYMGa6RvFqW` — the `$env.*` expression form evaluated to empty on VPS (root cause of METR-01/02/04/05)
+- n8n Code nodes must use POSIX `df -k /` for disk introspection (GNU `stat -f -c` fails on Alpine/busybox)
+- Vite build args must be passed through docker-compose (not just declared as ARG in Dockerfile) — root cause of AUDIT-03 URL bug
+- ops.workflow_audit migration targets the n8n database (user=n8n, db=n8n), NOT strapi
 - NemoClaw Telegram Bot descoped from v1.0 (intended for its own repository)
 
-### Reconciliation (2026-06-19)
+### Reconciliation & gap-closure (2026-06-19 → 2026-06-20)
 
-- ROADMAP.md rewritten from 7 stale phases to the 14 phases actually on disk; phase 7 corrected from draft "NemoClaw" to "Fix Critical Defects"
-- REQUIREMENTS.md checkboxes synced to audit final status: 27/34 satisfied; 7 runtime gaps unchecked with closure-phase annotations
-- STATE.md progress updated: 14 total phases, 10 complete, 27/29 plans executed
-- No code changes made — per user direction, this was a docs-only reconciliation; VPS ops deferred
-- `gsd-tools.cjs roadmap analyze` now reports 14 phases, 10 complete, next=11 (previously mis-reported 7 phases)
+- 2026-06-19: ROADMAP/REQUIREMENTS/STATE reconciled to 14-phase disk reality (PR #26, branch claude/intelligent-galileo-w170kg) — docs-only.
+- 2026-06-20: local gap-closure executed on branch claude/gap-closure-phases-12-14:
+  - Phase 12 — `workflows/W_QUEUE_METRICS.json`: hardcoded PG/Redis credential IDs + `df -k /` disk check.
+  - Phase 13 — `docker-compose.{hostinger.prod,base}.yml` VITE_API_URL build arg; `AuditLogView.tsx` dead-var removal; `workflows/W_AUDIT_QUERY.json` count node + limit alias + status/channel filters.
+  - Phase 14 — created 09-VERIFICATION.md (partial) + 03-VALIDATION.md; lifted 01/07/09/10 VALIDATIONs to compliant.
+- All VPS deploy/import/verify steps remain deferred (no prod SSH).
 
 ### Roadmap Evolution
 
@@ -94,18 +96,19 @@ None.
 ### Blockers/Concerns
 
 - **VPS access required** for Phase 11 and the deploy steps of Phases 12-13 (SSH `deploy@72.60.190.192`) — unavailable from this environment; deferred (see REMAINING-WORK.md)
-- 7 runtime requirement gaps remain (METR-01/02/04/05, AUDIT-02/03/04)
+- CI baseline on the repo is red for reasons unrelated to these changes (gitleaks full-history scan; pre-existing `no-explicit-any` lint in `useEntitlements.ts`; integration/CMS jobs) — accepted as pre-existing debt
 - No automated DB backup — deferred to v2 (BAK-01..03 out of scope)
 - Disk risk: 119GB VPS; ENOSPC corrupts files — monitor during image rebuilds
 - Pending security actions (historical): rotate Telegram Bot Token exposed in commit cd133f19; rotate n8n encryption key / API keys exposed in historical commits
 
 ## Session Continuity
 
-Last session: 2026-06-19
-Stopped at: Completed a docs-only reconciliation of the planning directory to the true 14-phase milestone state. The autonomous workflow could not proceed against the stale 7-phase ROADMAP.md; per user direction (only sync docs, defer VPS ops), ROADMAP.md/REQUIREMENTS.md/STATE.md were re-synced and remaining work was consolidated into `.planning/REMAINING-WORK.md`.
+Last session: 2026-06-20
+Stopped at: Executed local gap-closure Phases 12/13/14 on branch `claude/gap-closure-phases-12-14` (stacked on the PR #26 docs reconciliation). All 7 runtime requirement gaps are now code-complete; only VPS deployment remains.
 Resume file: .planning/REMAINING-WORK.md
 
-### To resume gap-closure work
-- Local-only, no VPS needed: Phase 14 (create Phase 09 VERIFICATION.md, Phase 03 VALIDATION.md, lift draft VALIDATIONs)
-- Local code (deploy deferred): Phase 12 (W_QUEUE_METRICS.json), Phase 13 (compose build arg + W_AUDIT_QUERY SQL + AuditLogView)
-- VPS-only (needs prod SSH): Phase 11 (apply migration, recreate gateway, activate W_AUDIT_ARCHIVE)
+### To finish v1.0 (VPS-connected session required)
+- Phase 11: apply `db/migrations/2026-03-23_p3_workflow_audit.sql` to the n8n DB, `docker compose up -d gateway`, re-import + activate W_AUDIT_ARCHIVE.
+- Phase 12 deploy: import the fixed `W_QUEUE_METRICS.json` on VPS; verify METR-04/05 alerts fire.
+- Phase 13 deploy: rebuild + redeploy admin-dashboard image; verify AuditLogView end-to-end against `ops.workflow_audit`.
+- Then: `/gsd:audit-milestone` (expect 34/34) → `/gsd:complete-milestone v1.0`.

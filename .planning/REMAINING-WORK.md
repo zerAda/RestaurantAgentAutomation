@@ -76,3 +76,22 @@ Best done **after** 11–13 so verification reflects real runtime state, but the
 3. **Phase 11 + the 🔴 deploy/import/verify steps of 12 & 13** — in a single prod-connected session with VPS SSH.
 
 Once all 🔴 items are verified on VPS, re-run `/gsd:audit-milestone` to confirm 34/34, then `/gsd:complete-milestone v1.0`.
+
+---
+
+## Progress update — 2026-06-20 (branch `claude/gap-closure-phases-12-14`)
+
+The **local (🟢) work for Phases 12, 13, and 14 is COMPLETE**. What remains is purely 🔴 VPS deployment.
+
+| Phase | Local 🟢 | VPS 🔴 |
+|-------|----------|--------|
+| 12 — W_QUEUE_METRICS | ✅ DONE — credential IDs hardcoded (PG `1mZZJEscADgQ8InR`, Redis `43SDqJYMGa6RvFqW`); disk check switched to `df -k /` | ⏳ import workflow on VPS; verify METR-04/05 alerts fire |
+| 13 — Admin audit-log | ✅ DONE — `VITE_API_URL` build arg (prod+base); AuditLogView dead var removed; W_AUDIT_QUERY count node + `limit` alias + status/channel filters | ⏳ rebuild+deploy admin-dashboard; e2e verify (needs Phase 11 ops table) |
+| 14 — Nyquist/docs | ✅ DONE — 09-VERIFICATION.md (partial) + 03-VALIDATION.md created; 01/07/09/10 VALIDATIONs lifted to compliant | n/a (no VPS) |
+| 11 — VPS ops | n/a | ⏳ apply migration; recreate gateway; activate W_AUDIT_ARCHIVE |
+
+**Still TODO (not done in the 2026-06-20 pass):**
+- 🔴 All VPS deploy/import/verify steps above (Phase 11 + the deploy rows of 12/13).
+- 🟢 (optional hardening, deferred) integrity-gate lint to block empty `$env` credential IDs (Phase 12 item 3); `admin-dashboard/Dockerfile` missing-`RUN` and `W1_IN_WA.json active:false` tech-debt items (Phase 14 item 5).
+
+When the 🔴 items are verified on VPS: re-run `/gsd:audit-milestone` (expect 34/34) → `/gsd:complete-milestone v1.0`.
