@@ -7,6 +7,9 @@ REQ_VARS=(
   DOMAIN_NAME SSL_EMAIL CONSOLE_SUBDOMAIN API_SUBDOMAIN
   ADMIN_ALLOWED_IPS TRAEFIK_TRUSTED_IPS
   N8N_VERSION
+  # ENT-03 / GRD-01: W0_MODULE_GUARD reads these; a missing token turns the
+  # fail-closed guard into a total inbound/operator lockout. Fail fast here.
+  STRAPI_API_TOKEN_INTERNAL STRAPI_API_URL
 )
 
 OPT_VARS=(
