@@ -15,15 +15,223 @@
     },
     {
       "parameters": {
-        "jsCode": "/**\n * W0_MODULE_GUARD — Shared entitlement & module gate\n *\n * Called by every workflow entrypoint to validate:\n * 1. Module is enabled globally\n * 2. Tenant has active entitlement (if multi-tenant)\n * 3. Required env vars are present\n * 4. Module hasn't expired\n *\n * Input (from calling workflow):\n *   - module_key: string (e.g. 'channel_whatsapp', 'delivery_dispatch')\n *   - tenant_id: string (REQUIRED — fail-closed if absent; no default)\n *\n * Output:\n *   - allowed: boolean\n *   - reason: string (if denied)\n *   - config_overrides: object (tenant-specific config, if any)\n */\n\nconst moduleKey = $input.first().json.module_key;\nconst tenantId = ($input.first().json.tenant_id || '').toString().trim();\nif (!tenantId) {\n  return [{ json: { allowed: false, reason: 'GUARD_ERROR: tenant_id not provided (UNKNOWN_CHANNEL_IDENTITY)' } }];\n}\n\nif (!moduleKey) {\n  return [{ json: { allowed: false, reason: 'GUARD_ERROR: module_key not provided' } }];\n}\n\n// 1. Check global module enablement via Strapi\nconst strapiBase = $env.STRAPI_API_URL || 'http://strapi:1337';\nconst strapiToken = $env.STRAPI_API_TOKEN_INTERNAL;\n\ntry {\n  // Fetch module definition\n  const moduleRes = await fetch(\n    `${strapiBase}/api/product-modules?filters[key][$eq]=${moduleKey}`,\n    { headers: { 'Authorization': `Bearer ${strapiToken}` } }\n  );\n  const moduleData = await moduleRes.json();\n  const mod = moduleData?.data?.[0];\n\n  if (!mod) {\n    return [{ json: { allowed: false, reason: `MODULE_NOT_FOUND: ${moduleKey}` } }];\n  }\n\n  // shared_core modules are always allowed\n  if (mod.tier === 'shared_core' || mod.enabled_globally === true) {\n    return [{ json: { allowed: true, reason: 'GLOBAL_ENABLED', config_overrides: {} } }];\n  }\n\n  // 2. Check tenant entitlement\n  const entRes = await fetch(\n    `${strapiBase}/api/tenant-entitlements?filters[tenant_id][$eq]=${tenantId}&filters[module_key][$eq]=${moduleKey}&filters[enabled][$eq]=true`,\n    { headers: { 'Authorization': `Bearer ${strapiToken}` } }\n  );\n  const entData = await entRes.json();\n  const ent = entData?.data?.[0];\n\n  if (!ent) {\n    return [{ json: { allowed: false, reason: `NO_ENTITLEMENT: tenant=${tenantId} module=${moduleKey}` } }];\n  }\n\n  // 3. Check expiry\n  if (ent.expires_at && new Date(ent.expires_at) < new Date()) {\n    return [{ json: { allowed: false, reason: `EXPIRED: tenant=${tenantId} module=${moduleKey} expired=${ent.expires_at}` } }];\n  }\n\n  // 4. Return with config overrides\n  return [{ json: {\n    allowed: true,\n    reason: 'ENTITLED',\n    config_overrides: ent.config_overrides || {},\n    tenant_id: tenantId,\n    module_key: moduleKey\n  } }];\n\n} catch (err) {\n  // On guard failure, switch to fail-closed for production security\n  return [{ json: {\n    allowed: false,\n    reason: `GUARD_ERROR_FAILCLOSED: ${err.message}`,\n    config_overrides: {}\n  } }];\n}\n"
+        "language": "javascript",
+        "jsCode": "/**\n * Guard Input Validate — keep today's fail-closed input checks.\n *\n * tenant_id REQUIRED -> GUARD_ERROR (UNKNOWN_CHANNEL_IDENTITY); module_key REQUIRED.\n * An input error item carries _cacheUsable:false (so Decide-from-cache never treats\n * it as a hit) AND _cacheable:false (so the Redis SET on the miss path is skipped) —\n * it flows through the cache-aside nodes and terminates as a deny WITHOUT a spurious\n * cache read or write.\n */\nconst input = $input.first().json;\nconst moduleKey = input.module_key;\nconst tenantId = (input.tenant_id || '').toString().trim();\n\nif (!tenantId) {\n  return [{ json: {\n    allowed: false,\n    reason: 'GUARD_ERROR: tenant_id not provided (UNKNOWN_CHANNEL_IDENTITY)',\n    config_overrides: {},\n    _inputError: true,\n    _cacheUsable: false,\n    _cacheable: false,\n    tenant_id: '',\n    module_key: moduleKey || ''\n  } }];\n}\n\nif (!moduleKey) {\n  return [{ json: {\n    allowed: false,\n    reason: 'GUARD_ERROR: module_key not provided',\n    config_overrides: {},\n    _inputError: true,\n    _cacheUsable: false,\n    _cacheable: false,\n    tenant_id: tenantId,\n    module_key: ''\n  } }];\n}\n\n// Valid input — pass tenant_id/module_key through to the Redis key expression.\nreturn [{ json: { tenant_id: tenantId, module_key: moduleKey } }];\n"
       },
-      "id": "guard",
-      "name": "Module Guard",
+      "id": "guard-input-validate",
+      "name": "Guard Input Validate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         470,
         300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "=ralphe:entitlement:{{$json.tenant_id}}:{{$json.module_key}}"
+      },
+      "id": "redis-get-entitlement",
+      "name": "Redis - GET Entitlement",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * Decide-from-cache — inlined copy of entitlement-decision.mjs decideFromCache().\n * (n8n Code nodes cannot import the repo .mjs; the seam is the spec + test source\n * of truth, this is the byte-equivalent inline.)\n *\n * An input-error item (from Guard Input Validate) already carries _cacheUsable:false\n * and _cacheable:false — pass it straight through as a terminal deny (the IF below\n * routes _cacheUsable:false to the MISS branch, but _cacheable:false makes the\n * Evaluate node skip it and the SET is never reached).\n */\nconst item = $input.first().json;\nconst tenant_id = item.tenant_id;\nconst module_key = item.module_key;\n\n// Input error -> terminal deny; never read/written.\nif (item._inputError === true) {\n  return [{ json: { ...item, _cacheUsable: false } }];\n}\n\n// The Redis GET node surfaces the value as $json (bare string), or {error} on\n// continueOnFail. Normalize the candidate raw value.\nlet cachedRaw = null;\nif (item && typeof item === 'object') {\n  if ('error' in item && item.error) {\n    cachedRaw = { error: item.error }; // Redis error envelope -> miss\n  } else if (typeof item.value === 'string') {\n    cachedRaw = item.value;\n  } else if (typeof item.data === 'string') {\n    cachedRaw = item.data;\n  } else if (typeof item.result === 'string') {\n    cachedRaw = item.result;\n  }\n}\n\nfunction isGlobalModule(mod) {\n  return !!mod && (mod.tier === 'shared_core' || mod.enabled_globally === true);\n}\nfunction isExpired(ent, now) {\n  if (!ent || ent.expires_at === undefined || ent.expires_at === null || ent.expires_at === '') return false;\n  const exp = new Date(ent.expires_at).getTime();\n  if (Number.isNaN(exp)) return false;\n  return exp < now;\n}\n\nconst now = Date.now();\nlet decision = { cacheUsable: false };\n\nif (cachedRaw !== null && cachedRaw !== undefined) {\n  let obj = cachedRaw;\n  if (typeof cachedRaw === 'string') {\n    const s = cachedRaw.trim();\n    if (s === '' || s.toLowerCase() === 'nil' || s.toLowerCase() === 'null') {\n      obj = null;\n    } else {\n      try { obj = JSON.parse(s); } catch (e) { obj = null; }\n    }\n  }\n  if (obj && typeof obj === 'object' && !('error' in obj)) {\n    if (obj.neg === true) {\n      decision = { cacheUsable: true, allowed: false, reason: 'NO_ENTITLEMENT', config_overrides: {} };\n    } else if (obj.ent && typeof obj.ent === 'object') {\n      const ent = obj.ent; const mod = obj.mod || {};\n      if (isExpired(ent, now)) {\n        decision = { cacheUsable: true, allowed: false, reason: 'EXPIRED', config_overrides: {} };\n      } else {\n        const reason = isGlobalModule(mod) ? 'GLOBAL_ENABLED_CACHED' : 'ENTITLED_CACHED';\n        decision = { cacheUsable: true, allowed: true, reason, config_overrides: ent.config_overrides || {} };\n      }\n    } else if (obj.mod && isGlobalModule(obj.mod)) {\n      decision = { cacheUsable: true, allowed: true, reason: 'GLOBAL_ENABLED_CACHED', config_overrides: {} };\n    }\n  }\n}\n\nreturn [{ json: {\n  _cacheUsable: decision.cacheUsable,\n  allowed: decision.allowed,\n  reason: decision.reason,\n  config_overrides: decision.config_overrides || {},\n  tenant_id,\n  module_key\n} }];\n"
+      },
+      "id": "decide-from-cache",
+      "name": "Decide-from-cache",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._cacheUsable}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "if-cache-usable",
+      "name": "IF - Cache Usable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// HIT — return the cached decision. ★ NO httpRequest node downstream of here.\nreturn [{ json: {\n  allowed: $json.allowed,\n  reason: $json.reason,\n  config_overrides: $json.config_overrides || {},\n  tenant_id: $json.tenant_id,\n  module_key: $json.module_key\n} }];\n"
+      },
+      "id": "return-cached-decision",
+      "name": "Return Cached Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.STRAPI_API_URL || 'http://strapi:1337' }}/api/product-modules?filters[key][$eq]={{$json.module_key}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRAPI_API_TOKEN_INTERNAL }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "strapi-product-modules",
+      "name": "Strapi - GET product-modules",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1350,
+        420
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.STRAPI_API_URL || 'http://strapi:1337' }}/api/tenant-entitlements?filters[tenant_id][$eq]={{$json.tenant_id}}&filters[module_key][$eq]={{$json.module_key}}&filters[enabled][$eq]=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRAPI_API_TOKEN_INTERNAL }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "strapi-tenant-entitlements",
+      "name": "Strapi - GET tenant-entitlements",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1570,
+        420
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "/**\n * Evaluate live (fail-closed) — inlined copy of entitlement-decision.mjs evaluateLive().\n * Reads TTLs from env: ENTITLEMENT_CACHE_TTL_SEC (positive, default 300) /\n * ENTITLEMENT_NEG_CACHE_TTL_SEC (negative, default 60).\n *\n * Strapi-error detection FIRST (Pitfall 8): {error} / non-2xx / invalid body ->\n * GUARD_ERROR_FAILCLOSED, _cacheable:false (transient never cached). Else the live\n * ladder. An input-error item (carried from Guard Input Validate) is passed straight\n * through as a terminal deny with _cacheable:false so the SET is skipped.\n */\nconst posTtl = Number($env.ENTITLEMENT_CACHE_TTL_SEC) || 300;\nconst negTtl = Number($env.ENTITLEMENT_NEG_CACHE_TTL_SEC) || 60;\nconst now = Date.now();\n\nconst self = $input.first().json;\nconst tenant_id = self.tenant_id;\nconst module_key = self.module_key;\n\n// Input error -> terminal deny, never cached.\nif (self._inputError === true) {\n  return [{ json: {\n    allowed: false,\n    reason: self.reason,\n    config_overrides: {},\n    _cacheRow: null,\n    _cacheable: false,\n    _cacheTtl: 0,\n    tenant_id,\n    module_key\n  } }];\n}\n\nconst moduleRes = $('Strapi - GET product-modules').item.json;\nlet entRes = null;\ntry { entRes = $('Strapi - GET tenant-entitlements').item.json; } catch (e) { entRes = null; }\n\nfunction isGlobalModule(mod) {\n  return !!mod && (mod.tier === 'shared_core' || mod.enabled_globally === true);\n}\nfunction isExpired(ent) {\n  if (!ent || ent.expires_at === undefined || ent.expires_at === null || ent.expires_at === '') return false;\n  const exp = new Date(ent.expires_at).getTime();\n  if (Number.isNaN(exp)) return false;\n  return exp < now;\n}\nfunction strapiError(res) {\n  if (res === null || res === undefined) return 'empty response';\n  if (typeof res !== 'object') return 'non-object response';\n  if ('error' in res && res.error) {\n    const e = res.error;\n    if (typeof e === 'string') return e;\n    if (e && typeof e === 'object') return e.message || e.name || 'strapi error';\n    return 'strapi error';\n  }\n  const status = (res.statusCode !== undefined ? res.statusCode : res.status);\n  if (typeof status === 'number' && (status < 200 || status >= 300)) return `HTTP ${status}`;\n  if (!('data' in res)) return 'invalid body (no data field)';\n  if (!Array.isArray(res.data)) return 'invalid body (data not an array)';\n  return '';\n}\n\nlet out;\nconst modErr = strapiError(moduleRes);\nif (modErr) {\n  out = { allowed: false, reason: `GUARD_ERROR_FAILCLOSED: product-modules ${modErr}`, config_overrides: {}, _cacheRow: null, _cacheable: false, _cacheTtl: 0 };\n} else {\n  const mod = moduleRes.data[0];\n  if (!mod) {\n    out = { allowed: false, reason: 'MODULE_NOT_FOUND', config_overrides: {}, _cacheRow: { neg: true }, _cacheable: true, _cacheTtl: negTtl };\n  } else if (isGlobalModule(mod)) {\n    out = { allowed: true, reason: 'GLOBAL_ENABLED', config_overrides: {}, _cacheRow: { mod, fetchedAt: new Date(now).toISOString() }, _cacheable: true, _cacheTtl: posTtl };\n  } else {\n    const entErr = strapiError(entRes);\n    if (entErr) {\n      out = { allowed: false, reason: `GUARD_ERROR_FAILCLOSED: tenant-entitlements ${entErr}`, config_overrides: {}, _cacheRow: null, _cacheable: false, _cacheTtl: 0 };\n    } else {\n      const ent = entRes.data[0];\n      if (!ent) {\n        out = { allowed: false, reason: 'NO_ENTITLEMENT', config_overrides: {}, _cacheRow: { neg: true }, _cacheable: true, _cacheTtl: negTtl };\n      } else if (isExpired(ent)) {\n        out = { allowed: false, reason: 'EXPIRED', config_overrides: {}, _cacheRow: { neg: true }, _cacheable: true, _cacheTtl: negTtl };\n      } else {\n        out = { allowed: true, reason: 'ENTITLED', config_overrides: ent.config_overrides || {}, _cacheRow: { ent, mod, fetchedAt: new Date(now).toISOString() }, _cacheable: true, _cacheTtl: posTtl };\n      }\n    }\n  }\n}\n\nreturn [{ json: { ...out, tenant_id, module_key } }];\n"
+      },
+      "id": "evaluate-live",
+      "name": "Evaluate live (fail-closed)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1790,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json._cacheable}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "if-cacheable",
+      "name": "IF - Cacheable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2010,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=ralphe:entitlement:{{$json.tenant_id}}:{{$json.module_key}}",
+        "value": "={{ JSON.stringify($json._cacheRow) }}",
+        "expire": true,
+        "ttl": "={{ $json._cacheTtl }}"
+      },
+      "id": "redis-set-entitlement",
+      "name": "Redis - SET Entitlement",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2230,
+        300
+      ],
+      "credentials": {
+        "redis": {
+          "id": "REDIS_CREDENTIAL_ID",
+          "name": "Redis"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Return fresh decision — strip the _cache* internals. Both the SET (main[0])\n// and the IF-Cacheable FALSE (main[1], error/input-error path skipping SET)\n// branches converge here.\nreturn [{ json: {\n  allowed: $json.allowed,\n  reason: $json.reason,\n  config_overrides: $json.config_overrides || {},\n  tenant_id: $json.tenant_id,\n  module_key: $json.module_key\n} }];\n"
+      },
+      "id": "return-fresh-decision",
+      "name": "Return Fresh Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2450,
+        420
       ]
     }
   ],
@@ -32,7 +240,120 @@
       "main": [
         [
           {
-            "node": "Module Guard",
+            "node": "Guard Input Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard Input Validate": {
+      "main": [
+        [
+          {
+            "node": "Redis - GET Entitlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - GET Entitlement": {
+      "main": [
+        [
+          {
+            "node": "Decide-from-cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide-from-cache": {
+      "main": [
+        [
+          {
+            "node": "IF - Cache Usable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Cache Usable?": {
+      "main": [
+        [
+          {
+            "node": "Return Cached Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Strapi - GET product-modules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strapi - GET product-modules": {
+      "main": [
+        [
+          {
+            "node": "Strapi - GET tenant-entitlements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strapi - GET tenant-entitlements": {
+      "main": [
+        [
+          {
+            "node": "Evaluate live (fail-closed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate live (fail-closed)": {
+      "main": [
+        [
+          {
+            "node": "IF - Cacheable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Cacheable?": {
+      "main": [
+        [
+          {
+            "node": "Redis - SET Entitlement",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Fresh Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - SET Entitlement": {
+      "main": [
+        [
+          {
+            "node": "Return Fresh Decision",
             "type": "main",
             "index": 0
           }
